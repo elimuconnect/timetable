@@ -678,25 +678,185 @@
 
             <!-- ROOMS -->
 
-            <div class="section"
-                 id="rooms">
 
-                <div class="page-heading">
 
-                    <div>
-                        <h2>🏫 Rooms</h2>
+            <!-- ROOMS -->
 
-                        <p>
-                            Manage classrooms, laboratories
-                            and special rooms.
-                        </p>
-                    </div>
+<div class="section"
+     id="rooms">
 
-                </div>
+    <div class="page-heading">
 
-                <div id="roomsContent"></div>
+        <div>
+
+            <h2>🏫 Rooms</h2>
+
+            <p>
+                Manage classrooms, laboratories
+                and special rooms.
+            </p>
+
+        </div>
+
+        <button
+            type="button"
+            class="primary-btn"
+            id="addRoomBtn">
+
+            ➕ Add Room
+
+        </button>
+
+    </div>
+
+
+    <!-- ROOM FORM -->
+
+    <div
+        id="roomFormCard"
+        class="form-card"
+        style="display:none;">
+
+        <div class="form-card-header">
+
+            <h3 id="roomFormTitle">
+                Add Room
+            </h3>
+
+        </div>
+
+
+        <input
+            type="hidden"
+            id="roomId"
+        >
+
+
+        <div class="form-grid">
+
+            <!-- ROOM NAME -->
+
+            <div class="form-group">
+
+                <label for="roomName">
+                    Room Name
+                </label>
+
+                <input
+                    type="text"
+                    id="roomName"
+                    placeholder="e.g. Room 1"
+                >
 
             </div>
+
+
+            <!-- ROOM TYPE -->
+
+            <div class="form-group">
+
+                <label for="roomTypeSelect">
+                    Room Type
+                </label>
+
+                <select id="roomTypeSelect">
+
+                    <option value="Classroom">
+                        Classroom
+                    </option>
+
+                    <option value="Laboratory">
+                        Laboratory
+                    </option>
+
+                    <option value="Computer Lab">
+                        Computer Lab
+                    </option>
+
+                    <option value="Library">
+                        Library
+                    </option>
+
+                    <option value="Workshop">
+                        Workshop
+                    </option>
+
+                    <option value="Hall">
+                        Hall
+                    </option>
+
+                    <option value="Other">
+                        Other
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- CAPACITY -->
+
+            <div class="form-group">
+
+                <label for="roomCapacity">
+                    Capacity
+                </label>
+
+                <input
+                    type="number"
+                    id="roomCapacity"
+                    min="1"
+                    value="50"
+                >
+
+            </div>
+
+        </div>
+
+
+        <!-- FORM BUTTONS -->
+
+        <div class="form-actions">
+
+            <button
+                type="button"
+                class="secondary-btn"
+                id="cancelRoomBtn">
+
+                Cancel
+
+            </button>
+
+
+            <button
+                type="button"
+                class="primary-btn"
+                id="saveRoomBtn">
+
+                💾 Save Room
+
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- ROOM TABLE -->
+
+    <div
+        id="roomsTableContainer"
+        class="data-container">
+
+        <div class="empty-message">
+
+            Please select a school to view rooms.
+
+        </div>
+
+    </div>
+
+</div>
 
 
             <!-- PERIODS -->
