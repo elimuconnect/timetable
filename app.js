@@ -5805,7 +5805,69 @@ if (schoolSelect) {
 
 }
 
+// ============================================================
+// 18C. AUTOMATIC DAY NUMBER
+// ============================================================
 
+const periodDayName =
+    document.getElementById(
+        "periodDayName"
+    );
+
+
+const periodDayNumber =
+    document.getElementById(
+        "periodDayNumber"
+    );
+
+
+if (
+    periodDayName &&
+    periodDayNumber
+) {
+
+    periodDayName.addEventListener(
+        "change",
+        function () {
+
+            const dayNumbers = {
+
+                Monday: 1,
+
+                Tuesday: 2,
+
+                Wednesday: 3,
+
+                Thursday: 4,
+
+                Friday: 5,
+
+                Saturday: 6
+
+            };
+
+
+            const selectedDay =
+                this.value;
+
+
+            if (
+                dayNumbers[
+                    selectedDay
+                ]
+            ) {
+
+                periodDayNumber.value =
+                    dayNumbers[
+                        selectedDay
+                    ];
+
+            }
+
+        }
+    );
+
+}
 // ============================================================
 // END STEP 18B
 // ============================================================
