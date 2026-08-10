@@ -1734,9 +1734,748 @@ if (schoolSelect) {
 
 }
 
+// ============================================================
+// 16. SUBJECT MANAGEMENT
+// ============================================================
+
+
+// ------------------------------------------------------------
+// OPEN ADD SUBJECT FORM
+// ------------------------------------------------------------
+
+const addSubjectBtn =
+    document.getElementById("addSubjectBtn");
+
+if (addSubjectBtn) {
+
+    addSubjectBtn.addEventListener(
+        "click",
+        () => {
+
+            if (!timetableState.schoolId) {
+
+                alert("Please select a school first.");
+
+                return;
+
+            }
+
+            openSubjectForm();
+
+        }
+    );
+
+}
+
+
+// ------------------------------------------------------------
+// OPEN SUBJECT FORM
+// ------------------------------------------------------------
+
+function openSubjectForm(subject = null) {
+
+    const form =
+        document.getElementById("subjectFormCard");
+
+    if (!form) return;
+
+    form.style.display = "block";
+
+
+    if (subject) {
+
+        document.getElementById(
+            "subjectFormTitle"
+        ).textContent = "Edit Subject";
+
+        document.getElementById(
+            "subjectId"
+        ).value = subject.id;
+
+        document.getElementById(
+            "subjectName"
+        ).value =
+            subject.subject_name || "";
+
+        document.getElementById(
+            "subjectCode"
+        ).value =
+            subject.subject_code || "";
+
+        document.getElementById(
+            "lessonsPerWeek"
+        ).value =
+            subject.lessons_per_week || 1;
+
+        document.getElementById(
+            "requiresDoubleLesson"
+        ).checked =
+            subject.requires_double_lesson === true;
+
+        document.getElementById(
+            "requiresRoom"
+        ).checked =
+            subject.requires_room === true;
+
+        document.getElementById(
+            "roomType"
+        ).value =
+            subject.room_type || "";
+
+    } else {
+
+        document.getElementById(
+            "subjectFormTitle"
+        ).textContent = "Add Subject";
+
+        document.getElementById(
+            "subjectId"
+        ).value = "";
+
+        document.getElementById(
+            "subjectName"
+        ).value = "";
+
+        document.getElementById(
+            "subjectCode"
+        ).value = "";
+
+        document.getElementById(
+            "lessonsPerWeek"
+        ).value = 1;
+
+        document.getElementById(
+            "requiresDoubleLesson"
+        ).checked = false;
+
+        document.getElementById(
+            "requiresRoom"
+        ).checked = false;
+
+        document.getElementById(
+            "roomType"
+        ).value = "";
+
+    }
+
+
+    form.scrollIntoView({
+        behavior: "smooth"
+    });
+
+}
+
+
+// ------------------------------------------------------------
+// CANCEL SUBJECT FORM
+// ------------------------------------------------------------
+
+const cancelSubjectBtn =
+    document.getElementById("cancelSubjectBtn");
+
+if (cancelSubjectBtn) {
+
+    cancelSubjectBtn.addEventListener(
+        "click",
+        closeSubjectForm
+    );
+
+}
+
+
+function closeSubjectForm() {
+
+    const form =
+        document.getElementById("subjectFormCard");
+
+    if (form) {
+
+        form.style.display = "none";
+
+    }
+
+}
+
+
+// ------------------------------------------------------------
+// SAVE SUBJECT
+// ------------------------------------------------------------
+
+const saveSubjectBtn =
+    document.getElementById("saveSubjectBtn");
+
+if (saveSubjectBtn) {
+
+    saveSubjectBtn.addEventListener(
+        "click",
+        saveSubject
+    );
+
+}
+
+
+async function saveSubject() {
+
+    // -----------------------------------------
+    // CHECK SCHOOL
+    // -----------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        alert("Please select a school first.");
+
+        return;
+
+    }
+
+
+    // -----------------------------------------
+    // GET FORM VALUES
+    // -----------------------------------------
+
+    const subjectId =
+        document.getElementById(
+            "subjectId"
+        ).value.trim();
+
+
+    const subjectName =
+        document.getElementById(
+            "subjectName"
+        ).value.trim();
+
+
+    const subjectCode =
+        document.getElementById(
+            "subjectCode"
+        ).value.trim();
+
+
+    const lessonsPerWeek =
+        Number(
+            document.getElementById(
+                "lessonsPerWeek"
+            ).value
+        );
+
+
+    const requiresDoubleLesson =
+        document.getElementById(
+            "requiresDoubleLesson"
+        ).checked;
+
+
+    const requiresRoom =
+        document.getElementById(
+            "requiresRoom"
+        ).checked;
+
+
+    const roomType =
+        document.getElementById(
+            "roomType"
+        ).value.trim();
+
+
+    // -----------------------------------------
+    // VALIDATION
+    // -----------------------------------------
+
+    if (!subjectName) {
+
+        alert("Please enter the subject name.");
+
+        return;
+
+    }
+
+
+    if (!subjectCode) {
+
+        alert("Please enter the subject code.");
+
+        return;
+
+    }
+
+
+    if (
+        !lessonsPerWeek ||
+        lessonsPerWeek < 1
+    ) {
+
+        alert(
+            "Please enter a valid number of lessons per week."
+        );
+
+        return;
+
+    }
+
+
+    if (requiresRoom && !roomType) {
+
+        alert(
+            "Please specify the required room type."
+        );
+
+        return;
+
+    }
+
+
+    // -----------------------------------------
+    // PREPARE DATA
+    // -----------------------------------------
+
+    const subjectData = {
+
+        school_id:
+            timetableState.schoolId,
+
+        subject_name:
+            subjectName,
+
+        subject_code:
+            subjectCode,
+
+        lessons_per_week:
+            lessonsPerWeek,
+
+        requires_double_lesson:
+            requiresDoubleLesson,
+
+        requires_room:
+            requiresRoom,
+
+        room_type:
+            requiresRoom
+                ? roomType
+                : null
+
+    };
+
+
+    let result;
+
+
+    // -----------------------------------------
+    // UPDATE
+    // -----------------------------------------
+
+    if (subjectId) {
+
+        result =
+            await supabaseClient
+
+                .from("timetable_subjects")
+
+                .update(subjectData)
+
+                .eq(
+                    "id",
+                    subjectId
+                )
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+    }
+
+
+    // -----------------------------------------
+    // INSERT
+    // -----------------------------------------
+
+    else {
+
+        result =
+            await supabaseClient
+
+                .from("timetable_subjects")
+
+                .insert(subjectData);
+
+    }
+
+
+    // -----------------------------------------
+    // ERROR
+    // -----------------------------------------
+
+    if (result.error) {
+
+        console.error(
+            "Subject save error:",
+            result.error
+        );
+
+        alert(
+            "Failed to save subject:\n\n" +
+            result.error.message
+        );
+
+        return;
+
+    }
+
+
+    // -----------------------------------------
+    // SUCCESS
+    // -----------------------------------------
+
+    alert(
+        subjectId
+            ? "Subject updated successfully."
+            : "Subject added successfully."
+    );
+
+
+    closeSubjectForm();
+
+
+    await loadSubjects();
+
+
+    await loadDashboardData(
+        timetableState.schoolId
+    );
+
+}
+
+
+// ------------------------------------------------------------
+// LOAD SUBJECTS
+// ------------------------------------------------------------
+
+async function loadSubjects() {
+
+    const container =
+        document.getElementById(
+            "subjectsTableContainer"
+        );
+
+    if (!container) return;
+
+
+    if (!timetableState.schoolId) {
+
+        container.innerHTML =
+            `
+            <div class="empty-message">
+                Please select a school first.
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        `
+        <div class="loading-message">
+            Loading subjects...
+        </div>
+        `;
+
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+
+        .from("timetable_subjects")
+
+        .select("*")
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        )
+
+        .order(
+            "subject_name"
+        );
+
+
+    if (error) {
+
+        console.error(
+            "Failed to load subjects:",
+            error
+        );
+
+        container.innerHTML =
+            `
+            <div class="empty-message">
+                Failed to load subjects.
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    if (!data || data.length === 0) {
+
+        container.innerHTML =
+            `
+            <div class="empty-message">
+                No subjects have been added
+                for this school yet.
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    let html = `
+
+        <table class="data-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>Subject</th>
+
+                    <th>Code</th>
+
+                    <th>Lessons / Week</th>
+
+                    <th>Double Lesson</th>
+
+                    <th>Room Required</th>
+
+                    <th>Room Type</th>
+
+                    <th>Actions</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+    `;
+
+
+    data.forEach(subject => {
+
+        html += `
+
+            <tr>
+
+                <td>
+                    <strong>
+                        ${escapeHtml(
+                            subject.subject_name
+                        )}
+                    </strong>
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        subject.subject_code
+                    )}
+                </td>
+
+                <td>
+                    ${subject.lessons_per_week}
+                </td>
+
+                <td>
+                    ${
+                        subject.requires_double_lesson
+                            ? "Yes"
+                            : "No"
+                    }
+                </td>
+
+                <td>
+                    ${
+                        subject.requires_room
+                            ? "Yes"
+                            : "No"
+                    }
+                </td>
+
+                <td>
+                    ${escapeHtml(
+                        subject.room_type || "-"
+                    )}
+                </td>
+
+                <td>
+
+                    <button
+                        class="action-btn edit-btn"
+                        onclick='editSubject(${JSON.stringify(
+                            subject
+                        )})'>
+
+                        Edit
+
+                    </button>
+
+
+                    <button
+                        class="action-btn delete-btn"
+                        onclick="deleteSubject('${subject.id}')">
+
+                        Delete
+
+                    </button>
+
+                </td>
+
+            </tr>
+
+        `;
+
+    });
+
+
+    html += `
+
+            </tbody>
+
+        </table>
+
+    `;
+
+
+    container.innerHTML = html;
+
+}
+
+
+// ------------------------------------------------------------
+// EDIT SUBJECT
+// ------------------------------------------------------------
+
+window.editSubject =
+    function(subject) {
+
+        openSubjectForm(subject);
+
+    };
+
+
+// ------------------------------------------------------------
+// DELETE SUBJECT
+// ------------------------------------------------------------
+
+window.deleteSubject =
+    async function(subjectId) {
+
+        if (!timetableState.schoolId) {
+
+            alert(
+                "Please select a school."
+            );
+
+            return;
+
+        }
+
+
+        const confirmed =
+            confirm(
+                "Are you sure you want to delete this subject?"
+            );
+
+
+        if (!confirmed) {
+
+            return;
+
+        }
+
+
+        const {
+            error
+        } = await supabaseClient
+
+            .from("timetable_subjects")
+
+            .delete()
+
+            .eq(
+                "id",
+                subjectId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (error) {
+
+            console.error(
+                "Delete subject error:",
+                error
+            );
+
+            alert(
+                "Failed to delete subject:\n\n" +
+                error.message
+            );
+
+            return;
+
+        }
+
+
+        alert(
+            "Subject deleted successfully."
+        );
+
+
+        await loadSubjects();
+
+
+        await loadDashboardData(
+            timetableState.schoolId
+        );
+
+    };
+
+
+// ------------------------------------------------------------
+// LOAD SUBJECTS WHEN SCHOOL CHANGES
+// ------------------------------------------------------------
+
+if (schoolSelect) {
+
+    schoolSelect.addEventListener(
+        "change",
+        async function() {
+
+            if (
+                timetableState.schoolId
+            ) {
+
+                await loadSubjects();
+
+            }
+
+        }
+    );
+
+}
+
 
 // ============================================================
-// END
+// END STEP 16
 // ============================================================
 
 
