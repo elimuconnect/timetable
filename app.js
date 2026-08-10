@@ -2473,11 +2473,708 @@ if (schoolSelect) {
 
 }
 
+// ============================================================
+// 17. ROOM MANAGEMENT
+// ============================================================
+
+
+// ------------------------------------------------------------
+// OPEN ADD ROOM FORM
+// ------------------------------------------------------------
+
+const addRoomBtn =
+    document.getElementById("addRoomBtn");
+
+
+if (addRoomBtn) {
+
+    addRoomBtn.addEventListener(
+        "click",
+        () => {
+
+            if (!timetableState.schoolId) {
+
+                alert(
+                    "Please select a school first."
+                );
+
+                return;
+
+            }
+
+            openRoomForm();
+
+        }
+    );
+
+}
+
+
+// ------------------------------------------------------------
+// OPEN ROOM FORM
+// ------------------------------------------------------------
+
+function openRoomForm(room = null) {
+
+    const form =
+        document.getElementById(
+            "roomFormCard"
+        );
+
+
+    if (!form) return;
+
+
+    form.style.display = "block";
+
+
+    if (room) {
+
+        document.getElementById(
+            "roomFormTitle"
+        ).textContent =
+            "Edit Room";
+
+
+        document.getElementById(
+            "roomId"
+        ).value =
+            room.id;
+
+
+        document.getElementById(
+            "roomName"
+        ).value =
+            room.room_name || "";
+
+
+        document.getElementById(
+            "roomTypeSelect"
+        ).value =
+            room.room_type || "Classroom";
+
+
+        document.getElementById(
+            "roomCapacity"
+        ).value =
+            room.capacity || 50;
+
+    } else {
+
+        document.getElementById(
+            "roomFormTitle"
+        ).textContent =
+            "Add Room";
+
+
+        document.getElementById(
+            "roomId"
+        ).value =
+            "";
+
+
+        document.getElementById(
+            "roomName"
+        ).value =
+            "";
+
+
+        document.getElementById(
+            "roomTypeSelect"
+        ).value =
+            "Classroom";
+
+
+        document.getElementById(
+            "roomCapacity"
+        ).value =
+            50;
+
+    }
+
+
+    form.scrollIntoView({
+        behavior: "smooth"
+    });
+
+}
+
+
+// ------------------------------------------------------------
+// CANCEL ROOM FORM
+// ------------------------------------------------------------
+
+const cancelRoomBtn =
+    document.getElementById(
+        "cancelRoomBtn"
+    );
+
+
+if (cancelRoomBtn) {
+
+    cancelRoomBtn.addEventListener(
+        "click",
+        closeRoomForm
+    );
+
+}
+
+
+function closeRoomForm() {
+
+    const form =
+        document.getElementById(
+            "roomFormCard"
+        );
+
+
+    if (form) {
+
+        form.style.display =
+            "none";
+
+    }
+
+}
+
+
+// ------------------------------------------------------------
+// SAVE ROOM
+// ------------------------------------------------------------
+
+const saveRoomBtn =
+    document.getElementById(
+        "saveRoomBtn"
+    );
+
+
+if (saveRoomBtn) {
+
+    saveRoomBtn.addEventListener(
+        "click",
+        saveRoom
+    );
+
+}
+
+
+async function saveRoom() {
+
+    // -----------------------------------------
+    // CHECK SCHOOL
+    // -----------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        alert(
+            "Please select a school first."
+        );
+
+        return;
+
+    }
+
+
+    // -----------------------------------------
+    // GET VALUES
+    // -----------------------------------------
+
+    const roomId =
+        document.getElementById(
+            "roomId"
+        ).value.trim();
+
+
+    const roomName =
+        document.getElementById(
+            "roomName"
+        ).value.trim();
+
+
+    const roomType =
+        document.getElementById(
+            "roomTypeSelect"
+        ).value;
+
+
+    const capacity =
+        Number(
+            document.getElementById(
+                "roomCapacity"
+            ).value
+        );
+
+
+    // -----------------------------------------
+    // VALIDATION
+    // -----------------------------------------
+
+    if (!roomName) {
+
+        alert(
+            "Please enter the room name."
+        );
+
+        return;
+
+    }
+
+
+    if (!capacity || capacity < 1) {
+
+        alert(
+            "Please enter a valid room capacity."
+        );
+
+        return;
+
+    }
+
+
+    // -----------------------------------------
+    // PREPARE DATA
+    // -----------------------------------------
+
+    const roomData = {
+
+        school_id:
+            timetableState.schoolId,
+
+        room_name:
+            roomName,
+
+        room_type:
+            roomType,
+
+        capacity:
+            capacity
+
+    };
+
+
+    let result;
+
+
+    // -----------------------------------------
+    // UPDATE
+    // -----------------------------------------
+
+    if (roomId) {
+
+        result =
+            await supabaseClient
+
+                .from(
+                    "timetable_rooms"
+                )
+
+                .update(
+                    roomData
+                )
+
+                .eq(
+                    "id",
+                    roomId
+                )
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+    }
+
+
+    // -----------------------------------------
+    // INSERT
+    // -----------------------------------------
+
+    else {
+
+        result =
+            await supabaseClient
+
+                .from(
+                    "timetable_rooms"
+                )
+
+                .insert(
+                    roomData
+                );
+
+    }
+
+
+    // -----------------------------------------
+    // ERROR
+    // -----------------------------------------
+
+    if (result.error) {
+
+        console.error(
+            "Room save error:",
+            result.error
+        );
+
+
+        alert(
+            "Failed to save room:\n\n" +
+            result.error.message
+        );
+
+
+        return;
+
+    }
+
+
+    // -----------------------------------------
+    // SUCCESS
+    // -----------------------------------------
+
+    alert(
+        roomId
+            ? "Room updated successfully."
+            : "Room added successfully."
+    );
+
+
+    closeRoomForm();
+
+
+    await loadRooms();
+
+
+    await loadDashboardData(
+        timetableState.schoolId
+    );
+
+}
+
+
+// ------------------------------------------------------------
+// LOAD ROOMS
+// ------------------------------------------------------------
+
+async function loadRooms() {
+
+    const container =
+        document.getElementById(
+            "roomsTableContainer"
+        );
+
+
+    if (!container) return;
+
+
+    if (!timetableState.schoolId) {
+
+        container.innerHTML =
+            `
+            <div class="empty-message">
+                Please select a school first.
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        `
+        <div class="loading-message">
+            Loading rooms...
+        </div>
+        `;
+
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_rooms"
+        )
+
+        .select("*")
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        )
+
+        .order(
+            "room_name"
+        );
+
+
+    if (error) {
+
+        console.error(
+            "Failed to load rooms:",
+            error
+        );
+
+
+        container.innerHTML =
+            `
+            <div class="empty-message">
+                Failed to load rooms.
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    if (!data || data.length === 0) {
+
+        container.innerHTML =
+            `
+            <div class="empty-message">
+                No rooms have been added
+                for this school yet.
+            </div>
+            `;
+
+        return;
+
+    }
+
+
+    let html = `
+
+        <table class="data-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>Room</th>
+
+                    <th>Type</th>
+
+                    <th>Capacity</th>
+
+                    <th>Actions</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+    `;
+
+
+    data.forEach(room => {
+
+        html += `
+
+            <tr>
+
+                <td>
+
+                    <strong>
+                        ${escapeHtml(
+                            room.room_name
+                        )}
+                    </strong>
+
+                </td>
+
+
+                <td>
+
+                    ${escapeHtml(
+                        room.room_type || "-"
+                    )}
+
+                </td>
+
+
+                <td>
+
+                    ${room.capacity || "-"}
+
+                </td>
+
+
+                <td>
+
+                    <button
+                        class="action-btn edit-btn"
+                        onclick='editRoom(${JSON.stringify(
+                            room
+                        )})'>
+
+                        Edit
+
+                    </button>
+
+
+                    <button
+                        class="action-btn delete-btn"
+                        onclick="deleteRoom('${room.id}')">
+
+                        Delete
+
+                    </button>
+
+                </td>
+
+            </tr>
+
+        `;
+
+    });
+
+
+    html += `
+
+            </tbody>
+
+        </table>
+
+    `;
+
+
+    container.innerHTML =
+        html;
+
+}
+
+
+// ------------------------------------------------------------
+// EDIT ROOM
+// ------------------------------------------------------------
+
+window.editRoom =
+    function(room) {
+
+        openRoomForm(
+            room
+        );
+
+    };
+
+
+// ------------------------------------------------------------
+// DELETE ROOM
+// ------------------------------------------------------------
+
+window.deleteRoom =
+    async function(roomId) {
+
+        if (!timetableState.schoolId) {
+
+            alert(
+                "Please select a school."
+            );
+
+            return;
+
+        }
+
+
+        const confirmed =
+            confirm(
+                "Are you sure you want to delete this room?"
+            );
+
+
+        if (!confirmed) {
+
+            return;
+
+        }
+
+
+        const {
+            error
+        } = await supabaseClient
+
+            .from(
+                "timetable_rooms"
+            )
+
+            .delete()
+
+            .eq(
+                "id",
+                roomId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (error) {
+
+            console.error(
+                "Delete room error:",
+                error
+            );
+
+
+            alert(
+                "Failed to delete room:\n\n" +
+                error.message
+            );
+
+
+            return;
+
+        }
+
+
+        alert(
+            "Room deleted successfully."
+        );
+
+
+        await loadRooms();
+
+
+        await loadDashboardData(
+            timetableState.schoolId
+        );
+
+    };
+
+
+// ------------------------------------------------------------
+// LOAD ROOMS WHEN SCHOOL CHANGES
+// ------------------------------------------------------------
+
+if (schoolSelect) {
+
+    schoolSelect.addEventListener(
+        "change",
+        async function() {
+
+            if (
+                timetableState.schoolId
+            ) {
+
+                await loadRooms();
+
+            }
+
+        }
+    );
+
+}
+
 
 // ============================================================
-// END STEP 16
+// END STEP 17
 // ============================================================
-
 
 // ============================================================
 // 14. START
