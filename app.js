@@ -3567,7 +3567,339 @@ async function loadRequirements() {
 }
 
 
+// ============================================================
+// LOAD REQUIREMENT DROPDOWNS
+// ============================================================
 
+async function loadRequirementOptions() {
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+        return;
+    }
+
+
+    const schoolId =
+        timetableState.schoolId;
+
+
+    console.log(
+        "Loading requirement options for school:",
+        schoolId
+    );
+
+
+    // --------------------------------------------------------
+    // GET DROPDOWNS
+    // --------------------------------------------------------
+
+    const streamSelect =
+        document.getElementById(
+            "requirementStream"
+        );
+
+    const subjectSelect =
+        document.getElementById(
+            "requirementSubject"
+        );
+
+    const teacherSelect =
+        document.getElementById(
+            "requirementTeacher"
+        );
+
+
+    // --------------------------------------------------------
+    // CHECK ELEMENTS
+    // --------------------------------------------------------
+
+    if (!streamSelect) {
+
+        console.error(
+            "requirementStream element not found."
+        );
+
+    }
+
+
+    if (!subjectSelect) {
+
+        console.error(
+            "requirementSubject element not found."
+        );
+
+    }
+
+
+    if (!teacherSelect) {
+
+        console.error(
+            "requirementTeacher element not found."
+        );
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOAD STREAMS
+    // --------------------------------------------------------
+
+    const {
+        data: streams,
+        error: streamsError
+    } = await supabaseClient
+
+        .from("timetable_streams")
+
+        .select(
+            "id, stream_name"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "stream_name"
+        );
+
+
+    if (streamsError) {
+
+        console.error(
+            "Failed to load requirement streams:",
+            streamsError
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOAD SUBJECTS
+    // --------------------------------------------------------
+
+    const {
+        data: subjects,
+        error: subjectsError
+    } = await supabaseClient
+
+        .from("timetable_subjects")
+
+        .select(
+            "id, subject_name, subject_code"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "subject_name"
+        );
+
+
+    if (subjectsError) {
+
+        console.error(
+            "Failed to load requirement subjects:",
+            subjectsError
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOAD TEACHERS
+    // --------------------------------------------------------
+
+    const {
+        data: teachers,
+        error: teachersError
+    } = await supabaseClient
+
+        .from("timetable_teachers")
+
+        .select(
+            "id, teacher_name, teacher_code"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "teacher_name"
+        );
+
+
+    if (teachersError) {
+
+        console.error(
+            "Failed to load requirement teachers:",
+            teachersError
+        );
+
+        return;
+
+    }
+
+
+    // ========================================================
+    // POPULATE STREAM DROPDOWN
+    // ========================================================
+
+    if (streamSelect) {
+
+        streamSelect.innerHTML =
+            `
+            <option value="">
+                Select stream
+            </option>
+            `;
+
+
+        (streams || []).forEach(
+            stream => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                option.value =
+                    stream.id;
+
+
+                option.textContent =
+                    stream.stream_name;
+
+
+                streamSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // POPULATE SUBJECT DROPDOWN
+    // ========================================================
+
+    if (subjectSelect) {
+
+        subjectSelect.innerHTML =
+            `
+            <option value="">
+                Select subject
+            </option>
+            `;
+
+
+        (subjects || []).forEach(
+            subject => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                option.value =
+                    subject.id;
+
+
+                option.textContent =
+                    subject.subject_code
+                        ? `${subject.subject_name} (${subject.subject_code})`
+                        : subject.subject_name;
+
+
+                subjectSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // POPULATE TEACHER DROPDOWN
+    // ========================================================
+
+    if (teacherSelect) {
+
+        teacherSelect.innerHTML =
+            `
+            <option value="">
+                Select teacher
+            </option>
+            `;
+
+
+        (teachers || []).forEach(
+            teacher => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                option.value =
+                    teacher.id;
+
+
+                option.textContent =
+                    teacher.teacher_code
+                        ? `${teacher.teacher_name} (${teacher.teacher_code})`
+                        : teacher.teacher_name;
+
+
+                teacherSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // LOG RESULT
+    // ========================================================
+
+    console.log(
+        "Requirement options loaded:",
+        {
+            streams:
+                streams?.length || 0,
+
+            subjects:
+                subjects?.length || 0,
+
+            teachers:
+                teachers?.length || 0
+        }
+    );
+
+}
 
 
 
@@ -3587,7 +3919,8 @@ if (schoolSelect) {
 
                 await loadTeachers();
 
-               
+                await loadRequirements();
+
 
                 await loadRequirements();
 
