@@ -1,4 +1,3 @@
-
 // ============================================================
 // SMART TIMETABLE GENERATOR
 // app.js
@@ -121,13 +120,13 @@ document
 
 
 // ============================================================
-// 4. LOAD SCHOOLS
+// 4. LOAD TIMETABLE SCHOOLS
 // ============================================================
 
 async function loadSchools() {
 
     console.log(
-        "Loading schools..."
+        "Loading timetable schools..."
     );
 
 
@@ -136,7 +135,7 @@ async function loadSchools() {
         error
     } = await supabaseClient
 
-        .from("schools")
+        .from("timetable_schools")
 
         .select(
             "id, name, status"
@@ -151,7 +150,7 @@ async function loadSchools() {
 
 
     console.log(
-        "Schools response:",
+        "Timetable schools response:",
         {
             data,
             error
@@ -162,12 +161,12 @@ async function loadSchools() {
     if (error) {
 
         console.error(
-            "ERROR LOADING SCHOOLS:",
+            "ERROR LOADING TIMETABLE SCHOOLS:",
             error
         );
 
         showDatabaseError(
-            "schools",
+            "timetable_schools",
             error
         );
 
@@ -211,7 +210,7 @@ async function loadSchools() {
             `;
 
         console.warn(
-            "No schools were returned from Supabase."
+            "No timetable schools were returned from Supabase."
         );
 
         return;
@@ -245,7 +244,7 @@ async function loadSchools() {
 
 
     console.log(
-        `Loaded ${data.length} schools.`
+        `Loaded ${data.length} timetable schools.`
     );
 
 }
@@ -319,7 +318,7 @@ if (schoolSelect) {
 
 
             console.log(
-                "Selected school:",
+                "Selected timetable school:",
                 schoolName
             );
 
