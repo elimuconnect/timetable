@@ -4883,13 +4883,15 @@ window.deleteRequirement =
 
     };
 
+
 // ============================================================
 // 18. PERIOD MANAGEMENT
 // ============================================================
 
-// ------------------------------------------------------------
+
+// ============================================================
 // OPEN ADD PERIOD FORM
-// ------------------------------------------------------------
+// ============================================================
 
 const addPeriodBtn =
     document.getElementById("addPeriodBtn");
@@ -4898,7 +4900,7 @@ if (addPeriodBtn) {
 
     addPeriodBtn.addEventListener(
         "click",
-        () => {
+        function () {
 
             if (!timetableState.schoolId) {
 
@@ -4907,7 +4909,6 @@ if (addPeriodBtn) {
                 );
 
                 return;
-
             }
 
             openPeriodForm();
@@ -4918,9 +4919,9 @@ if (addPeriodBtn) {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // OPEN PERIOD FORM
-// ------------------------------------------------------------
+// ============================================================
 
 function openPeriodForm(period = null) {
 
@@ -4936,12 +4937,11 @@ function openPeriodForm(period = null) {
         );
 
         return;
-
     }
 
 
     // --------------------------------------------------------
-    // GET FORM ELEMENTS
+    // GET ELEMENTS
     // --------------------------------------------------------
 
     const periodFormTitle =
@@ -5001,7 +5001,7 @@ function openPeriodForm(period = null) {
 
 
     // --------------------------------------------------------
-    // CHECK REQUIRED ELEMENTS
+    // CHECK ELEMENTS
     // --------------------------------------------------------
 
     const elements = {
@@ -5042,7 +5042,6 @@ function openPeriodForm(period = null) {
         );
 
         return;
-
     }
 
 
@@ -5080,11 +5079,7 @@ function openPeriodForm(period = null) {
             period.period_number || 1;
 
 
-        // ----------------------------------------------------
-        // PERIOD ORDER
-        // ----------------------------------------------------
-
-        const calculatedOrder =
+        periodOrder.value =
             period.period_order ||
             (
                 (
@@ -5095,14 +5090,6 @@ function openPeriodForm(period = null) {
                 period.period_number || 1
             );
 
-
-        periodOrder.value =
-            calculatedOrder;
-
-
-        // ----------------------------------------------------
-        // PERIOD NAME
-        // ----------------------------------------------------
 
         periodName.value =
             period.period_name ||
@@ -5190,9 +5177,9 @@ function openPeriodForm(period = null) {
 }
 
 
-// ------------------------------------------------------------
-// CANCEL PERIOD FORM
-// ------------------------------------------------------------
+// ============================================================
+// CLOSE PERIOD FORM
+// ============================================================
 
 const cancelPeriodBtn =
     document.getElementById(
@@ -5259,12 +5246,11 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
     // --------------------------------------------------------
-    // GET FORM ELEMENTS
+    // GET ELEMENTS
     // --------------------------------------------------------
 
     const periodIdElement =
@@ -5336,7 +5322,7 @@ async function savePeriod() {
     ) {
 
         console.error(
-            "Cannot save period because one or more form elements are missing."
+            "Cannot save period because form elements are missing."
         );
 
         alert(
@@ -5344,7 +5330,6 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
@@ -5372,6 +5357,22 @@ async function savePeriod() {
         );
 
 
+    const startTime =
+        startTimeElement.value;
+
+
+    const endTime =
+        endTimeElement.value;
+
+
+    const periodType =
+        periodTypeElement.value;
+
+
+    const isTeachingPeriod =
+        teachingElement.checked;
+
+
     // --------------------------------------------------------
     // AUTOMATIC PERIOD ORDER
     // --------------------------------------------------------
@@ -5393,34 +5394,30 @@ async function savePeriod() {
 
     if (!periodName) {
 
-        periodName =
-            periodTypeElement.value === "lesson"
-                ? `Period ${periodNumber}`
-                : periodTypeElement
-                    .options[
-                        periodTypeElement
-                            .selectedIndex
-                    ]
-                    .textContent
-                    .trim();
+        if (
+            periodType === "lesson"
+        ) {
+
+            periodName =
+                `Period ${periodNumber}`;
+
+        }
+
+        else {
+
+            const selectedOption =
+                periodTypeElement.options[
+                    periodTypeElement.selectedIndex
+                ];
+
+
+            periodName =
+                selectedOption
+                    ? selectedOption.textContent.trim()
+                    : "Period";
+        }
 
     }
-
-
-    const startTime =
-        startTimeElement.value;
-
-
-    const endTime =
-        endTimeElement.value;
-
-
-    const periodType =
-        periodTypeElement.value;
-
-
-    const isTeachingPeriod =
-        teachingElement.checked;
 
 
     // --------------------------------------------------------
@@ -5434,7 +5431,6 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
@@ -5449,7 +5445,6 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
@@ -5463,7 +5458,6 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
@@ -5474,7 +5468,6 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
@@ -5485,7 +5478,6 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
@@ -5498,28 +5490,23 @@ async function savePeriod() {
         );
 
         return;
-
     }
 
 
     // --------------------------------------------------------
-    // UPDATE PERIOD NAME FIELD
+    // UPDATE FORM DISPLAY
     // --------------------------------------------------------
 
     periodNameElement.value =
         periodName;
 
 
-    // --------------------------------------------------------
-    // UPDATE PERIOD ORDER FIELD
-    // --------------------------------------------------------
-
     periodOrderElement.value =
         periodOrder;
 
 
     // --------------------------------------------------------
-    // PREPARE DATABASE DATA
+    // PREPARE DATA
     // --------------------------------------------------------
 
     const periodData = {
@@ -5567,7 +5554,7 @@ async function savePeriod() {
 
 
     // ========================================================
-    // UPDATE
+    // UPDATE EXISTING PERIOD
     // ========================================================
 
     if (periodId) {
@@ -5597,7 +5584,7 @@ async function savePeriod() {
 
 
     // ========================================================
-    // INSERT
+    // INSERT NEW PERIOD
     // ========================================================
 
     else {
@@ -5627,15 +5614,12 @@ async function savePeriod() {
             result.error
         );
 
-
         alert(
             "Failed to save period:\n\n" +
             result.error.message
         );
 
-
         return;
-
     }
 
 
@@ -5673,7 +5657,6 @@ async function loadPeriods() {
     if (!container) {
 
         return;
-
     }
 
 
@@ -5686,7 +5669,6 @@ async function loadPeriods() {
         `;
 
         return;
-
     }
 
 
@@ -5751,7 +5733,6 @@ async function loadPeriods() {
         `;
 
         return;
-
     }
 
 
@@ -5770,7 +5751,6 @@ async function loadPeriods() {
         `;
 
         return;
-
     }
 
 
@@ -5819,88 +5799,76 @@ async function loadPeriods() {
                 <tr>
 
                     <td>
-
                         <strong>
                             ${escapeHtml(
                                 period.day_name
                             )}
                         </strong>
-
                     </td>
 
 
                     <td>
-
                         ${period.period_number}
-
                     </td>
 
 
                     <td>
-
                         ${escapeHtml(
                             period.period_name
                         )}
-
                     </td>
 
 
                     <td>
-
                         ${escapeHtml(
                             period.start_time
                         )}
-
                     </td>
 
 
                     <td>
-
                         ${escapeHtml(
                             period.end_time
                         )}
-
                     </td>
 
 
                     <td>
-
                         ${escapeHtml(
                             period.period_type
                         )}
-
                     </td>
 
 
                     <td>
-
                         ${
                             period.is_teaching_period
                                 ? "Yes"
                                 : "No"
                         }
-
                     </td>
 
 
                     <td>
 
                         <button
+                            type="button"
                             class="action-btn edit-btn"
                             onclick='editPeriod(${JSON.stringify(
                                 period
                             )})'>
 
-                            Edit
+                            ✏️ Edit
 
                         </button>
 
 
                         <button
+                            type="button"
                             class="action-btn delete-btn"
                             onclick="deletePeriod('${period.id}')">
 
-                            Delete
+                            🗑️ Delete
 
                         </button>
 
@@ -5940,13 +5908,23 @@ async function loadPeriods() {
 // ============================================================
 
 window.editPeriod =
-function(period) {
+    function(period) {
 
-    openPeriodForm(
-        period
-    );
+        if (!period) {
 
-};
+            console.error(
+                "No period supplied for editing."
+            );
+
+            return;
+        }
+
+
+        openPeriodForm(
+            period
+        );
+
+    };
 
 
 // ============================================================
@@ -5954,80 +5932,86 @@ function(period) {
 // ============================================================
 
 window.deletePeriod =
-async function(periodId) {
+    async function(periodId) {
 
-    if (!timetableState.schoolId) {
+        if (!timetableState.schoolId) {
 
-        alert(
-            "Please select a school first."
-        );
+            alert(
+                "Please select a school first."
+            );
 
-        return;
-
-    }
-
-
-    const confirmed =
-        confirm(
-            "Are you sure you want to delete this period?"
-        );
+            return;
+        }
 
 
-    if (!confirmed) {
+        if (!periodId) {
 
-        return;
+            alert(
+                "Invalid period ID."
+            );
 
-    }
-
-
-    const {
-        error
-    } = await supabaseClient
-
-        .from(
-            "timetable_periods"
-        )
-
-        .delete()
-
-        .eq(
-            "id",
-            periodId
-        )
-
-        .eq(
-            "school_id",
-            timetableState.schoolId
-        );
+            return;
+        }
 
 
-    if (error) {
+        const confirmed =
+            confirm(
+                "Are you sure you want to delete this period?"
+            );
 
-        console.error(
-            "Delete period error:",
+
+        if (!confirmed) {
+
+            return;
+        }
+
+
+        const {
             error
-        );
+        } = await supabaseClient
+
+            .from(
+                "timetable_periods"
+            )
+
+            .delete()
+
+            .eq(
+                "id",
+                periodId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (error) {
+
+            console.error(
+                "Delete period error:",
+                error
+            );
+
+
+            alert(
+                "Failed to delete period:\n\n" +
+                error.message
+            );
+
+            return;
+        }
 
 
         alert(
-            "Failed to delete period:\n\n" +
-            error.message
+            "Period deleted successfully."
         );
 
 
-        return;
+        await loadPeriods();
 
-    }
-
-
-    alert(
-        "Period deleted successfully."
-    );
-
-
-    await loadPeriods();
-
-};
+    };
 
 
 // ============================================================
@@ -6157,7 +6141,6 @@ function updatePeriodCalculatedFields() {
     ) {
 
         return;
-
     }
 
 
@@ -6174,7 +6157,7 @@ function updatePeriodCalculatedFields() {
 
 
     // --------------------------------------------------------
-    // CALCULATE ORDER
+    // PERIOD ORDER
     // --------------------------------------------------------
 
     const periodOrder =
@@ -6189,14 +6172,16 @@ function updatePeriodCalculatedFields() {
 
 
     // --------------------------------------------------------
-    // CALCULATE NAME
+    // PERIOD NAME
     // --------------------------------------------------------
 
     const type =
         periodTypeInput.value;
 
 
-    if (type === "lesson") {
+    if (
+        type === "lesson"
+    ) {
 
         periodNameInput.value =
             `Period ${periodNumber}`;
@@ -6223,9 +6208,9 @@ function updatePeriodCalculatedFields() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // UPDATE WHEN PERIOD NUMBER CHANGES
-// ------------------------------------------------------------
+// ============================================================
 
 if (periodNumberInput) {
 
@@ -6237,9 +6222,9 @@ if (periodNumberInput) {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // UPDATE WHEN PERIOD TYPE CHANGES
-// ------------------------------------------------------------
+// ============================================================
 
 if (periodTypeInput) {
 
@@ -6249,6 +6234,8 @@ if (periodTypeInput) {
     );
 
 }
+
+
 // ============================================================
 // END STEP 18B
 // ============================================================
