@@ -3167,5 +3167,1726 @@ if (schoolSelect) {
 
 }
 
+// ============================================================
+// REQUIREMENTS
+// ADD / EDIT / DELETE
+// ============================================================
+
+
+// ============================================================
+// EDITING STATE
+// ============================================================
+
+let editingRequirementId = null;
+
+
+// ============================================================
+// LOAD REQUIREMENT OPTIONS
+// ============================================================
+
+async function loadRequirementOptions() {
+
+    if (!timetableState.schoolId) {
+        return false;
+    }
+
+
+    const schoolId =
+        timetableState.schoolId;
+
+
+    // --------------------------------------------------------
+    // STREAMS
+    // --------------------------------------------------------
+
+    const {
+        data: streams,
+        error: streamsError
+    } = await supabaseClient
+
+        .from("timetable_streams")
+
+        .select(
+            "id, stream_name"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "stream_name"
+        );
+
+
+    if (streamsError) {
+
+        console.error(
+            "Failed to load streams:",
+            streamsError
+        );
+
+        return false;
+    }
+
+
+    const streamSelect =
+        document.getElementById(
+            "requirementStream"
+        );
+
+
+    if (streamSelect) {
+
+        streamSelect.innerHTML = `
+            <option value="">
+                Select stream
+            </option>
+        `;
+
+
+        (streams || []).forEach(
+            stream => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+                option.value =
+                    stream.id;
+
+                option.textContent =
+                    stream.stream_name;
+
+                streamSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
+    // --------------------------------------------------------
+    // SUBJECTS
+    // --------------------------------------------------------
+
+    const {
+        data: subjects,
+        error: subjectsError
+    } = await supabaseClient
+
+        .from("timetable_subjects")
+
+        .select(
+            "id, subject_name"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "subject_name"
+        );
+
+
+    if (subjectsError) {
+
+        console.error(
+            "Failed to load subjects:",
+            subjectsError
+        );
+
+        return false;
+    }
+
+
+    const subjectSelect =
+        document.getElementById(
+            "requirementSubject"
+        );
+
+
+    if (subjectSelect) {
+
+        subjectSelect.innerHTML = `
+            <option value="">
+                Select subject
+            </option>
+        `;
+
+
+        (subjects || []).forEach(
+            subject => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+                option.value =
+                    subject.id;
+
+                option.textContent =
+                    subject.subject_name;
+
+                subjectSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
+    // --------------------------------------------------------
+    // TEACHERS
+    // --------------------------------------------------------
+
+    const {
+        data: teachers,
+        error: teachersError
+    } = await supabaseClient
+
+        .from("timetable_teachers")
+
+        .select(
+            "id, teacher_name, teacher_code"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "teacher_name"
+        );
+
+
+    if (teachersError) {
+
+        console.error(
+            "Failed to load teachers:",
+            teachersError
+        );
+
+        return false;
+    }
+
+
+    const teacherSelect =
+        document.getElementById(
+            "requirementTeacher"
+        );
+
+
+    if (teacherSelect) {
+
+        teacherSelect.innerHTML = `
+            <option value="">
+                Select teacher
+            </option>
+        `;
+
+
+        (teachers || []).forEach(
+            teacher => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+                option.value =
+                    teacher.id;
+
+                option.textContent =
+                    teacher.teacher_code
+                        ? `${teacher.teacher_name} (${teacher.teacher_code})`
+                        : teacher.teacher_name;
+
+                teacherSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
+    return true;
+}
+
+
+// ============================================================
+// SAVE BUTTON
+// ============================================================
+
+const saveRequirementBtn =
+    document.getElementById(
+        "saveRequirementBtn"
+    );
+
+
+if (saveRequirementBtn) {
+
+    saveRequirementBtn.addEventListener(
+        "click",
+        saveRequirement
+    );
+
+}
+
+
+// ============================================================
+// SAVE OR UPDATE REQUIREMENT
+// ============================================================
+
+async function saveRequirement() {
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        alert(
+            "Please select a school first."
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // GET FORM ELEMENTS
+    // --------------------------------------------------------
+
+    const streamElement =
+        document.getElementById(
+            "requirementStream"
+        );
+
+    const subjectElement =
+        document.getElementById(
+            "requirementSubject"
+        );
+
+    const teacherElement =
+        document.getElementById(
+            "requirementTeacher"
+        );
+
+    const lessonsElement =
+        document.getElementById(
+            "requirementLessons"
+        );
+
+    const doubleLessonsElement =
+        document.getElementById(
+            "requirementDoubleLessons"
+        );
+
+    const maxPerDayElement =
+        document.getElementById(
+            "requirementMaxPerDay"
+        );
+
+    const requiresRoomElement =
+        document.getElementById(
+            "requirementRequiresRoom"
+        );
+
+    const roomTypeElement =
+        document.getElementById(
+            "requirementRoomType"
+        );
+
+
+    // --------------------------------------------------------
+    // CHECK FORM
+    // --------------------------------------------------------
+
+    if (
+        !streamElement ||
+        !subjectElement ||
+        !teacherElement ||
+        !lessonsElement ||
+        !doubleLessonsElement ||
+        !maxPerDayElement ||
+        !requiresRoomElement ||
+        !roomTypeElement
+    ) {
+
+        console.error(
+            "Requirement form elements missing."
+        );
+
+        alert(
+            "Requirement form is incomplete."
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // READ VALUES
+    // --------------------------------------------------------
+
+    const streamId =
+        streamElement.value.trim();
+
+
+    const subjectId =
+        subjectElement.value.trim();
+
+
+    const teacherId =
+        teacherElement.value.trim();
+
+
+    const lessonsPerWeek =
+        Number(
+            lessonsElement.value
+        );
+
+
+    const doubleLessonsPerWeek =
+        Number(
+            doubleLessonsElement.value
+        );
+
+
+    const maxLessonsPerDay =
+        Number(
+            maxPerDayElement.value
+        );
+
+
+    const requiresRoom =
+        requiresRoomElement.value === "true";
+
+
+    const roomType =
+        roomTypeElement.value.trim();
+
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (!streamId) {
+
+        alert(
+            "Please select a stream."
+        );
+
+        streamElement.focus();
+
+        return;
+    }
+
+
+    if (!subjectId) {
+
+        alert(
+            "Please select a subject."
+        );
+
+        subjectElement.focus();
+
+        return;
+    }
+
+
+    if (!teacherId) {
+
+        alert(
+            "Please select a teacher."
+        );
+
+        teacherElement.focus();
+
+        return;
+    }
+
+
+    if (
+        !Number.isFinite(
+            lessonsPerWeek
+        ) ||
+        lessonsPerWeek < 1
+    ) {
+
+        alert(
+            "Enter a valid number of lessons per week."
+        );
+
+        lessonsElement.focus();
+
+        return;
+    }
+
+
+    if (
+        !Number.isFinite(
+            doubleLessonsPerWeek
+        ) ||
+        doubleLessonsPerWeek < 0 ||
+        doubleLessonsPerWeek >
+            Math.floor(
+                lessonsPerWeek / 2
+            )
+    ) {
+
+        alert(
+            "The number of double lessons is invalid."
+        );
+
+        doubleLessonsElement.focus();
+
+        return;
+    }
+
+
+    if (
+        !Number.isFinite(
+            maxLessonsPerDay
+        ) ||
+        maxLessonsPerDay < 1
+    ) {
+
+        alert(
+            "Enter a valid maximum lessons per day."
+        );
+
+        maxPerDayElement.focus();
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // PREPARE DATA
+    // --------------------------------------------------------
+
+    const requirementData = {
+
+        school_id:
+            timetableState.schoolId,
+
+        stream_id:
+            streamId,
+
+        subject_id:
+            subjectId,
+
+        teacher_id:
+            teacherId,
+
+        lessons_per_week:
+            lessonsPerWeek,
+
+        double_lessons_per_week:
+            doubleLessonsPerWeek,
+
+        requires_room:
+            requiresRoom,
+
+        room_type:
+            requiresRoom
+                ? (
+                    roomType || null
+                )
+                : null,
+
+        max_lessons_per_day:
+            maxLessonsPerDay
+
+    };
+
+
+    // ========================================================
+    // UPDATE EXISTING
+    // ========================================================
+
+    if (editingRequirementId) {
+
+        console.log(
+            "Updating requirement:",
+            editingRequirementId
+        );
+
+
+        const {
+            error
+        } = await supabaseClient
+
+            .from(
+                "timetable_requirements"
+            )
+
+            .update(
+                requirementData
+            )
+
+            .eq(
+                "id",
+                editingRequirementId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (error) {
+
+            console.error(
+                "Requirement update error:",
+                error
+            );
+
+
+            if (
+                error.code === "23505"
+            ) {
+
+                alert(
+                    "This stream already has a requirement for this subject."
+                );
+
+            } else {
+
+                alert(
+                    "Failed to update requirement:\n\n" +
+                    error.message
+                );
+
+            }
+
+            return;
+        }
+
+
+        alert(
+            "Requirement updated successfully."
+        );
+
+
+        cancelRequirementEdit();
+
+
+        await loadRequirements();
+
+        return;
+    }
+
+
+    // ========================================================
+    // INSERT NEW
+    // ========================================================
+
+    console.log(
+        "Adding requirement:",
+        requirementData
+    );
+
+
+    const {
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_requirements"
+        )
+
+        .insert(
+            requirementData
+        );
+
+
+    if (error) {
+
+        console.error(
+            "Requirement save error:",
+            error
+        );
+
+
+        if (
+            error.code === "23505"
+        ) {
+
+            alert(
+                "This stream already has a requirement for this subject."
+            );
+
+        } else {
+
+            alert(
+                "Failed to save requirement:\n\n" +
+                error.message
+            );
+
+        }
+
+        return;
+    }
+
+
+    alert(
+        "Requirement added successfully."
+    );
+
+
+    await loadRequirements();
+
+}
+
+
+// ============================================================
+// EDIT REQUIREMENT
+// ============================================================
+
+window.editRequirement =
+    async function (
+        requirementId
+    ) {
+
+        if (!timetableState.schoolId) {
+
+            alert(
+                "Please select a school first."
+            );
+
+            return;
+        }
+
+
+        console.log(
+            "Editing requirement:",
+            requirementId
+        );
+
+
+        // ----------------------------------------------------
+        // GET REQUIREMENT
+        // ----------------------------------------------------
+
+        const {
+            data: requirement,
+            error
+        } = await supabaseClient
+
+            .from(
+                "timetable_requirements"
+            )
+
+            .select(`
+                id,
+                school_id,
+                stream_id,
+                subject_id,
+                teacher_id,
+                lessons_per_week,
+                double_lessons_per_week,
+                requires_room,
+                room_type,
+                max_lessons_per_day
+            `)
+
+            .eq(
+                "id",
+                requirementId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            )
+
+            .maybeSingle();
+
+
+        if (error) {
+
+            console.error(
+                "Failed to load requirement:",
+                error
+            );
+
+            alert(
+                "Failed to load requirement:\n\n" +
+                error.message
+            );
+
+            return;
+        }
+
+
+        if (!requirement) {
+
+            alert(
+                "Requirement not found."
+            );
+
+            return;
+        }
+
+
+        // ----------------------------------------------------
+        // IMPORTANT
+        // LOAD OPTIONS FIRST
+        // ----------------------------------------------------
+
+        const optionsLoaded =
+            await loadRequirementOptions();
+
+
+        if (!optionsLoaded) {
+
+            alert(
+                "Failed to load requirement options."
+            );
+
+            return;
+        }
+
+
+        // ----------------------------------------------------
+        // GET FORM ELEMENTS
+        // ----------------------------------------------------
+
+        const streamElement =
+            document.getElementById(
+                "requirementStream"
+            );
+
+        const subjectElement =
+            document.getElementById(
+                "requirementSubject"
+            );
+
+        const teacherElement =
+            document.getElementById(
+                "requirementTeacher"
+            );
+
+        const lessonsElement =
+            document.getElementById(
+                "requirementLessons"
+            );
+
+        const doubleLessonsElement =
+            document.getElementById(
+                "requirementDoubleLessons"
+            );
+
+        const maxPerDayElement =
+            document.getElementById(
+                "requirementMaxPerDay"
+            );
+
+        const requiresRoomElement =
+            document.getElementById(
+                "requirementRequiresRoom"
+            );
+
+        const roomTypeElement =
+            document.getElementById(
+                "requirementRoomType"
+            );
+
+
+        // ----------------------------------------------------
+        // SET EDITING ID
+        // ----------------------------------------------------
+
+        editingRequirementId =
+            requirement.id;
+
+
+        // ----------------------------------------------------
+        // SET SELECTS
+        // ----------------------------------------------------
+
+        streamElement.value =
+            requirement.stream_id;
+
+        subjectElement.value =
+            requirement.subject_id;
+
+        teacherElement.value =
+            requirement.teacher_id;
+
+
+        // ----------------------------------------------------
+        // VERIFY SELECTS
+        // ----------------------------------------------------
+
+        if (
+            streamElement.value !==
+            requirement.stream_id
+        ) {
+
+            console.error(
+                "Stream ID not found in options:",
+                requirement.stream_id
+            );
+
+            cancelRequirementEdit();
+
+            alert(
+                "The stream belonging to this requirement could not be found."
+            );
+
+            return;
+        }
+
+
+        if (
+            subjectElement.value !==
+            requirement.subject_id
+        ) {
+
+            console.error(
+                "Subject ID not found in options:",
+                requirement.subject_id
+            );
+
+            cancelRequirementEdit();
+
+            alert(
+                "The subject belonging to this requirement could not be found."
+            );
+
+            return;
+        }
+
+
+        if (
+            teacherElement.value !==
+            requirement.teacher_id
+        ) {
+
+            console.error(
+                "Teacher ID not found in options:",
+                requirement.teacher_id
+            );
+
+            cancelRequirementEdit();
+
+            alert(
+                "The teacher belonging to this requirement could not be found."
+            );
+
+            return;
+        }
+
+
+        // ----------------------------------------------------
+        // SET OTHER VALUES
+        // ----------------------------------------------------
+
+        lessonsElement.value =
+            requirement.lessons_per_week;
+
+
+        doubleLessonsElement.value =
+            requirement.double_lessons_per_week;
+
+
+        maxPerDayElement.value =
+            requirement.max_lessons_per_day;
+
+
+        requiresRoomElement.value =
+            requirement.requires_room
+                ? "true"
+                : "false";
+
+
+        roomTypeElement.value =
+            requirement.room_type || "";
+
+
+        // ----------------------------------------------------
+        // CHANGE SAVE BUTTON
+        // ----------------------------------------------------
+
+        if (saveRequirementBtn) {
+
+            saveRequirementBtn.innerHTML =
+                "💾 Update Requirement";
+
+            saveRequirementBtn.dataset.mode =
+                "edit";
+
+        }
+
+
+        // ----------------------------------------------------
+        // CREATE CANCEL BUTTON
+        // ----------------------------------------------------
+
+        let cancelButton =
+            document.getElementById(
+                "cancelRequirementEditBtn"
+            );
+
+
+        if (!cancelButton) {
+
+            cancelButton =
+                document.createElement(
+                    "button"
+                );
+
+            cancelButton.type =
+                "button";
+
+            cancelButton.id =
+                "cancelRequirementEditBtn";
+
+            cancelButton.className =
+                "action-btn";
+
+            cancelButton.style.marginLeft =
+                "10px";
+
+            cancelButton.textContent =
+                "✖ Cancel";
+
+
+            cancelButton.addEventListener(
+                "click",
+                cancelRequirementEdit
+            );
+
+
+            if (
+                saveRequirementBtn &&
+                saveRequirementBtn.parentElement
+            ) {
+
+                saveRequirementBtn.parentElement
+                    .appendChild(
+                        cancelButton
+                    );
+
+            }
+
+        }
+
+
+        cancelButton.style.display =
+            "inline-block";
+
+
+        // ----------------------------------------------------
+        // SCROLL TO FORM
+        // ----------------------------------------------------
+
+        const formElement =
+            document.getElementById(
+                "requirementStream"
+            );
+
+
+        if (formElement) {
+
+            formElement.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+
+        }
+
+    };
+
+
+// ============================================================
+// CANCEL EDIT
+// ============================================================
+
+function cancelRequirementEdit() {
+
+    editingRequirementId =
+        null;
+
+
+    // --------------------------------------------------------
+    // RESET BUTTON
+    // --------------------------------------------------------
+
+    if (saveRequirementBtn) {
+
+        saveRequirementBtn.innerHTML =
+            "💾 Save Requirement";
+
+        saveRequirementBtn.dataset.mode =
+            "add";
+
+    }
+
+
+    // --------------------------------------------------------
+    // HIDE CANCEL
+    // --------------------------------------------------------
+
+    const cancelButton =
+        document.getElementById(
+            "cancelRequirementEditBtn"
+        );
+
+
+    if (cancelButton) {
+
+        cancelButton.style.display =
+            "none";
+
+    }
+
+
+    // --------------------------------------------------------
+    // RESET FORM
+    // --------------------------------------------------------
+
+    const streamElement =
+        document.getElementById(
+            "requirementStream"
+        );
+
+    const subjectElement =
+        document.getElementById(
+            "requirementSubject"
+        );
+
+    const teacherElement =
+        document.getElementById(
+            "requirementTeacher"
+        );
+
+    const lessonsElement =
+        document.getElementById(
+            "requirementLessons"
+        );
+
+    const doubleLessonsElement =
+        document.getElementById(
+            "requirementDoubleLessons"
+        );
+
+    const maxPerDayElement =
+        document.getElementById(
+            "requirementMaxPerDay"
+        );
+
+    const requiresRoomElement =
+        document.getElementById(
+            "requirementRequiresRoom"
+        );
+
+    const roomTypeElement =
+        document.getElementById(
+            "requirementRoomType"
+        );
+
+
+    if (streamElement) {
+
+        streamElement.value =
+            "";
+
+    }
+
+
+    if (subjectElement) {
+
+        subjectElement.value =
+            "";
+
+    }
+
+
+    if (teacherElement) {
+
+        teacherElement.value =
+            "";
+
+    }
+
+
+    if (lessonsElement) {
+
+        lessonsElement.value =
+            "";
+
+    }
+
+
+    if (doubleLessonsElement) {
+
+        doubleLessonsElement.value =
+            "";
+
+    }
+
+
+    if (maxPerDayElement) {
+
+        maxPerDayElement.value =
+            "";
+
+    }
+
+
+    if (requiresRoomElement) {
+
+        requiresRoomElement.value =
+            "false";
+
+    }
+
+
+    if (roomTypeElement) {
+
+        roomTypeElement.value =
+            "";
+
+    }
+
+}
+
+
+// ============================================================
+// LOAD REQUIREMENTS
+// ============================================================
+
+async function loadRequirements() {
+
+    const container =
+        document.getElementById(
+            "requirementsTableContainer"
+        );
+
+
+    if (!container) {
+
+        return;
+    }
+
+
+    if (!timetableState.schoolId) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                Please select a school first.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    container.innerHTML = `
+        <div class="loading-message">
+            Loading requirements...
+        </div>
+    `;
+
+
+    // ========================================================
+    // LOAD REQUIREMENTS
+    // ========================================================
+
+    const {
+        data: requirements,
+        error: requirementsError
+    } = await supabaseClient
+
+        .from(
+            "timetable_requirements"
+        )
+
+        .select(`
+            id,
+            school_id,
+            stream_id,
+            subject_id,
+            teacher_id,
+            lessons_per_week,
+            double_lessons_per_week,
+            requires_room,
+            room_type,
+            max_lessons_per_day,
+            created_at
+        `)
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        )
+
+        .order(
+            "created_at"
+        );
+
+
+    if (requirementsError) {
+
+        console.error(
+            "Failed to load requirements:",
+            requirementsError
+        );
+
+
+        container.innerHTML = `
+            <div class="empty-message">
+                Failed to load requirements.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    // ========================================================
+    // NO REQUIREMENTS
+    // ========================================================
+
+    if (
+        !requirements ||
+        requirements.length === 0
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No requirements have been added yet.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    // ========================================================
+    // LOAD STREAMS
+    // ========================================================
+
+    const {
+        data: streams,
+        error: streamsError
+    } = await supabaseClient
+
+        .from(
+            "timetable_streams"
+        )
+
+        .select(
+            "id, stream_name"
+        )
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        );
+
+
+    if (streamsError) {
+
+        console.error(
+            "Failed to load requirement streams:",
+            streamsError
+        );
+
+        return;
+    }
+
+
+    // ========================================================
+    // LOAD SUBJECTS
+    // ========================================================
+
+    const {
+        data: subjects,
+        error: subjectsError
+    } = await supabaseClient
+
+        .from(
+            "timetable_subjects"
+        )
+
+        .select(
+            "id, subject_name"
+        )
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        );
+
+
+    if (subjectsError) {
+
+        console.error(
+            "Failed to load requirement subjects:",
+            subjectsError
+        );
+
+        return;
+    }
+
+
+    // ========================================================
+    // LOAD TEACHERS
+    // ========================================================
+
+    const {
+        data: teachers,
+        error: teachersError
+    } = await supabaseClient
+
+        .from(
+            "timetable_teachers"
+        )
+
+        .select(
+            "id, teacher_name, teacher_code"
+        )
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        );
+
+
+    if (teachersError) {
+
+        console.error(
+            "Failed to load requirement teachers:",
+            teachersError
+        );
+
+        return;
+    }
+
+
+    // ========================================================
+    // LOOKUP MAPS
+    // ========================================================
+
+    const streamMap = {};
+
+    (streams || []).forEach(
+        stream => {
+
+            streamMap[
+                stream.id
+            ] =
+                stream.stream_name;
+
+        }
+    );
+
+
+    const subjectMap = {};
+
+    (subjects || []).forEach(
+        subject => {
+
+            subjectMap[
+                subject.id
+            ] =
+                subject.subject_name;
+
+        }
+    );
+
+
+    const teacherMap = {};
+
+    (teachers || []).forEach(
+        teacher => {
+
+            teacherMap[
+                teacher.id
+            ] =
+                teacher.teacher_name;
+
+        }
+    );
+
+
+    // ========================================================
+    // BUILD TABLE
+    // ========================================================
+
+    let html = `
+
+        <table class="data-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>Stream</th>
+
+                    <th>Subject</th>
+
+                    <th>Teacher</th>
+
+                    <th>Lessons / Week</th>
+
+                    <th>Double / Week</th>
+
+                    <th>Room</th>
+
+                    <th>Max / Day</th>
+
+                    <th>Actions</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+    `;
+
+
+    requirements.forEach(
+        requirement => {
+
+            const streamName =
+                streamMap[
+                    requirement.stream_id
+                ] || "—";
+
+
+            const subjectName =
+                subjectMap[
+                    requirement.subject_id
+                ] || "—";
+
+
+            const teacherName =
+                teacherMap[
+                    requirement.teacher_id
+                ] || "—";
+
+
+            const room =
+                requirement.requires_room
+
+                    ? (
+                        requirement.room_type ||
+                        "Special room"
+                    )
+
+                    : "None";
+
+
+            html += `
+
+                <tr>
+
+                    <td>
+                        <strong>
+                            ${escapeHtml(
+                                streamName
+                            )}
+                        </strong>
+                    </td>
+
+
+                    <td>
+                        ${escapeHtml(
+                            subjectName
+                        )}
+                    </td>
+
+
+                    <td>
+                        ${escapeHtml(
+                            teacherName
+                        )}
+                    </td>
+
+
+                    <td>
+                        ${requirement.lessons_per_week}
+                    </td>
+
+
+                    <td>
+                        ${requirement.double_lessons_per_week}
+                    </td>
+
+
+                    <td>
+                        ${escapeHtml(
+                            room
+                        )}
+                    </td>
+
+
+                    <td>
+                        ${requirement.max_lessons_per_day}
+                    </td>
+
+
+                    <td>
+
+                        <button
+                            type="button"
+                            class="action-btn edit-btn"
+                            onclick="
+                                window.editRequirement(
+                                    '${requirement.id}'
+                                )
+                            "
+                        >
+                            ✏️ Edit
+                        </button>
+
+
+                        <button
+                            type="button"
+                            class="action-btn delete-btn"
+                            onclick="
+                                window.deleteRequirement(
+                                    '${requirement.id}'
+                                )
+                            "
+                        >
+                            🗑️ Delete
+                        </button>
+
+                    </td>
+
+                </tr>
+
+            `;
+
+        }
+    );
+
+
+    html += `
+
+            </tbody>
+
+        </table>
+
+    `;
+
+
+    container.innerHTML =
+        html;
+
+}
+
+
+// ============================================================
+// DELETE REQUIREMENT
+// ============================================================
+
+window.deleteRequirement =
+    async function (
+        requirementId
+    ) {
+
+        if (!timetableState.schoolId) {
+
+            alert(
+                "Please select a school first."
+            );
+
+            return;
+        }
+
+
+        const confirmed =
+            confirm(
+                "Are you sure you want to delete this requirement?"
+            );
+
+
+        if (!confirmed) {
+
+            return;
+        }
+
+
+        console.log(
+            "Deleting requirement:",
+            requirementId
+        );
+
+
+        const {
+            error
+        } = await supabaseClient
+
+            .from(
+                "timetable_requirements"
+            )
+
+            .delete()
+
+            .eq(
+                "id",
+                requirementId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (error) {
+
+            console.error(
+                "Delete requirement error:",
+                error
+            );
+
+
+            alert(
+                "Failed to delete requirement:\n\n" +
+                error.message
+            );
+
+            return;
+        }
+
+
+        alert(
+            "Requirement deleted successfully."
+        );
+
+
+        await loadRequirements();
+
+    };
+
+
+// ============================================================
+// END REQUIREMENTS
+// ============================================================
+
 
 initializeApp();
