@@ -656,26 +656,225 @@
 
             <!-- STREAMS -->
 
-            <div class="section"
-                 id="streams">
+<!-- ====================================================
+     STREAMS
+     ==================================================== -->
 
-                <div class="page-heading">
+<div
+    class="section"
+    id="streams">
 
-                    <div>
-                        <h2>🎓 Streams</h2>
+    <div class="page-heading">
 
-                        <p>
-                            Manage classes and streams.
-                        </p>
-                    </div>
+        <div>
+
+            <h2>🏫 Streams</h2>
+
+            <p>
+                Manage streams and classrooms for the selected school.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div id="streamsContent">
+
+
+        <!-- ====================================================
+             ADD STREAM BUTTON
+             ==================================================== -->
+
+        <button
+            type="button"
+            id="addStreamBtn"
+            class="primary-btn">
+
+            ➕ Add Stream
+
+        </button>
+
+
+        <!-- ====================================================
+             STREAM FORM
+             ==================================================== -->
+
+        <div
+            id="streamFormCard"
+            class="form-card"
+            style="display:none;">
+
+            <h3 id="streamFormTitle">
+                Add Stream
+            </h3>
+
+
+            <!-- STREAM ID -->
+
+            <input
+                type="hidden"
+                id="streamId"
+            >
+
+
+            <div class="form-grid">
+
+
+                <!-- =================================================
+                     CLASS
+                     ================================================= -->
+
+                <div class="form-group">
+
+                    <label for="streamClassId">
+                        Class
+                    </label>
+
+                    <select
+                        id="streamClassId"
+                        required
+                    >
+
+                        <option value="">
+                            Select class
+                        </option>
+
+                    </select>
 
                 </div>
 
-                <div id="streamsContent"></div>
+
+                <!-- =================================================
+                     STREAM NAME
+                     ================================================= -->
+
+                <div class="form-group">
+
+                    <label for="streamName">
+                        Stream Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="streamName"
+                        placeholder="e.g. 7A"
+                        required
+                    >
+
+                    <small>
+                        Example: 7A, 7B, 8A, 8B.
+                    </small>
+
+                </div>
+
+
+                <!-- =================================================
+                     ROOM NAME
+                     ================================================= -->
+
+                <div class="form-group">
+
+                    <label for="streamRoomName">
+                        Room Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="streamRoomName"
+                        placeholder="e.g. Room 12"
+                    >
+
+                    <small>
+                        Optional classroom or room assigned
+                        to this stream.
+                    </small>
+
+                </div>
+
+
+                <!-- =================================================
+                     CAPACITY
+                     ================================================= -->
+
+                <div class="form-group">
+
+                    <label for="streamCapacity">
+                        Capacity
+                    </label>
+
+                    <input
+                        type="number"
+                        id="streamCapacity"
+                        min="1"
+                        value="50"
+                        required
+                    >
+
+                    <small>
+                        Maximum number of learners in the stream.
+                    </small>
+
+                </div>
+
 
             </div>
 
 
+            <!-- ====================================================
+                 FORM BUTTONS
+                 ==================================================== -->
+
+            <div class="form-actions">
+
+                <button
+                    type="button"
+                    id="saveStreamBtn"
+                    class="primary-btn">
+
+                    💾 Save Stream
+
+                </button>
+
+
+                <button
+                    type="button"
+                    id="cancelStreamBtn"
+                    class="secondary-btn">
+
+                    Cancel
+
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <!-- ====================================================
+             STREAM TABLE
+             ==================================================== -->
+
+        <div
+            id="streamsTableContainer"
+            style="margin-top:20px;">
+
+            <div class="empty-message">
+
+                Please select a school first.
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</div>
+
+
+
+            
             <!-- ROOMS -->
 
 
