@@ -876,7 +876,306 @@
 
                 </div>
 
-                <div id="periodsContent"></div>
+              <div id="periodsContent">
+
+    <!-- ADD PERIOD BUTTON -->
+
+    <button
+        type="button"
+        id="addPeriodBtn"
+        class="primary-btn">
+
+        ➕ Add Period
+
+    </button>
+
+
+    <!-- PERIOD FORM -->
+
+    <div
+        id="periodFormCard"
+        class="form-card"
+        style="display:none;">
+
+        <h3 id="periodFormTitle">
+            Add Period
+        </h3>
+
+
+        <input
+            type="hidden"
+            id="periodId"
+        >
+
+
+        <div class="form-grid">
+
+
+            <!-- DAY -->
+
+            <div class="form-group">
+
+                <label for="periodDayName">
+                    Day
+                </label>
+
+                <select
+                    id="periodDayName"
+                    required
+                >
+
+                    <option value="">
+                        Select day
+                    </option>
+
+                    <option value="Monday">
+                        Monday
+                    </option>
+
+                    <option value="Tuesday">
+                        Tuesday
+                    </option>
+
+                    <option value="Wednesday">
+                        Wednesday
+                    </option>
+
+                    <option value="Thursday">
+                        Thursday
+                    </option>
+
+                    <option value="Friday">
+                        Friday
+                    </option>
+
+                    <option value="Saturday">
+                        Saturday
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- DAY NUMBER -->
+
+            <div class="form-group">
+
+                <label for="periodDayNumber">
+                    Day Number
+                </label>
+
+                <input
+                    type="number"
+                    id="periodDayNumber"
+                    min="1"
+                    max="6"
+                    value="1"
+                    required
+                >
+
+            </div>
+
+
+            <!-- PERIOD NUMBER -->
+
+            <div class="form-group">
+
+                <label for="periodNumber">
+                    Period Number
+                </label>
+
+                <input
+                    type="number"
+                    id="periodNumber"
+                    min="1"
+                    value="1"
+                    required
+                >
+
+            </div>
+
+
+            <!-- PERIOD ORDER -->
+
+            <div class="form-group">
+
+                <label for="periodOrder">
+                    Period Order
+                </label>
+
+                <input
+                    type="number"
+                    id="periodOrder"
+                    min="1"
+                    value="1"
+                    required
+                >
+
+            </div>
+
+
+            <!-- PERIOD NAME -->
+
+            <div class="form-group">
+
+                <label for="periodName">
+                    Period Name
+                </label>
+
+                <input
+                    type="text"
+                    id="periodName"
+                    placeholder="e.g. Period 1"
+                    required
+                >
+
+            </div>
+
+
+            <!-- START TIME -->
+
+            <div class="form-group">
+
+                <label for="periodStartTime">
+                    Start Time
+                </label>
+
+                <input
+                    type="time"
+                    id="periodStartTime"
+                    required
+                >
+
+            </div>
+
+
+            <!-- END TIME -->
+
+            <div class="form-group">
+
+                <label for="periodEndTime">
+                    End Time
+                </label>
+
+                <input
+                    type="time"
+                    id="periodEndTime"
+                    required
+                >
+
+            </div>
+
+
+            <!-- PERIOD TYPE -->
+
+            <div class="form-group">
+
+                <label for="periodType">
+                    Period Type
+                </label>
+
+                <select
+                    id="periodType"
+                >
+
+                    <option value="lesson">
+                        Lesson
+                    </option>
+
+                    <option value="registration">
+                        Registration
+                    </option>
+
+                    <option value="break">
+                        Break
+                    </option>
+
+                    <option value="lunch">
+                        Lunch
+                    </option>
+
+                    <option value="assembly">
+                        Assembly
+                    </option>
+
+                    <option value="activity">
+                        Activity
+                    </option>
+
+                    <option value="other">
+                        Other
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- TEACHING PERIOD -->
+
+            <div class="form-group">
+
+                <label>
+
+                    <input
+                        type="checkbox"
+                        id="isTeachingPeriod"
+                        checked
+                    >
+
+                    Teaching Period
+
+                </label>
+
+            </div>
+
+        </div>
+
+
+        <!-- FORM BUTTONS -->
+
+        <div class="form-actions">
+
+            <button
+                type="button"
+                id="savePeriodBtn"
+                class="primary-btn">
+
+                💾 Save Period
+
+            </button>
+
+
+            <button
+                type="button"
+                id="cancelPeriodBtn"
+                class="secondary-btn">
+
+                Cancel
+
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- PERIOD TABLE -->
+
+    <div
+        id="periodsTableContainer"
+        style="margin-top:20px;">
+
+        <div class="empty-message">
+
+            Please select a school first.
+
+        </div>
+
+    </div>
+
+</div>
 
             </div>
 
