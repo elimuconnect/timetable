@@ -1,87 +1,228 @@
-// ========================================
-// SMART TIMETABLE GENERATOR
-// Main JavaScript File
-// ========================================
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+
+const supabaseClient = supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+);
 
 
-console.log("Smart Timetable Generator started");
+// ================================
+// NAVIGATION
+// ================================
 
+document.querySelectorAll(".nav-btn").forEach(button => {
 
-// ========================================
-// APPLICATION STATE
-// ========================================
+    button.addEventListener("click", () => {
 
-const appState = {
+        const sectionName =
+            button.dataset.section;
 
-    teachers: [],
+        if (!sectionName) return;
 
-    subjects: [],
+        document
+            .querySelectorAll(".section")
+            .forEach(section => {
+                section.classList.remove("active");
+            });
 
-    classes: [],
+        document
+            .querySelectorAll(".nav-btn")
+            .forEach(btn => {
+                btn.classList.remove("active");
+            });
 
-    rooms: [],
+        const target =
+            document.getElementById(sectionName);
 
-    periods: [],
+        if (target) {
+            target.classList.add("active");
+        }
 
-    requirements: []
+        button.classList.add("active");
 
-};
-
-
-// ========================================
-// START SETUP BUTTON
-// ========================================
-
-const startBtn =
-    document.getElementById("startBtn");
-
-const setupSection =
-    document.getElementById("setupSection");
-
-
-startBtn.addEventListener("click", function () {
-
-    setupSection.classList.remove("hidden");
-
-    setupSection.scrollIntoView({
-        behavior: "smooth"
     });
 
 });
 
 
-// ========================================
-// UPDATE DASHBOARD
-// ========================================
+// ================================
+// LOAD SCHOOLS
+// ================================
 
-function updateDashboard() {
+async function loadSchools() {
 
-    document.getElementById("teacherCount")
-        .textContent = appState.teachers.length;
+    const { data, error } =
+        await supabaseClient
+            .from("schools")
+            .select("id, name")
+            .eq("status", "active")
+            .order("name");
 
-    document.getElementById("subjectCount")
-        .textContent = appState.subjects.length;
+    if (error) {
 
-    document.getElementById("classCount")
-        .textContent = appState.classes.length;
+        console.error(
+            "Failed to load schools:",
+            error
+        );
 
-    document.getElementById("roomCount")
-        .textContent = appState.rooms.length;
+        return;
+
+    }
+
+
+    const select =
+        document.getElementById("schoolSelect");
+
+    select.innerHTML =
+        `<option value="">
+            Select school
+        </option>`;
+
+
+    data.forEach(school => {
+
+        const option =
+            document.createElement("option");
+
+        option.value = school.id;
+
+        option.textContent = school.name;
+
+        select.appendChild(option);
+
+    });
 
 }
 
 
-// ========================================
-// INITIALIZE APPLICATION
-// ========================================
+// ================================
+// SCHOOL SELECTION
+// ================================
 
-function initApp() {
+document
+    .getElementById("schoolSelect")
+    .addEventListener("change", async function () {
 
-    updateDashboard();
+        const schoolId = this.value;
 
-    console.log("Application initialized");
+        if (!schoolId) {
+
+            document.getElementById(
+                "schoolName"
+            ).textContent =
+                "No school selected";
+
+            return;
+
+        }
+
+
+        const school =
+            this.options[
+                this.selectedIndex
+            ].textContent;
+
+
+        document.getElementById(
+            "schoolName"
+        ).textContent = school;
+
+
+        await loadDashboardData(
+            schoolId
+        );
+
+    });
+
+
+// ================================
+// DASHBOARD COUNTS
+// ================================
+
+async function loadDashboardData(
+    schoolId
+) {
+
+    const tables = [
+        ["timetable_teachers", "teacherCount"],
+        ["timetable_subjects", "subjectCount"],
+        ["timetable_streams", "streamCount"],
+        ["timetable_rooms", "roomCount"]
+    ];
+
+
+    for (const [table, elementId]
+        of tables) {
+
+        const { count, error } =
+            await supabaseClient
+                .from(table)
+                .select("*", {
+                    count: "exact",
+                    head: true
+                })
+                .eq(
+                    "school_id",
+                    schoolId
+                );
+
+
+        if (error) {
+
+            console.error(
+                `Failed loading ${table}:`,
+                error
+            );
+
+            continue;
+
+        }
+
+
+        document.getElementById(
+            elementId
+        ).textContent =
+            count ?? 0;
+
+    }
 
 }
 
 
-initApp();
+// ================================
+// GENERATE BUTTON
+// ================================
+
+document
+    .getElementById("generateBtn")
+    .addEventListener("click", () => {
+
+        const schoolId =
+            document.getElementById(
+                "schoolSelect"
+            ).value;
+
+        if (!schoolId) {
+
+            alert(
+                "Please select a school first."
+            );
+
+            return;
+
+        }
+
+
+        alert(
+            "The automatic generator will be connected in the next step."
+        );
+
+    });
+
+
+// ================================
+// START APPLICATION
+// ================================
+
+loadSchools();
