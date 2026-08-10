@@ -6239,4 +6239,1214 @@ if (periodTypeInput) {
 // ============================================================
 // END STEP 18B
 // ============================================================
+
+// ============================================================
+// 19. STREAM MANAGEMENT
+// ============================================================
+
+
+// ------------------------------------------------------------
+// OPEN ADD STREAM FORM
+// ------------------------------------------------------------
+
+const addStreamBtn =
+    document.getElementById(
+        "addStreamBtn"
+    );
+
+
+if (addStreamBtn) {
+
+    addStreamBtn.addEventListener(
+        "click",
+        async function () {
+
+            // ------------------------------------------------
+            // CHECK SCHOOL
+            // ------------------------------------------------
+
+            if (!timetableState.schoolId) {
+
+                alert(
+                    "Please select a school first."
+                );
+
+                return;
+
+            }
+
+
+            await loadStreamClasses();
+
+
+            openStreamForm();
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// OPEN STREAM FORM
+// ============================================================
+
+function openStreamForm(
+    stream = null
+) {
+
+    const form =
+        document.getElementById(
+            "streamFormCard"
+        );
+
+
+    if (!form) {
+
+        console.error(
+            "streamFormCard was not found."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GET FORM ELEMENTS
+    // --------------------------------------------------------
+
+    const streamFormTitle =
+        document.getElementById(
+            "streamFormTitle"
+        );
+
+
+    const streamId =
+        document.getElementById(
+            "streamId"
+        );
+
+
+    const streamClassId =
+        document.getElementById(
+            "streamClassId"
+        );
+
+
+    const streamName =
+        document.getElementById(
+            "streamName"
+        );
+
+
+    const streamRoomName =
+        document.getElementById(
+            "streamRoomName"
+        );
+
+
+    const streamCapacity =
+        document.getElementById(
+            "streamCapacity"
+        );
+
+
+    // --------------------------------------------------------
+    // CHECK ELEMENTS
+    // --------------------------------------------------------
+
+    const elements = {
+
+        streamFormTitle,
+
+        streamId,
+
+        streamClassId,
+
+        streamName,
+
+        streamRoomName,
+
+        streamCapacity
+
+    };
+
+
+    const missingElements =
+        Object.keys(elements).filter(
+            key =>
+                !elements[key]
+        );
+
+
+    if (
+        missingElements.length > 0
+    ) {
+
+        console.error(
+            "STREAM FORM MISSING ELEMENTS:",
+            missingElements
+        );
+
+
+        alert(
+            "Stream form is missing:\n\n" +
+            missingElements.join("\n")
+        );
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SHOW FORM
+    // --------------------------------------------------------
+
+    form.style.display =
+        "block";
+
+
+    // ========================================================
+    // EDIT EXISTING STREAM
+    // ========================================================
+
+    if (stream) {
+
+        streamFormTitle.textContent =
+            "Edit Stream";
+
+
+        streamId.value =
+            stream.id || "";
+
+
+        streamClassId.value =
+            stream.class_id || "";
+
+
+        streamName.value =
+            stream.stream_name || "";
+
+
+        streamRoomName.value =
+            stream.room_name || "";
+
+
+        streamCapacity.value =
+            stream.capacity || 50;
+
+    }
+
+
+    // ========================================================
+    // ADD NEW STREAM
+    // ========================================================
+
+    else {
+
+        streamFormTitle.textContent =
+            "Add Stream";
+
+
+        streamId.value =
+            "";
+
+
+        streamClassId.value =
+            "";
+
+
+        streamName.value =
+            "";
+
+
+        streamRoomName.value =
+            "";
+
+
+        streamCapacity.value =
+            50;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SCROLL TO FORM
+    // --------------------------------------------------------
+
+    form.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+    });
+
+}
+
+
+// ============================================================
+// LOAD CLASSES FOR STREAM FORM
+// ============================================================
+
+async function loadStreamClasses() {
+
+    const classSelect =
+        document.getElementById(
+            "streamClassId"
+        );
+
+
+    if (!classSelect) {
+
+        console.error(
+            "streamClassId was not found."
+        );
+
+        return;
+
+    }
+
+
+    if (!timetableState.schoolId) {
+
+        classSelect.innerHTML = `
+
+            <option value="">
+                Please select a school first
+            </option>
+
+        `;
+
+        return;
+
+    }
+
+
+    classSelect.innerHTML = `
+
+        <option value="">
+            Loading classes...
+        </option>
+
+    `;
+
+
+    // --------------------------------------------------------
+    // LOAD CLASSES
+    // --------------------------------------------------------
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_classes"
+        )
+
+        .select("*")
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        );
+
+
+    // --------------------------------------------------------
+    // ERROR
+    // --------------------------------------------------------
+
+    if (error) {
+
+        console.error(
+            "Failed to load classes:",
+            error
+        );
+
+
+        classSelect.innerHTML = `
+
+            <option value="">
+                Failed to load classes
+            </option>
+
+        `;
+
+
+        alert(
+            "Failed to load classes:\n\n" +
+            error.message
+        );
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // NO CLASSES
+    // --------------------------------------------------------
+
+    if (
+        !data ||
+        data.length === 0
+    ) {
+
+        classSelect.innerHTML = `
+
+            <option value="">
+                No classes found
+            </option>
+
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // BUILD OPTIONS
+    // --------------------------------------------------------
+
+    let html = `
+
+        <option value="">
+            Select class
+        </option>
+
+    `;
+
+
+    data.forEach(
+        schoolClass => {
+
+            /*
+             * Try common class-name fields.
+             *
+             * This makes the code safer if your
+             * timetable_classes table uses:
+             *
+             * class_name
+             * name
+             * class
+             */
+
+            const className =
+                schoolClass.class_name ||
+                schoolClass.name ||
+                schoolClass.class ||
+                "Unnamed Class";
+
+
+            html += `
+
+                <option
+                    value="${schoolClass.id}">
+
+                    ${escapeHtml(
+                        className
+                    )}
+
+                </option>
+
+            `;
+
+        }
+    );
+
+
+    classSelect.innerHTML =
+        html;
+
+
+    console.log(
+        "Stream classes loaded:",
+        data.length
+    );
+
+}
+
+
+// ============================================================
+// CANCEL STREAM FORM
+// ============================================================
+
+const cancelStreamBtn =
+    document.getElementById(
+        "cancelStreamBtn"
+    );
+
+
+if (cancelStreamBtn) {
+
+    cancelStreamBtn.addEventListener(
+        "click",
+        closeStreamForm
+    );
+
+}
+
+
+function closeStreamForm() {
+
+    const form =
+        document.getElementById(
+            "streamFormCard"
+        );
+
+
+    if (form) {
+
+        form.style.display =
+            "none";
+
+    }
+
+}
+
+
+// ============================================================
+// SAVE STREAM
+// ============================================================
+
+const saveStreamBtn =
+    document.getElementById(
+        "saveStreamBtn"
+    );
+
+
+if (saveStreamBtn) {
+
+    saveStreamBtn.addEventListener(
+        "click",
+        saveStream
+    );
+
+}
+
+
+async function saveStream() {
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        alert(
+            "Please select a school first."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GET FORM ELEMENTS
+    // --------------------------------------------------------
+
+    const streamIdElement =
+        document.getElementById(
+            "streamId"
+        );
+
+
+    const streamClassIdElement =
+        document.getElementById(
+            "streamClassId"
+        );
+
+
+    const streamNameElement =
+        document.getElementById(
+            "streamName"
+        );
+
+
+    const streamRoomNameElement =
+        document.getElementById(
+            "streamRoomName"
+        );
+
+
+    const streamCapacityElement =
+        document.getElementById(
+            "streamCapacity"
+        );
+
+
+    // --------------------------------------------------------
+    // SAFETY CHECK
+    // --------------------------------------------------------
+
+    if (
+
+        !streamIdElement ||
+
+        !streamClassIdElement ||
+
+        !streamNameElement ||
+
+        !streamRoomNameElement ||
+
+        !streamCapacityElement
+
+    ) {
+
+        console.error(
+            "Stream form elements are missing."
+        );
+
+
+        alert(
+            "The Stream form is incomplete. Please check the HTML."
+        );
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GET VALUES
+    // --------------------------------------------------------
+
+    const streamId =
+        streamIdElement.value.trim();
+
+
+    const classId =
+        streamClassIdElement.value.trim();
+
+
+    const streamName =
+        streamNameElement.value.trim();
+
+
+    const roomName =
+        streamRoomNameElement.value.trim();
+
+
+    const capacity =
+        Number(
+            streamCapacityElement.value
+        );
+
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (!classId) {
+
+        alert(
+            "Please select a class."
+        );
+
+        return;
+
+    }
+
+
+    if (!streamName) {
+
+        alert(
+            "Please enter the stream name."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !capacity ||
+        capacity < 1
+    ) {
+
+        alert(
+            "Please enter a valid stream capacity."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // PREPARE DATA
+    // --------------------------------------------------------
+
+    const streamData = {
+
+        school_id:
+            timetableState.schoolId,
+
+        class_id:
+            classId,
+
+        stream_name:
+            streamName,
+
+        room_name:
+            roomName || null,
+
+        capacity:
+            capacity
+
+    };
+
+
+    console.log(
+        "Saving stream:",
+        streamData
+    );
+
+
+    let result;
+
+
+    // ========================================================
+    // UPDATE EXISTING STREAM
+    // ========================================================
+
+    if (streamId) {
+
+        result =
+            await supabaseClient
+
+                .from(
+                    "timetable_streams"
+                )
+
+                .update(
+                    streamData
+                )
+
+                .eq(
+                    "id",
+                    streamId
+                )
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+    }
+
+
+    // ========================================================
+    // INSERT NEW STREAM
+    // ========================================================
+
+    else {
+
+        result =
+            await supabaseClient
+
+                .from(
+                    "timetable_streams"
+                )
+
+                .insert(
+                    streamData
+                );
+
+    }
+
+
+    // --------------------------------------------------------
+    // DATABASE ERROR
+    // --------------------------------------------------------
+
+    if (result.error) {
+
+        console.error(
+            "Stream save error:",
+            result.error
+        );
+
+
+        alert(
+            "Failed to save stream:\n\n" +
+            result.error.message
+        );
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SUCCESS
+    // --------------------------------------------------------
+
+    alert(
+        streamId
+            ? "Stream updated successfully."
+            : "Stream added successfully."
+    );
+
+
+    closeStreamForm();
+
+
+    await loadStreams();
+
+}
+
+
+// ============================================================
+// LOAD STREAMS
+// ============================================================
+
+async function loadStreams() {
+
+    const container =
+        document.getElementById(
+            "streamsTableContainer"
+        );
+
+
+    if (!container) {
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        container.innerHTML = `
+
+            <div class="empty-message">
+
+                Please select a school first.
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOADING
+    // --------------------------------------------------------
+
+    container.innerHTML = `
+
+        <div class="loading-message">
+
+            Loading streams...
+
+        </div>
+
+    `;
+
+
+    // --------------------------------------------------------
+    // LOAD STREAMS + CLASS NAME
+    // --------------------------------------------------------
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_streams"
+        )
+
+        .select(`
+            *,
+            timetable_classes (
+                *
+            )
+        `)
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        )
+
+        .order(
+            "stream_name",
+            {
+                ascending: true
+            }
+        );
+
+
+    // --------------------------------------------------------
+    // ERROR
+    // --------------------------------------------------------
+
+    if (error) {
+
+        console.error(
+            "Failed to load streams:",
+            error
+        );
+
+
+        container.innerHTML = `
+
+            <div class="empty-message">
+
+                Failed to load streams.
+
+                <br><br>
+
+                ${escapeHtml(
+                    error.message
+                )}
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // NO STREAMS
+    // --------------------------------------------------------
+
+    if (
+        !data ||
+        data.length === 0
+    ) {
+
+        container.innerHTML = `
+
+            <div class="empty-message">
+
+                No streams have been added
+                for this school yet.
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // BUILD TABLE
+    // --------------------------------------------------------
+
+    let html = `
+
+        <table class="data-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>Class</th>
+
+                    <th>Stream</th>
+
+                    <th>Room</th>
+
+                    <th>Capacity</th>
+
+                    <th>Actions</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+    `;
+
+
+    data.forEach(
+        stream => {
+
+            // ------------------------------------------------
+            // GET CLASS
+            // ------------------------------------------------
+
+            const schoolClass =
+                stream.timetable_classes;
+
+
+            const className =
+
+                schoolClass?.class_name ||
+
+                schoolClass?.name ||
+
+                schoolClass?.class ||
+
+                "Unknown";
+
+
+            html += `
+
+                <tr>
+
+                    <td>
+
+                        <strong>
+
+                            ${escapeHtml(
+                                className
+                            )}
+
+                        </strong>
+
+                    </td>
+
+
+                    <td>
+
+                        ${escapeHtml(
+                            stream.stream_name || ""
+                        )}
+
+                    </td>
+
+
+                    <td>
+
+                        ${escapeHtml(
+                            stream.room_name || "-"
+                        )}
+
+                    </td>
+
+
+                    <td>
+
+                        ${stream.capacity || "-"}
+
+                    </td>
+
+
+                    <td>
+
+                        <button
+                            type="button"
+                            class="action-btn edit-btn"
+                            onclick='editStream(${JSON.stringify(
+                                stream
+                            )})'>
+
+                            Edit
+
+                        </button>
+
+
+                        <button
+                            type="button"
+                            class="action-btn delete-btn"
+                            onclick="deleteStream('${stream.id}')">
+
+                            Delete
+
+                        </button>
+
+                    </td>
+
+                </tr>
+
+            `;
+
+        }
+    );
+
+
+    html += `
+
+            </tbody>
+
+        </table>
+
+    `;
+
+
+    container.innerHTML =
+        html;
+
+
+    console.log(
+        "Streams loaded:",
+        data.length
+    );
+
+}
+
+
+// ============================================================
+// EDIT STREAM
+// ============================================================
+
+window.editStream =
+function(stream) {
+
+    // --------------------------------------------------------
+    // Load classes first
+    // --------------------------------------------------------
+
+    loadStreamClasses()
+        .then(
+            function () {
+
+                openStreamForm(
+                    stream
+                );
+
+            }
+        );
+
+};
+
+
+// ============================================================
+// DELETE STREAM
+// ============================================================
+
+window.deleteStream =
+async function(streamId) {
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        alert(
+            "Please select a school first."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CONFIRM
+    // --------------------------------------------------------
+
+    const confirmed =
+        confirm(
+            "Are you sure you want to delete this stream?"
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // DELETE
+    // --------------------------------------------------------
+
+    const {
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_streams"
+        )
+
+        .delete()
+
+        .eq(
+            "id",
+            streamId
+        )
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        );
+
+
+    // --------------------------------------------------------
+    // ERROR
+    // --------------------------------------------------------
+
+    if (error) {
+
+        console.error(
+            "Delete stream error:",
+            error
+        );
+
+
+        alert(
+            "Failed to delete stream:\n\n" +
+            error.message
+        );
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SUCCESS
+    // --------------------------------------------------------
+
+    alert(
+        "Stream deleted successfully."
+    );
+
+
+    await loadStreams();
+
+};
+
+
+// ============================================================
+// LOAD STREAMS WHEN SCHOOL CHANGES
+// ============================================================
+
+if (schoolSelect) {
+
+    schoolSelect.addEventListener(
+        "change",
+        async function () {
+
+            if (
+                timetableState.schoolId
+            ) {
+
+                await loadStreamClasses();
+
+                await loadStreams();
+
+            }
+
+        }
+    );
+
+}
+
 initializeApp();
