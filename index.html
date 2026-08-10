@@ -881,27 +881,225 @@
             </div>
 
 
+
+
             <!-- REQUIREMENTS -->
 
-            <div class="section"
-                 id="requirements">
+<div class="section"
+     id="requirements">
 
-                <div class="page-heading">
+    <div class="page-heading">
 
-                    <div>
-                        <h2>📋 Requirements</h2>
+        <div>
+            <h2>📋 Requirements</h2>
 
-                        <p>
-                            Define what each stream must learn
-                            each week.
-                        </p>
-                    </div>
+            <p>
+                Define what each stream must learn
+                each week.
+            </p>
+        </div>
 
-                </div>
+    </div>
 
-                <div id="requirementsContent"></div>
+
+    <!-- REQUIREMENT FORM -->
+
+    <div class="card">
+
+        <h3>➕ Add Subject Requirement</h3>
+
+        <div class="form-grid">
+
+
+            <!-- STREAM -->
+
+            <div class="form-group">
+
+                <label>
+                    Stream
+                </label>
+
+                <select id="requirementStream">
+
+                    <option value="">
+                        Select stream
+                    </option>
+
+                </select>
 
             </div>
+
+
+            <!-- SUBJECT -->
+
+            <div class="form-group">
+
+                <label>
+                    Subject
+                </label>
+
+                <select id="requirementSubject">
+
+                    <option value="">
+                        Select subject
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- TEACHER -->
+
+            <div class="form-group">
+
+                <label>
+                    Teacher
+                </label>
+
+                <select id="requirementTeacher">
+
+                    <option value="">
+                        Select teacher
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- LESSONS PER WEEK -->
+
+            <div class="form-group">
+
+                <label>
+                    Lessons per Week
+                </label>
+
+                <input
+                    type="number"
+                    id="requirementLessons"
+                    min="1"
+                    value="1"
+                >
+
+            </div>
+
+
+            <!-- DOUBLE LESSONS -->
+
+            <div class="form-group">
+
+                <label>
+                    Double Lessons per Week
+                </label>
+
+                <input
+                    type="number"
+                    id="requirementDoubleLessons"
+                    min="0"
+                    value="0"
+                >
+
+            </div>
+
+
+            <!-- MAX PER DAY -->
+
+            <div class="form-group">
+
+                <label>
+                    Maximum Lessons per Day
+                </label>
+
+                <input
+                    type="number"
+                    id="requirementMaxPerDay"
+                    min="1"
+                    value="1"
+                >
+
+            </div>
+
+
+            <!-- ROOM REQUIRED -->
+
+            <div class="form-group">
+
+                <label>
+                    Requires Special Room?
+                </label>
+
+                <select id="requirementRequiresRoom">
+
+                    <option value="false">
+                        No
+                    </option>
+
+                    <option value="true">
+                        Yes
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- ROOM TYPE -->
+
+            <div class="form-group">
+
+                <label>
+                    Room Type
+                </label>
+
+                <input
+                    type="text"
+                    id="requirementRoomType"
+                    placeholder="e.g. Laboratory"
+                >
+
+            </div>
+
+
+        </div>
+
+
+        <div class="form-actions">
+
+            <button
+                type="button"
+                id="saveRequirementBtn"
+                class="primary-btn">
+
+                💾 Save Requirement
+
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- EXISTING REQUIREMENTS -->
+
+    <div class="card">
+
+        <h3>📚 Current Requirements</h3>
+
+        <div id="requirementsTableContainer">
+
+            <div class="empty-message">
+
+                Select a school to view requirements.
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
 
 
             <!-- TIMETABLE -->
