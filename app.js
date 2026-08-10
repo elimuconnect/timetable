@@ -3168,19 +3168,6 @@ if (schoolSelect) {
 }
 
 
-// ============================================================
-// END STEP 17
-// ============================================================
-
-// ============================================================
-// 17. REQUIREMENTS MANAGEMENT
-// ============================================================
-
-
-// ------------------------------------------------------------
-// LOAD REQUIREMENT DROPDOWNS
-// ------------------------------------------------------------
-
 async function loadRequirementOptions() {
 
     if (!timetableState.schoolId) {
@@ -4045,16 +4032,15 @@ async function loadRequirements() {
                     <td>
 
                         <button
-                            class="action-btn delete-btn"
-                            onclick="
-                                deleteRequirement(
-                                    '${requirement.id}'
-                                )
-                            "
-                        >
-                            Delete
-                        </button>
-
+    class="action-btn delete-btn"
+    onclick="
+        window.deleteRequirement(
+            '${requirement.id}'
+        )
+"
+>
+    Delete
+</button>
                     </td>
 
                 </tr>
@@ -4077,4 +4063,108 @@ async function loadRequirements() {
     container.innerHTML =
         html;
 }
+
+// ------------------------------------------------------------
+// DELETE REQUIREMENT
+// ------------------------------------------------------------
+
+window.deleteRequirement =
+    async function (requirementId) {
+
+        // ----------------------------------------------------
+        // CHECK SCHOOL
+        // ----------------------------------------------------
+
+        if (!timetableState.schoolId) {
+
+            alert(
+                "Please select a school."
+            );
+
+            return;
+
+        }
+
+
+        // ----------------------------------------------------
+        // CONFIRM DELETE
+        // ----------------------------------------------------
+
+        const confirmed =
+            confirm(
+                "Are you sure you want to delete this requirement?"
+            );
+
+
+        if (!confirmed) {
+
+            return;
+
+        }
+
+
+        // ----------------------------------------------------
+        // DELETE FROM SUPABASE
+        // ----------------------------------------------------
+
+        const {
+            error
+        } = await supabaseClient
+
+            .from(
+                "timetable_requirements"
+            )
+
+            .delete()
+
+            .eq(
+                "id",
+                requirementId
+            )
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        // ----------------------------------------------------
+        // ERROR
+        // ----------------------------------------------------
+
+        if (error) {
+
+            console.error(
+                "Delete requirement error:",
+                error
+            );
+
+            alert(
+                "Failed to delete requirement:\n\n" +
+                error.message
+            );
+
+            return;
+
+        }
+
+
+        // ----------------------------------------------------
+        // SUCCESS
+        // ----------------------------------------------------
+
+        alert(
+            "Requirement deleted successfully."
+        );
+
+
+        // ----------------------------------------------------
+        // REFRESH REQUIREMENTS
+        // ----------------------------------------------------
+
+        await loadRequirements();
+
+    };
+
+
 initializeApp();
