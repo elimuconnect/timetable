@@ -1707,28 +1707,7 @@ function escapeHtml(value) {
 
 }
 
-if (schoolSelect) {
 
-    schoolSelect.addEventListener(
-        "change",
-        async function () {
-
-            if (
-                timetableState.schoolId
-            ) {
-
-                await loadTeachers();
-
-                await loadRequirementOptions();
-
-                await loadRequirements();
-
-            }
-
-        }
-    );
-
-}
 
 // ============================================================
 // 16. SUBJECT MANAGEMENT
@@ -3593,6 +3572,38 @@ async function loadRequirements() {
     console.log(
         "Requirements loaded:",
         requirements.length
+    );
+
+}
+
+
+
+
+
+
+
+
+
+
+if (schoolSelect) {
+
+    schoolSelect.addEventListener(
+        "change",
+        async function () {
+
+            if (
+                timetableState.schoolId
+            ) {
+
+                await loadTeachers();
+
+                await loadRequirementOptions();
+
+                await loadRequirements();
+
+            }
+
+        }
     );
 
 }
