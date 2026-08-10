@@ -3686,371 +3686,348 @@ async function saveRequirement() {
 
 }
 
-// ------------------------------------------------------------
-// LOAD REQUIREMENTS
-// ------------------------------------------------------------
+// ============================================================
+// LOAD REQUIREMENT OPTIONS
+// ============================================================
 
-async function loadRequirements() {
+async function loadRequirementOptions() {
 
-    const container =
-        document.getElementById(
-            "requirementsTableContainer"
-        );
-
-
-    if (!container) {
-        return;
-    }
+    console.log("======================================");
+    console.log("LOADING REQUIREMENT OPTIONS");
+    console.log("School ID:", timetableState.schoolId);
+    console.log("======================================");
 
 
     if (!timetableState.schoolId) {
 
-        container.innerHTML =
-            `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-            `;
+        console.warn(
+            "No school selected. Cannot load requirement options."
+        );
 
         return;
 
     }
 
 
-    container.innerHTML =
-        `
-        <div class="loading-message">
-            Loading requirements...
-        </div>
-        `;
+    const schoolId =
+        timetableState.schoolId;
 
+
+    // ========================================================
+    // STREAMS
+    // ========================================================
 
     const {
-        data,
-        error
+        data: streams,
+        error: streamsError
     } = await supabaseClient
 
-        .from(
-            "timetable_requirements"
-        )
+        .from("timetable_streams")
 
-        .select(`
-            id,
-            stream_id,
-            subject_id,
-            teacher_id,
-            lessons_per_week,
-            double_lessons_per_week,
-            requires_room,
-            room_type,
-            max_lessons_per_day,
-            timetable_streams (
-                stream_name
-            ),
-            timetable_subjects (
-                subject_name
-            ),
-            timetable_teachers (
-                teacher_name,
-                teacher_code
-            )
-        `)
+        .select(
+            "id, stream_name"
+        )
 
         .eq(
             "school_id",
-            timetableState.schoolId
+            schoolId
         )
 
         .order(
-            "created_at"
+            "stream_name",
+            {
+                ascending: true
+            }
         );
 
 
-    if (error) {
+    console.log(
+        "STREAMS:",
+        streams,
+        streamsError
+    );
+
+
+    if (streamsError) {
 
         console.error(
-            "Failed to load requirements:",
-            error
+            "STREAMS ERROR:",
+            streamsError
         );
-
-
-        container.innerHTML =
-            `
-            <div class="empty-message">
-                Failed to load requirements.
-            </div>
-            `;
 
         return;
 
     }
 
 
-    if (
-        !data ||
-        data.length === 0
-    ) {
+    const streamSelect =
+        document.getElementById(
+            "requirementStream"
+        );
 
-        container.innerHTML =
+
+    if (!streamSelect) {
+
+        console.error(
+            "Element #requirementStream was not found."
+        );
+
+    } else {
+
+        streamSelect.innerHTML =
             `
-            <div class="empty-message">
-
-                No requirements have been
-                added yet.
-
-            </div>
+            <option value="">
+                Select stream
+            </option>
             `;
 
-        return;
+
+        if (streams && streams.length > 0) {
+
+            streams.forEach(
+                stream => {
+
+                    const option =
+                        document.createElement(
+                            "option"
+                        );
+
+
+                    option.value =
+                        stream.id;
+
+
+                    option.textContent =
+                        stream.stream_name;
+
+
+                    streamSelect.appendChild(
+                        option
+                    );
+
+                }
+            );
+
+        }
 
     }
 
 
-    let html = `
-
-        <table class="data-table">
-
-            <thead>
-
-                <tr>
-
-                    <th>Stream</th>
-
-                    <th>Subject</th>
-
-                    <th>Teacher</th>
-
-                    <th>Lessons / Week</th>
-
-                    <th>Double / Week</th>
-
-                    <th>Room</th>
-
-                    <th>Max / Day</th>
-
-                    <th>Actions</th>
-
-                </tr>
-
-            </thead>
-
-            <tbody>
-    `;
-
-
-    data.forEach(
-        requirement => {
-
-            const streamName =
-                requirement
-                    .timetable_streams
-                    ?.stream_name ||
-                "—";
-
-
-            const subjectName =
-                requirement
-                    .timetable_subjects
-                    ?.subject_name ||
-                "—";
-
-
-            const teacherName =
-                requirement
-                    .timetable_teachers
-                    ?.teacher_name ||
-                "—";
-
-
-            const room =
-                requirement.requires_room
-                    ? (
-                        requirement.room_type ||
-                        "Special room"
-                    )
-                    : "None";
-
-
-            html += `
-
-                <tr>
-
-                    <td>
-                        <strong>
-                            ${escapeHtml(
-                                streamName
-                            )}
-                        </strong>
-                    </td>
-
-                    <td>
-                        ${escapeHtml(
-                            subjectName
-                        )}
-                    </td>
-
-                    <td>
-                        ${escapeHtml(
-                            teacherName
-                        )}
-                    </td>
-
-                    <td>
-                        ${requirement.lessons_per_week}
-                    </td>
-
-                    <td>
-                        ${requirement.double_lessons_per_week}
-                    </td>
-
-                    <td>
-                        ${escapeHtml(room)}
-                    </td>
-
-                    <td>
-                        ${requirement.max_lessons_per_day}
-                    </td>
-
-                    <td>
-
-                        <button
-                            class="action-btn delete-btn"
-                            onclick="
-                                deleteRequirement(
-                                    '${requirement.id}'
-                                )
-                            ">
-
-                            Delete
-
-                        </button>
-
-                    </td>
-
-                </tr>
-
-            `;
-
-        }
-    );
-
-
-    html += `
-
-            </tbody>
-
-        </table>
-
-    `;
-
-
-    container.innerHTML =
-        html;
-
-}
-// ------------------------------------------------------------
-// DELETE REQUIREMENT
-// ------------------------------------------------------------
-
-window.deleteRequirement =
-    async function (requirementId) {
-
-        if (!timetableState.schoolId) {
-
-            alert(
-                "Please select a school."
-            );
-
-            return;
-
-        }
-
-
-        const confirmed =
-            confirm(
-                "Are you sure you want to delete this requirement?"
-            );
-
-
-        if (!confirmed) {
-            return;
-        }
-
-
-        const {
-            error
-        } = await supabaseClient
-
-            .from(
-                "timetable_requirements"
-            )
-
-            .delete()
-
-            .eq(
-                "id",
-                requirementId
-            )
-
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            );
-
-
-        if (error) {
-
-            console.error(
-                "Delete requirement error:",
-                error
-            );
-
-
-            alert(
-                "Failed to delete requirement:\n\n" +
-                error.message
-            );
-
-            return;
-
-        }
-
-
-        alert(
-            "Requirement deleted successfully."
-        );
-
-
-        await loadRequirements();
-
-    };
-
-
-// ============================================================
-// LOAD REQUIREMENTS WHEN SCHOOL CHANGES
-// ============================================================
-
-if (schoolSelect) {
-
-    schoolSelect.addEventListener(
-        "change",
-        async function () {
-
-            if (
-                timetableState.schoolId
-            ) {
-
-                await loadRequirementOptions();
-
-                await loadRequirements();
-
+    // ========================================================
+    // SUBJECTS
+    // ========================================================
+
+    const {
+        data: subjects,
+        error: subjectsError
+    } = await supabaseClient
+
+        .from("timetable_subjects")
+
+        .select(
+            "id, subject_name, subject_code"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "subject_name",
+            {
+                ascending: true
             }
+        );
+
+
+    console.log(
+        "SUBJECTS:",
+        subjects,
+        subjectsError
+    );
+
+
+    if (subjectsError) {
+
+        console.error(
+            "SUBJECTS ERROR:",
+            subjectsError
+        );
+
+        return;
+
+    }
+
+
+    const subjectSelect =
+        document.getElementById(
+            "requirementSubject"
+        );
+
+
+    if (!subjectSelect) {
+
+        console.error(
+            "Element #requirementSubject was not found."
+        );
+
+    } else {
+
+        subjectSelect.innerHTML =
+            `
+            <option value="">
+                Select subject
+            </option>
+            `;
+
+
+        if (
+            subjects &&
+            subjects.length > 0
+        ) {
+
+            subjects.forEach(
+                subject => {
+
+                    const option =
+                        document.createElement(
+                            "option"
+                        );
+
+
+                    option.value =
+                        subject.id;
+
+
+                    option.textContent =
+                        subject.subject_code
+                            ? `${subject.subject_name} (${subject.subject_code})`
+                            : subject.subject_name;
+
+
+                    subjectSelect.appendChild(
+                        option
+                    );
+
+                }
+            );
 
         }
+
+    }
+
+
+    // ========================================================
+    // TEACHERS
+    // ========================================================
+
+    const {
+        data: teachers,
+        error: teachersError
+    } = await supabaseClient
+
+        .from("timetable_teachers")
+
+        .select(
+            "id, teacher_name, teacher_code"
+        )
+
+        .eq(
+            "school_id",
+            schoolId
+        )
+
+        .order(
+            "teacher_name",
+            {
+                ascending: true
+            }
+        );
+
+
+    console.log(
+        "TEACHERS:",
+        teachers,
+        teachersError
+    );
+
+
+    if (teachersError) {
+
+        console.error(
+            "TEACHERS ERROR:",
+            teachersError
+        );
+
+        return;
+
+    }
+
+
+    const teacherSelect =
+        document.getElementById(
+            "requirementTeacher"
+        );
+
+
+    if (!teacherSelect) {
+
+        console.error(
+            "Element #requirementTeacher was not found."
+        );
+
+    } else {
+
+        teacherSelect.innerHTML =
+            `
+            <option value="">
+                Select teacher
+            </option>
+            `;
+
+
+        if (
+            teachers &&
+            teachers.length > 0
+        ) {
+
+            teachers.forEach(
+                teacher => {
+
+                    const option =
+                        document.createElement(
+                            "option"
+                        );
+
+
+                    option.value =
+                        teacher.id;
+
+
+                    option.textContent =
+                        teacher.teacher_code
+                            ? `${teacher.teacher_name} (${teacher.teacher_code})`
+                            : teacher.teacher_name;
+
+
+                    teacherSelect.appendChild(
+                        option
+                    );
+
+                }
+            );
+
+        }
+
+    }
+
+
+    console.log(
+        "Requirement options loaded successfully."
     );
 
 }
-
 // ============================================================
 // 14. START
 // ============================================================
