@@ -4884,19 +4884,6 @@ window.deleteRequirement =
     };
 
 
-// ============================================================
-// END REQUIREMENTS
-// ============================================================
-
-// ============================================================
-// 18. PERIOD MANAGEMENT
-// ============================================================
-
-
-// ------------------------------------------------------------
-// OPEN ADD PERIOD FORM
-// ------------------------------------------------------------
-
 const addPeriodBtn =
     document.getElementById("addPeriodBtn");
 
@@ -4929,6 +4916,7 @@ if (addPeriodBtn) {
 // OPEN PERIOD FORM
 // ------------------------------------------------------------
 
+
 function openPeriodForm(period = null) {
 
     const form =
@@ -4936,144 +4924,258 @@ function openPeriodForm(period = null) {
             "periodFormCard"
         );
 
+    if (!form) {
+        console.error(
+            "periodFormCard was not found."
+        );
+        return;
+    }
 
-    if (!form) return;
 
+    // --------------------------------------------------------
+    // GET FORM ELEMENTS
+    // --------------------------------------------------------
+
+    const periodFormTitle =
+        document.getElementById(
+            "periodFormTitle"
+        );
+
+    const periodId =
+        document.getElementById(
+            "periodId"
+        );
+
+    const dayName =
+        document.getElementById(
+            "periodDayName"
+        );
+
+    const dayNumber =
+        document.getElementById(
+            "periodDayNumber"
+        );
+
+    const periodNumber =
+        document.getElementById(
+            "periodNumber"
+        );
+
+    const periodOrder =
+        document.getElementById(
+            "periodOrder"
+        );
+
+    const periodName =
+        document.getElementById(
+            "periodName"
+        );
+
+    const startTime =
+        document.getElementById(
+            "periodStartTime"
+        );
+
+    const endTime =
+        document.getElementById(
+            "periodEndTime"
+        );
+
+    const periodType =
+        document.getElementById(
+            "periodType"
+        );
+
+    const isTeachingPeriod =
+        document.getElementById(
+            "isTeachingPeriod"
+        );
+
+
+    // --------------------------------------------------------
+    // CHECK ELEMENTS
+    // --------------------------------------------------------
+
+    const missingElements = [];
+
+
+    if (!periodFormTitle)
+        missingElements.push("periodFormTitle");
+
+    if (!periodId)
+        missingElements.push("periodId");
+
+    if (!dayName)
+        missingElements.push("periodDayName");
+
+    if (!dayNumber)
+        missingElements.push("periodDayNumber");
+
+    if (!periodNumber)
+        missingElements.push("periodNumber");
+
+    if (!periodOrder)
+        missingElements.push("periodOrder");
+
+    if (!periodName)
+        missingElements.push("periodName");
+
+    if (!startTime)
+        missingElements.push("periodStartTime");
+
+    if (!endTime)
+        missingElements.push("periodEndTime");
+
+    if (!periodType)
+        missingElements.push("periodType");
+
+    if (!isTeachingPeriod)
+        missingElements.push("isTeachingPeriod");
+
+
+    if (missingElements.length > 0) {
+
+        console.error(
+            "PERIOD FORM MISSING ELEMENTS:",
+            missingElements
+        );
+
+        alert(
+            "Period form is missing:\n\n" +
+            missingElements.join("\n")
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // SHOW FORM
+    // --------------------------------------------------------
 
     form.style.display = "block";
 
 
+    // --------------------------------------------------------
+    // EDIT PERIOD
+    // --------------------------------------------------------
+
     if (period) {
 
-        document.getElementById(
-            "periodFormTitle"
-        ).textContent =
+        periodFormTitle.textContent =
             "Edit Period";
 
 
-        document.getElementById(
-            "periodId"
-        ).value =
-            period.id;
+        periodId.value =
+            period.id || "";
 
 
-        document.getElementById(
-            "periodDayName"
-        ).value =
+        dayName.value =
             period.day_name || "";
 
 
-        document.getElementById(
-            "periodDayNumber"
-        ).value =
+        dayNumber.value =
             period.day_number || 1;
 
 
-        document.getElementById(
-            "periodNumber"
-        ).value =
+        periodNumber.value =
             period.period_number || 1;
 
 
-        document.getElementById(
-            "periodName"
-        ).value =
+        periodOrder.value =
+            period.period_order ||
+            (
+                ((period.day_number || 1) - 1) * 100
+                +
+                (period.period_number || 1)
+            );
+
+
+        periodName.value =
             period.period_name || "";
 
 
-        document.getElementById(
-            "periodStartTime"
-        ).value =
+        startTime.value =
             period.start_time || "";
 
 
-        document.getElementById(
-            "periodEndTime"
-        ).value =
+        endTime.value =
             period.end_time || "";
 
 
-        document.getElementById(
-            "periodType"
-        ).value =
+        periodType.value =
             period.period_type || "lesson";
 
 
-        document.getElementById(
-            "isTeachingPeriod"
-        ).checked =
+        isTeachingPeriod.checked =
             period.is_teaching_period !== false;
 
 
-    } else {
+    }
 
-        document.getElementById(
-            "periodFormTitle"
-        ).textContent =
+
+    // --------------------------------------------------------
+    // ADD NEW PERIOD
+    // --------------------------------------------------------
+
+    else {
+
+        periodFormTitle.textContent =
             "Add Period";
 
 
-        document.getElementById(
-            "periodId"
-        ).value =
+        periodId.value =
             "";
 
 
-        document.getElementById(
-            "periodDayName"
-        ).value =
+        dayName.value =
             "";
 
 
-        document.getElementById(
-            "periodDayNumber"
-        ).value =
+        dayNumber.value =
             1;
 
 
-        document.getElementById(
-            "periodNumber"
-        ).value =
+        periodNumber.value =
             1;
 
 
-        document.getElementById(
-            "periodName"
-        ).value =
+        periodOrder.value =
+            1;
+
+
+        periodName.value =
             "";
 
 
-        document.getElementById(
-            "periodStartTime"
-        ).value =
+        startTime.value =
             "";
 
 
-        document.getElementById(
-            "periodEndTime"
-        ).value =
+        endTime.value =
             "";
 
 
-        document.getElementById(
-            "periodType"
-        ).value =
+        periodType.value =
             "lesson";
 
 
-        document.getElementById(
-            "isTeachingPeriod"
-        ).checked =
+        isTeachingPeriod.checked =
             true;
 
     }
 
+
+    // --------------------------------------------------------
+    // SCROLL TO FORM
+    // --------------------------------------------------------
 
     form.scrollIntoView({
         behavior: "smooth"
     });
 
 }
+
 
 
 // ------------------------------------------------------------
@@ -5182,6 +5284,14 @@ async function savePeriod() {
         );
 
 
+
+const periodOrder =
+    Number(
+        document.getElementById(
+            "periodOrder"
+        ).value
+    );
+    
     const periodName =
         document.getElementById(
             "periodName"
@@ -5249,6 +5359,17 @@ async function savePeriod() {
     }
 
 
+if (!periodOrder || periodOrder < 1) {
+
+    alert(
+        "Please enter a valid period order."
+    );
+
+    return;
+
+}
+    
+
     if (!periodName) {
 
         alert(
@@ -5297,44 +5418,39 @@ async function savePeriod() {
     // PREPARE DATA
     // --------------------------------------------------------
 
-    const periodData = {
+   const periodData = {
 
-        school_id:
-            timetableState.schoolId,
+    school_id:
+        timetableState.schoolId,
 
-        day_name:
-            dayName,
+    day_name:
+        dayName,
 
-        day_number:
-            dayNumber,
+    day_number:
+        dayNumber,
 
-        period_number:
-            periodNumber,
+    period_number:
+        periodNumber,
 
-        period_name:
-            periodName,
+    period_name:
+        periodName,
 
-        start_time:
-            startTime,
+    start_time:
+        startTime,
 
-        end_time:
-            endTime,
+    end_time:
+        endTime,
 
-        period_type:
-            periodType,
+    period_type:
+        periodType,
 
-        is_teaching_period:
-            isTeachingPeriod,
+    is_teaching_period:
+        isTeachingPeriod,
 
-        period_order:
-            (
-                (dayNumber - 1) * 100
-            ) +
-            periodNumber
+    period_order:
+        periodOrder
 
-    };
-
-
+};
     let result;
 
 
