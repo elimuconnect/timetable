@@ -266,8 +266,7 @@
             </div>
 
 
-            <!-- TEACHERS -->
-
+          
 
 <!-- TEACHERS -->
 
@@ -446,26 +445,213 @@
 
             
 
-            <!-- SUBJECTS -->
+<!-- SUBJECTS -->
 
-            <div class="section"
-                 id="subjects">
+<div class="section"
+     id="subjects">
 
-                <div class="page-heading">
+    <div class="page-heading">
 
-                    <div>
-                        <h2>📚 Subjects</h2>
+        <div>
 
-                        <p>
-                            Manage subjects and lesson requirements.
-                        </p>
-                    </div>
+            <h2>📚 Subjects</h2>
 
-                </div>
+            <p>
+                Manage subjects and lesson requirements.
+            </p>
 
-                <div id="subjectsContent"></div>
+        </div>
+
+        <button
+            type="button"
+            class="primary-btn"
+            id="addSubjectBtn">
+
+            ➕ Add Subject
+
+        </button>
+
+    </div>
+
+
+    <!-- SUBJECT FORM -->
+
+    <div
+        id="subjectFormCard"
+        class="form-card"
+        style="display:none;">
+
+        <div class="form-card-header">
+
+            <h3 id="subjectFormTitle">
+                Add Subject
+            </h3>
+
+        </div>
+
+
+        <input
+            type="hidden"
+            id="subjectId"
+        >
+
+
+        <div class="form-grid">
+
+            <!-- SUBJECT NAME -->
+
+            <div class="form-group">
+
+                <label for="subjectName">
+                    Subject Name
+                </label>
+
+                <input
+                    type="text"
+                    id="subjectName"
+                    placeholder="e.g. Mathematics"
+                >
 
             </div>
+
+
+            <!-- SUBJECT CODE -->
+
+            <div class="form-group">
+
+                <label for="subjectCode">
+                    Subject Code
+                </label>
+
+                <input
+                    type="text"
+                    id="subjectCode"
+                    placeholder="e.g. MAT"
+                >
+
+            </div>
+
+
+            <!-- LESSONS PER WEEK -->
+
+            <div class="form-group">
+
+                <label for="lessonsPerWeek">
+                    Lessons Per Week
+                </label>
+
+                <input
+                    type="number"
+                    id="lessonsPerWeek"
+                    min="1"
+                    value="1"
+                >
+
+            </div>
+
+
+            <!-- DOUBLE LESSON -->
+
+            <div class="form-group checkbox-group">
+
+                <label>
+
+                    <input
+                        type="checkbox"
+                        id="requiresDoubleLesson"
+                    >
+
+                    Requires Double Lesson
+
+                </label>
+
+            </div>
+
+
+            <!-- ROOM REQUIRED -->
+
+            <div class="form-group checkbox-group">
+
+                <label>
+
+                    <input
+                        type="checkbox"
+                        id="requiresRoom"
+                    >
+
+                    Requires Special Room
+
+                </label>
+
+            </div>
+
+
+            <!-- ROOM TYPE -->
+
+            <div class="form-group">
+
+                <label for="roomType">
+                    Required Room Type
+                </label>
+
+                <input
+                    type="text"
+                    id="roomType"
+                    placeholder="e.g. Laboratory"
+                >
+
+            </div>
+
+        </div>
+
+
+        <!-- FORM BUTTONS -->
+
+        <div class="form-actions">
+
+            <button
+                type="button"
+                class="secondary-btn"
+                id="cancelSubjectBtn">
+
+                Cancel
+
+            </button>
+
+
+            <button
+                type="button"
+                class="primary-btn"
+                id="saveSubjectBtn">
+
+                💾 Save Subject
+
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- SUBJECT TABLE -->
+
+    <div
+        id="subjectsTableContainer"
+        class="data-container">
+
+        <div class="empty-message">
+
+            Please select a school to view subjects.
+
+        </div>
+
+    </div>
+
+</div>
+
+
+
+            
 
 
             <!-- STREAMS -->
