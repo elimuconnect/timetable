@@ -3587,7 +3587,7 @@ if (schoolSelect) {
 
                 await loadTeachers();
 
-                await loadRequirementOptions();
+               
 
                 await loadRequirements();
 
