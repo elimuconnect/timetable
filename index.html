@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
 
     <title>Smart Timetable Generator</title>
 
@@ -12,114 +14,434 @@
 <body>
 
     <header class="topbar">
-        <div>
-            <h1>Smart Timetable Generator</h1>
-            <p>Automatic School Timetable Management System</p>
+
+        <div class="brand">
+            <div class="brand-icon">📅</div>
+
+            <div>
+                <h1>Smart Timetable</h1>
+                <p>Automatic School Timetable Generator</p>
+            </div>
         </div>
 
-        <div class="status">
-            <span class="status-dot"></span>
-            System Ready
+        <div class="school-info">
+            <span id="schoolName">No school selected</span>
         </div>
+
     </header>
 
 
-    <main class="container">
+    <main class="app-container">
 
-        <section class="welcome">
-            <h2>Automatic Timetable Generator</h2>
+        <!-- SIDEBAR -->
 
-            <p>
-                Enter your school's information and let the system
-                automatically generate a complete timetable.
-            </p>
+        <aside class="sidebar">
 
-            <button id="startBtn">
-                Start Setup
+            <button class="nav-btn active"
+                    data-section="dashboard">
+                🏠 Dashboard
             </button>
-        </section>
+
+            <button class="nav-btn"
+                    data-section="teachers">
+                👨‍🏫 Teachers
+            </button>
+
+            <button class="nav-btn"
+                    data-section="subjects">
+                📚 Subjects
+            </button>
+
+            <button class="nav-btn"
+                    data-section="streams">
+                🎓 Streams
+            </button>
+
+            <button class="nav-btn"
+                    data-section="rooms">
+                🏫 Rooms
+            </button>
+
+            <button class="nav-btn"
+                    data-section="periods">
+                ⏰ Periods
+            </button>
+
+            <button class="nav-btn"
+                    data-section="requirements">
+                📋 Requirements
+            </button>
+
+            <div class="sidebar-divider"></div>
+
+            <button class="generate-btn"
+                    id="generateBtn">
+                ⚡ Generate Timetable
+            </button>
+
+            <button class="nav-btn"
+                    data-section="timetable">
+                📅 View Timetable
+            </button>
+
+        </aside>
 
 
-        <section class="dashboard">
+        <!-- MAIN CONTENT -->
 
-            <div class="card">
-                <div class="card-icon">👨‍🏫</div>
-                <h3>Teachers</h3>
-                <strong id="teacherCount">0</strong>
+        <section class="content">
+
+
+            <!-- DASHBOARD -->
+
+            <div class="section active"
+                 id="dashboard">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>Timetable Dashboard</h2>
+
+                        <p>
+                            Automatically create and manage
+                            conflict-free school timetables.
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <div class="stats-grid">
+
+                    <div class="stat-card">
+                        <div class="stat-icon">👨‍🏫</div>
+
+                        <div>
+                            <span>Teachers</span>
+                            <strong id="teacherCount">0</strong>
+                        </div>
+                    </div>
+
+
+                    <div class="stat-card">
+                        <div class="stat-icon">📚</div>
+
+                        <div>
+                            <span>Subjects</span>
+                            <strong id="subjectCount">0</strong>
+                        </div>
+                    </div>
+
+
+                    <div class="stat-card">
+                        <div class="stat-icon">🎓</div>
+
+                        <div>
+                            <span>Streams</span>
+                            <strong id="streamCount">0</strong>
+                        </div>
+                    </div>
+
+
+                    <div class="stat-card">
+                        <div class="stat-icon">🏫</div>
+
+                        <div>
+                            <span>Rooms</span>
+                            <strong id="roomCount">0</strong>
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <div class="setup-card">
+
+                    <h3>⚙️ Timetable Setup</h3>
+
+                    <p>
+                        Select a school to begin configuring
+                        and generating its timetable.
+                    </p>
+
+
+                    <div class="form-group">
+
+                        <label for="schoolSelect">
+                            School
+                        </label>
+
+                        <select id="schoolSelect">
+
+                            <option value="">
+                                Loading schools...
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="form-row">
+
+                        <div class="form-group">
+
+                            <label for="academicYear">
+                                Academic Year
+                            </label>
+
+                            <input
+                                type="number"
+                                id="academicYear"
+                                value="2026"
+                            >
+
+                        </div>
+
+
+                        <div class="form-group">
+
+                            <label for="term">
+                                Term
+                            </label>
+
+                            <select id="term">
+
+                                <option value="1">
+                                    Term 1
+                                </option>
+
+                                <option value="2">
+                                    Term 2
+                                </option>
+
+                                <option value="3">
+                                    Term 3
+                                </option>
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="info-card">
+
+                    <h3>🚀 How it works</h3>
+
+                    <ol>
+
+                        <li>
+                            Configure teachers and their limits.
+                        </li>
+
+                        <li>
+                            Configure subjects and lessons per week.
+                        </li>
+
+                        <li>
+                            Configure streams and rooms.
+                        </li>
+
+                        <li>
+                            Assign teachers to subjects.
+                        </li>
+
+                        <li>
+                            Click <strong>Generate Timetable</strong>.
+                        </li>
+
+                        <li>
+                            The system automatically searches
+                            for a valid timetable.
+                        </li>
+
+                    </ol>
+
+                </div>
+
             </div>
 
-            <div class="card">
-                <div class="card-icon">📚</div>
-                <h3>Subjects</h3>
-                <strong id="subjectCount">0</strong>
+
+            <!-- TEACHERS -->
+
+            <div class="section"
+                 id="teachers">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>👨‍🏫 Teachers</h2>
+
+                        <p>
+                            Manage teachers and workload limits.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="teachersContent"></div>
+
             </div>
 
-            <div class="card">
-                <div class="card-icon">🏫</div>
-                <h3>Classes</h3>
-                <strong id="classCount">0</strong>
+
+            <!-- SUBJECTS -->
+
+            <div class="section"
+                 id="subjects">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>📚 Subjects</h2>
+
+                        <p>
+                            Manage subjects and lesson requirements.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="subjectsContent"></div>
+
             </div>
 
-            <div class="card">
-                <div class="card-icon">🚪</div>
-                <h3>Rooms</h3>
-                <strong id="roomCount">0</strong>
+
+            <!-- STREAMS -->
+
+            <div class="section"
+                 id="streams">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>🎓 Streams</h2>
+
+                        <p>
+                            Manage classes and streams.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="streamsContent"></div>
+
             </div>
 
-        </section>
+
+            <!-- ROOMS -->
+
+            <div class="section"
+                 id="rooms">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>🏫 Rooms</h2>
+
+                        <p>
+                            Manage classrooms, laboratories
+                            and special rooms.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="roomsContent"></div>
+
+            </div>
 
 
-        <section id="setupSection" class="setup-section hidden">
+            <!-- PERIODS -->
 
-            <h2>School Setup</h2>
+            <div class="section"
+                 id="periods">
 
-            <p>
-                We will configure your school before generating
-                the timetable.
-            </p>
+                <div class="page-heading">
 
-            <div class="setup-grid">
+                    <div>
+                        <h2>⏰ Periods</h2>
 
-                <button class="setup-card">
-                    👨‍🏫
-                    <span>Teachers</span>
-                </button>
+                        <p>
+                            Configure the school's daily schedule.
+                        </p>
+                    </div>
 
-                <button class="setup-card">
-                    📚
-                    <span>Subjects</span>
-                </button>
+                </div>
 
-                <button class="setup-card">
-                    🏫
-                    <span>Classes</span>
-                </button>
+                <div id="periodsContent"></div>
 
-                <button class="setup-card">
-                    🚪
-                    <span>Rooms</span>
-                </button>
+            </div>
 
-                <button class="setup-card">
-                    🕐
-                    <span>Periods</span>
-                </button>
 
-                <button class="setup-card">
-                    ⚙️
-                    <span>Requirements</span>
-                </button>
+            <!-- REQUIREMENTS -->
+
+            <div class="section"
+                 id="requirements">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>📋 Requirements</h2>
+
+                        <p>
+                            Define what each stream must learn
+                            each week.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="requirementsContent"></div>
+
+            </div>
+
+
+            <!-- TIMETABLE -->
+
+            <div class="section"
+                 id="timetable">
+
+                <div class="page-heading">
+
+                    <div>
+                        <h2>📅 Generated Timetable</h2>
+
+                        <p>
+                            Your automatically generated timetable
+                            will appear here.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="timetableContent">
+
+                    <div class="empty-state">
+
+                        <div>📅</div>
+
+                        <h3>
+                            No timetable generated yet
+                        </h3>
+
+                        <p>
+                            Configure the requirements and click
+                            Generate Timetable.
+                        </p>
+
+                    </div>
+
+                </div>
 
             </div>
 
         </section>
 
     </main>
-
-
-    <footer>
-        Smart Timetable Generator
-    </footer>
 
 
     <script src="app.js"></script>
