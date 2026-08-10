@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Smart Timetable Generator</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <header class="topbar">
+        <div>
+            <h1>Smart Timetable Generator</h1>
+            <p>Automatic School Timetable Management System</p>
+        </div>
+
+        <div class="status">
+            <span class="status-dot"></span>
+            System Ready
+        </div>
+    </header>
+
+
+    <main class="container">
+
+        <section class="welcome">
+            <h2>Automatic Timetable Generator</h2>
+
+            <p>
+                Enter your school's information and let the system
+                automatically generate a complete timetable.
+            </p>
+
+            <button id="startBtn">
+                Start Setup
+            </button>
+        </section>
+
+
+        <section class="dashboard">
+
+            <div class="card">
+                <div class="card-icon">👨‍🏫</div>
+                <h3>Teachers</h3>
+                <strong id="teacherCount">0</strong>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">📚</div>
+                <h3>Subjects</h3>
+                <strong id="subjectCount">0</strong>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🏫</div>
+                <h3>Classes</h3>
+                <strong id="classCount">0</strong>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🚪</div>
+                <h3>Rooms</h3>
+                <strong id="roomCount">0</strong>
+            </div>
+
+        </section>
+
+
+        <section id="setupSection" class="setup-section hidden">
+
+            <h2>School Setup</h2>
+
+            <p>
+                We will configure your school before generating
+                the timetable.
+            </p>
+
+            <div class="setup-grid">
+
+                <button class="setup-card">
+                    👨‍🏫
+                    <span>Teachers</span>
+                </button>
+
+                <button class="setup-card">
+                    📚
+                    <span>Subjects</span>
+                </button>
+
+                <button class="setup-card">
+                    🏫
+                    <span>Classes</span>
+                </button>
+
+                <button class="setup-card">
+                    🚪
+                    <span>Rooms</span>
+                </button>
+
+                <button class="setup-card">
+                    🕐
+                    <span>Periods</span>
+                </button>
+
+                <button class="setup-card">
+                    ⚙️
+                    <span>Requirements</span>
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <footer>
+        Smart Timetable Generator
+    </footer>
+
+
+    <script src="app.js"></script>
+
+</body>
+</html>
