@@ -7539,19 +7539,207 @@ window.deleteStream =
 // LOAD STREAMS WHEN SCHOOL CHANGES
 // ============================================================
 
+
+
 if (schoolSelect) {
 
     schoolSelect.addEventListener(
         "change",
-        async function() {
+        async function () {
 
-            if (
-                timetableState.schoolId
-            ) {
+            const schoolId =
+                this.value;
 
-                await loadStreamClasses();
 
-                await loadStreams();
+            // =================================================
+            // NO SCHOOL SELECTED
+            // =================================================
+
+            if (!schoolId) {
+
+                timetableState.schoolId =
+                    null;
+
+                timetableState.schoolName =
+                    null;
+
+
+                const schoolNameElement =
+                    document.getElementById(
+                        "schoolName"
+                    );
+
+
+                if (schoolNameElement) {
+
+                    schoolNameElement.textContent =
+                        "No school selected";
+
+                }
+
+
+                resetDashboardCounts();
+
+
+                generatedTimetableEntries =
+                    [];
+
+
+                hideTimetableGenerationStatus();
+
+
+                const summary =
+                    document.getElementById(
+                        "timetableSummary"
+                    );
+
+
+                if (summary) {
+
+                    summary.style.display =
+                        "none";
+
+                }
+
+
+                const conflicts =
+                    document.getElementById(
+                        "timetableConflicts"
+                    );
+
+
+                if (conflicts) {
+
+                    conflicts.style.display =
+                        "none";
+
+                }
+
+
+                await loadGeneratedTimetable();
+
+
+                return;
+
+            }
+
+
+            // =================================================
+            // SAVE SELECTED SCHOOL
+            // =================================================
+
+            const selectedOption =
+                this.options[
+                    this.selectedIndex
+                ];
+
+
+            const schoolName =
+                selectedOption
+                    ? selectedOption.textContent
+                    : "Unknown School";
+
+
+            timetableState.schoolId =
+                schoolId;
+
+
+            timetableState.schoolName =
+                schoolName;
+
+
+            const schoolNameElement =
+                document.getElementById(
+                    "schoolName"
+                );
+
+
+            if (schoolNameElement) {
+
+                schoolNameElement.textContent =
+                    schoolName;
+
+            }
+
+
+            console.log(
+                "Selected timetable school:",
+                schoolName
+            );
+
+
+            console.log(
+                "Selected school ID:",
+                schoolId
+            );
+
+
+            // =================================================
+            // DASHBOARD
+            // =================================================
+
+            await loadDashboardData(
+                schoolId
+            );
+
+
+            // =================================================
+            // GENERATED TIMETABLE
+            // =================================================
+
+            generatedTimetableEntries =
+                [];
+
+
+            hideTimetableGenerationStatus();
+
+
+            const summary =
+                document.getElementById(
+                    "timetableSummary"
+                );
+
+
+            if (summary) {
+
+                summary.style.display =
+                    "none";
+
+            }
+
+
+            const conflicts =
+                document.getElementById(
+                    "timetableConflicts"
+                );
+
+
+            if (conflicts) {
+
+                conflicts.style.display =
+                    "none";
+
+            }
+
+
+            // =================================================
+            // LOAD GENERATOR DATA
+            // =================================================
+
+            try {
+
+                await loadTimetableFilters();
+
+                await loadGeneratedTimetable();
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "Failed to load timetable generator:",
+                    error
+                );
 
             }
 
@@ -7560,18 +7748,4 @@ if (schoolSelect) {
 
 }
 
-
-// ============================================================
-// INITIAL LOAD
-// ============================================================
-
-if (
-    timetableState.schoolId
-) {
-
-    loadStreamClasses();
-
-    loadStreams();
-
-}
 initializeApp();
