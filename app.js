@@ -6276,7 +6276,6 @@ if (periodTypeInput) {
 
 
 
-
 // ============================================================
 // LOAD CLASSES FOR STREAM FORM
 // ============================================================
@@ -6288,7 +6287,9 @@ if (periodTypeInput) {
 async function loadStreamClasses() {
 
     const classSelect =
-        document.getElementById("streamClassId");
+        document.getElementById(
+            "streamClassId"
+        );
 
 
     if (!classSelect) {
@@ -6320,7 +6321,7 @@ async function loadStreamClasses() {
 
 
     // --------------------------------------------------------
-    // LOADING
+    // SHOW LOADING
     // --------------------------------------------------------
 
     classSelect.innerHTML = `
@@ -6330,21 +6331,23 @@ async function loadStreamClasses() {
     `;
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // LOAD CLASSES
     // IMPORTANT:
-    // timetable_classes uses "name"
-    // --------------------------------------------------------
+    // timetable_classes uses class_name
+    // ========================================================
 
     const {
         data,
         error
     } = await supabaseClient
 
-        .from("timetable_classes")
+        .from(
+            "timetable_classes"
+        )
 
         .select(
-            "id, school_id, grade_id, name, academic_year"
+            "id, school_id, class_name, class_level, created_at"
         )
 
         .eq(
@@ -6353,16 +6356,16 @@ async function loadStreamClasses() {
         )
 
         .order(
-            "name",
+            "class_name",
             {
                 ascending: true
             }
         );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // ERROR
-    // --------------------------------------------------------
+    // ========================================================
 
     if (error) {
 
@@ -6390,9 +6393,9 @@ async function loadStreamClasses() {
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // NO CLASSES
-    // --------------------------------------------------------
+    // ========================================================
 
     if (
         !data ||
@@ -6405,19 +6408,21 @@ async function loadStreamClasses() {
             </option>
         `;
 
+
         console.log(
             "No classes found for school:",
             timetableState.schoolId
         );
+
 
         return;
 
     }
 
 
-    // --------------------------------------------------------
-    // BUILD OPTIONS
-    // --------------------------------------------------------
+    // ========================================================
+    // BUILD DROPDOWN
+    // ========================================================
 
     let html = `
         <option value="">
@@ -6430,14 +6435,16 @@ async function loadStreamClasses() {
         schoolClass => {
 
             html += `
+
                 <option
                     value="${schoolClass.id}">
 
                     ${escapeHtml(
-                        schoolClass.name || "Unnamed Class"
+                        schoolClass.class_name || "Unnamed Class"
                     )}
 
                 </option>
+
             `;
 
         }
@@ -6455,11 +6462,11 @@ async function loadStreamClasses() {
     );
 
 }
+// LOAD STREAMS
+// ============================================================
 
-// ============================================================
-// LOAD STREAMS - DIAGNOSTIC VERSION
-// ============================================================
-// ============================================================
+
+              // ============================================================
 // LOAD STREAMS
 // ============================================================
 
@@ -6507,7 +6514,7 @@ async function loadStreams() {
 
 
     // ========================================================
-    // LOAD CLASSES
+    // LOAD CLASSES SEPARATELY
     // ========================================================
 
     const {
@@ -6515,33 +6522,28 @@ async function loadStreams() {
         error: classesError
     } = await supabaseClient
 
-        .from("timetable_classes")
+        .from(
+            "timetable_classes"
+        )
 
         .select(
-            "id, name, grade_id, academic_year"
+            "id, class_name, class_level"
         )
 
         .eq(
             "school_id",
             timetableState.schoolId
-        )
-
-        .order(
-            "name",
-            {
-                ascending: true
-            }
         );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // CLASS ERROR
-    // --------------------------------------------------------
+    // ========================================================
 
     if (classesError) {
 
         console.error(
-            "Failed to load classes for streams:",
+            "Failed to load classes:",
             classesError
         );
 
@@ -6578,7 +6580,7 @@ async function loadStreams() {
             classMap[
                 schoolClass.id
             ] =
-                schoolClass.name ||
+                schoolClass.class_name ||
                 "Unknown Class";
 
         }
@@ -6586,7 +6588,7 @@ async function loadStreams() {
 
 
     console.log(
-        "Class lookup:",
+        "Stream class map:",
         classMap
     );
 
@@ -6600,7 +6602,9 @@ async function loadStreams() {
         error
     } = await supabaseClient
 
-        .from("timetable_streams")
+        .from(
+            "timetable_streams"
+        )
 
         .select(
             "id, school_id, class_id, stream_name, room_name, capacity, created_at"
@@ -6619,9 +6623,9 @@ async function loadStreams() {
         );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // STREAM ERROR
-    // --------------------------------------------------------
+    // ========================================================
 
     if (error) {
 
@@ -6650,9 +6654,9 @@ async function loadStreams() {
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // NO STREAMS
-    // --------------------------------------------------------
+    // ========================================================
 
     if (
         !data ||
@@ -6725,9 +6729,11 @@ async function loadStreams() {
                     <td>
 
                         <strong>
+
                             ${escapeHtml(
                                 className
                             )}
+
                         </strong>
 
                     </td>
@@ -6810,11 +6816,6 @@ async function loadStreams() {
     );
 
 }
-// ============================================================
-// EDIT STREAM
-// ============================================================
-
-
 
 const addStreamBtn =
     document.getElementById(
