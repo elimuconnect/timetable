@@ -25,6 +25,29 @@ let timetableGenerationRunning = false;
 
 
 // ============================================================
+// EXPOSE FUNCTIONS GLOBALLY
+// ============================================================
+
+window.generateTimetable =
+    generateTimetable;
+
+window.regenerateTimetable =
+    regenerateTimetable;
+
+window.clearGeneratedTimetable =
+    clearGeneratedTimetable;
+
+window.loadGeneratedTimetable =
+    loadGeneratedTimetable;
+
+window.printGeneratedTimetable =
+    printGeneratedTimetable;
+
+window.initializeTimetableGenerator =
+    initializeTimetableGenerator;
+
+
+// ============================================================
 // GET TIMETABLE DOM ELEMENTS
 // ============================================================
 
@@ -4750,28 +4773,6 @@ async function initializeTimetableGenerator() {
 
 }
 
-
-// ============================================================
-// EXPOSE FUNCTIONS GLOBALLY
-// ============================================================
-
-window.generateTimetable =
-    generateTimetable;
-
-window.regenerateTimetable =
-    regenerateTimetable;
-
-window.clearGeneratedTimetable =
-    clearGeneratedTimetable;
-
-window.loadGeneratedTimetable =
-    loadGeneratedTimetable;
-
-window.printGeneratedTimetable =
-    printGeneratedTimetable;
-
-window.initializeTimetableGenerator =
-    initializeTimetableGenerator;
 
 
 // ============================================================
