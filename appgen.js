@@ -860,6 +860,24 @@ function groupPeriodsByDay(
 // Double lessons are marked separately.
 // ============================================================
 
+// ============================================================
+// CREATE LESSON TASKS
+// ============================================================
+//
+// Example:
+//
+// lessons_per_week = 5
+// double_lessons_per_week = 2
+//
+// Creates:
+//   Double block 1 = 2 periods
+//   Double block 2 = 2 periods
+//   Single lesson  = 1 period
+//
+// Total = 5 periods
+//
+// ============================================================
+
 function createLessonTasks(
     requirements,
     lookup
@@ -953,7 +971,7 @@ function createLessonTasks(
 
 
             // ------------------------------------------------
-            // HOW MANY LESSONS ARE PART OF DOUBLE BLOCKS?
+            // HOW MANY DOUBLE BLOCKS CAN ACTUALLY FIT?
             // ------------------------------------------------
 
             const requestedDoubleBlocks =
@@ -965,12 +983,8 @@ function createLessonTasks(
                 );
 
 
-            let remainingDoubleBlocks =
-                requestedDoubleBlocks;
-
-
             // ------------------------------------------------
-            // CREATE DOUBLE BLOCK TASKS
+            // CREATE DOUBLE LESSON TASKS
             // ------------------------------------------------
 
             for (
@@ -1014,7 +1028,10 @@ function createLessonTasks(
                         true,
 
                     lessonIndex:
-                        i
+                        i,
+
+                    lessonsRequired:
+                        2
 
                 });
 
@@ -1073,7 +1090,11 @@ function createLessonTasks(
                         false,
 
                     lessonIndex:
-                        requestedDoubleBlocks + i
+                        requestedDoubleBlocks +
+                        i,
+
+                    lessonsRequired:
+                        1
 
                 });
 
@@ -1117,10 +1138,34 @@ function createLessonTasks(
     );
 
 
+    console.table(
+        tasks.map(
+            task => ({
+                taskId:
+                    task.taskId,
+
+                streamId:
+                    task.streamId,
+
+                subjectId:
+                    task.subjectId,
+
+                teacherId:
+                    task.teacherId,
+
+                double:
+                    task.isDouble,
+
+                periods:
+                    task.lessonsRequired
+            })
+        )
+    );
+
+
     return tasks;
 
 }
-
 
 // ============================================================
 // SHUFFLE ARRAY
@@ -1713,16 +1758,16 @@ function findSingleLessonSlot(
 // FIND DOUBLE LESSON SLOT
 // ============================================================
 
+// ============================================================
+// FIND DOUBLE LESSON SLOT
+// ============================================================
+
 function findDoubleLessonSlot(
     task,
     periods,
     rooms,
     indexes
 ) {
-
-    // --------------------------------------------------------
-    // Group periods by day.
-    // --------------------------------------------------------
 
     const periodsByDay =
         groupPeriodsByDay(
@@ -1748,6 +1793,10 @@ function findDoubleLessonSlot(
                 day
             ];
 
+
+        // ----------------------------------------------------
+        // Need two consecutive teaching periods
+        // ----------------------------------------------------
 
         for (
             let i = 0;
@@ -1808,6 +1857,10 @@ function findDoubleLessonSlot(
             }
 
 
+            // ------------------------------------------------
+            // Find compatible room
+            // ------------------------------------------------
+
             const compatibleRooms =
                 getCompatibleRooms(
                     task,
@@ -1829,6 +1882,10 @@ function findDoubleLessonSlot(
                 of compatibleRooms
             ) {
 
+                // --------------------------------------------
+                // Check FIRST period
+                // --------------------------------------------
+
                 const firstCheck =
                     checkSingleSlotConflict(
                         task,
@@ -1846,6 +1903,10 @@ function findDoubleLessonSlot(
 
                 }
 
+
+                // --------------------------------------------
+                // Check SECOND period
+                // --------------------------------------------
 
                 const secondCheck =
                     checkSingleSlotConflict(
@@ -1867,11 +1928,14 @@ function findDoubleLessonSlot(
 
                 return {
 
-                    firstPeriod,
+                    firstPeriod:
+                        firstPeriod,
 
-                    secondPeriod,
+                    secondPeriod:
+                        secondPeriod,
 
-                    room
+                    room:
+                        room
 
                 };
 
@@ -1885,7 +1949,6 @@ function findDoubleLessonSlot(
     return null;
 
 }
-
 
 // ============================================================
 // GENERATE TIMETABLE
@@ -4599,62 +4662,6 @@ if (
 // listeners.
 // ============================================================
 
-if (
-    typeof schoolSelect !== "undefined" &&
-    schoolSelect
-) {
-
-    schoolSelect.addEventListener(
-        "change",
-        async function () {
-
-            generatedTimetableEntries =
-                [];
-
-
-            hideTimetableGenerationStatus();
-
-
-            const summary =
-                document.getElementById(
-                    "timetableSummary"
-                );
-
-
-            if (summary) {
-
-                summary.style.display =
-                    "none";
-
-            }
-
-
-            const conflicts =
-                document.getElementById(
-                    "timetableConflicts"
-                );
-
-
-            if (conflicts) {
-
-                conflicts.style.display =
-                    "none";
-
-            }
-
-
-            if (
-                timetableState.schoolId
-            ) {
-
-                await loadGeneratedTimetable();
-
-            }
-
-        }
-    );
-
-}
 
 
 // ============================================================
