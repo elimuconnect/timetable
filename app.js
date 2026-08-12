@@ -6236,6 +6236,46 @@ if (periodTypeInput) {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const addStreamBtn =
     document.getElementById(
         "addStreamBtn"
@@ -6478,9 +6518,203 @@ function openStreamForm(
 }
 
 
+
+
+
+
 // ============================================================
 // LOAD CLASSES FOR STREAM FORM
 // ============================================================
+
+async function loadStreamClasses() {
+
+    const classSelect =
+        document.getElementById(
+            "streamClassId"
+        );
+
+
+    // --------------------------------------------------------
+    // CHECK ELEMENT
+    // --------------------------------------------------------
+
+    if (!classSelect) {
+
+        console.error(
+            "streamClassId was not found."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        classSelect.innerHTML = `
+            <option value="">
+                Please select a school first
+            </option>
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOADING
+    // --------------------------------------------------------
+
+    classSelect.innerHTML = `
+        <option value="">
+            Loading classes...
+        </option>
+    `;
+
+
+    console.log(
+        "Loading classes for school:",
+        timetableState.schoolId
+    );
+
+
+    // --------------------------------------------------------
+    // LOAD CLASSES
+    // --------------------------------------------------------
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_classes"
+        )
+
+        .select(
+            "id, name, grade_id, academic_year"
+        )
+
+        .eq(
+            "school_id",
+            timetableState.schoolId
+        )
+
+        .order(
+            "name",
+            {
+                ascending: true
+            }
+        );
+
+
+    // --------------------------------------------------------
+    // DATABASE ERROR
+    // --------------------------------------------------------
+
+    if (error) {
+
+        console.error(
+            "Failed to load stream classes:",
+            error
+        );
+
+
+        classSelect.innerHTML = `
+            <option value="">
+                Failed to load classes
+            </option>
+        `;
+
+
+        alert(
+            "Failed to load classes:\n\n" +
+            error.message
+        );
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // NO CLASSES
+    // --------------------------------------------------------
+
+    if (
+        !data ||
+        data.length === 0
+    ) {
+
+        console.warn(
+            "No classes found for school:",
+            timetableState.schoolId
+        );
+
+
+        classSelect.innerHTML = `
+            <option value="">
+                No classes found
+            </option>
+        `;
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // BUILD OPTIONS
+    // --------------------------------------------------------
+
+    let html = `
+        <option value="">
+            Select class
+        </option>
+    `;
+
+
+    data.forEach(
+        schoolClass => {
+
+            html += `
+                <option
+                    value="${schoolClass.id}">
+
+                    ${escapeHtml(
+                        schoolClass.name
+                    )}
+
+                </option>
+            `;
+
+        }
+    );
+
+
+    classSelect.innerHTML =
+        html;
+
+
+    console.log(
+        "Stream classes loaded:",
+        data.length
+    );
+
+    console.log(
+        "Classes:",
+        data
+    );
+
+}
+
 
 
 
