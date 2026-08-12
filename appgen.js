@@ -4511,101 +4511,136 @@ function printGeneratedTimetable() {
 // EVENT: GENERATE
 // ============================================================
 
-if (
-    generateTimetableBtn
-) {
+// ============================================================
+// EVENT: GENERATE TIMETABLE
+// ============================================================
 
-    generateTimetableBtn.addEventListener(
-        "click",
-        async function () {
+document.addEventListener(
+    "click",
+    async function (event) {
 
-            console.log(
-                "GENERATE TIMETABLE BUTTON CLICKED"
+        const button =
+            event.target.closest(
+                "#generateTimetableBtn"
             );
 
-
-            await generateTimetable();
-
+        if (!button) {
+            return;
         }
-    );
 
-}
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "GENERATE TIMETABLE BUTTON CLICKED"
+        );
+
+        console.log(
+            "Button element:",
+            button
+        );
+
+        console.log(
+            "School:",
+            timetableState.schoolId
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        await generateTimetable();
+
+    }
+);
 
 
 // ============================================================
-// EVENT: REGENERATE
+// EVENT: REGENERATE TIMETABLE
 // ============================================================
 
-if (
-    regenerateTimetableBtn
-) {
+document.addEventListener(
+    "click",
+    async function (event) {
 
-    regenerateTimetableBtn.addEventListener(
-        "click",
-        async function () {
-
-            console.log(
-                "REGENERATE TIMETABLE BUTTON CLICKED"
+        const button =
+            event.target.closest(
+                "#regenerateTimetableBtn"
             );
 
-
-            await regenerateTimetable();
-
+        if (!button) {
+            return;
         }
-    );
 
-}
+        console.log(
+            "REGENERATE TIMETABLE BUTTON CLICKED"
+        );
+
+        await regenerateTimetable();
+
+    }
+);
 
 
 // ============================================================
 // EVENT: CLEAR
 // ============================================================
 
-if (
-    clearTimetableBtn
-) {
+// ============================================================
+// EVENT: CLEAR TIMETABLE
+// ============================================================
 
-    clearTimetableBtn.addEventListener(
-        "click",
-        async function () {
+document.addEventListener(
+    "click",
+    async function (event) {
 
-            console.log(
-                "CLEAR TIMETABLE BUTTON CLICKED"
+        const button =
+            event.target.closest(
+                "#clearTimetableBtn"
             );
 
-
-            await clearGeneratedTimetable();
-
+        if (!button) {
+            return;
         }
-    );
 
-}
+        console.log(
+            "CLEAR TIMETABLE BUTTON CLICKED"
+        );
 
+        await clearGeneratedTimetable();
 
+    }
+);
 // ============================================================
 // EVENT: PRINT
 // ============================================================
 
-if (
-    printTimetableBtn
-) {
+// ============================================================
+// EVENT: PRINT TIMETABLE
+// ============================================================
 
-    printTimetableBtn.addEventListener(
-        "click",
-        function () {
+document.addEventListener(
+    "click",
+    function (event) {
 
-            console.log(
-                "PRINT TIMETABLE BUTTON CLICKED"
+        const button =
+            event.target.closest(
+                "#printTimetableBtn"
             );
 
-
-            printGeneratedTimetable();
-
+        if (!button) {
+            return;
         }
-    );
 
-}
+        console.log(
+            "PRINT TIMETABLE BUTTON CLICKED"
+        );
 
+        printGeneratedTimetable();
+
+    }
+);
 
 // ============================================================
 // EVENT: STREAM FILTER
