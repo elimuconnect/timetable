@@ -1,8 +1,3 @@
-// ============================================================
-// SMART TIMETABLE GENERATOR
-// app.js
-// ============================================================
-
 
 // ============================================================
 // 1. SUPABASE CONFIGURATION
@@ -14,7 +9,6 @@ const SUPABASE_URL =
 const SUPABASE_ANON_KEY =
     "sb_publishable_-BGJLAySaH7bQ5lBIZF9zg_eohK-xEn";
 
-
 // Create Supabase client
 const supabaseClient = supabase.createClient(
     SUPABASE_URL,
@@ -25,7 +19,6 @@ console.log(
     "Smart Timetable connected to Supabase:",
     SUPABASE_URL
 );
-
 
 // ============================================================
 // 2. GLOBAL STATE
@@ -43,7 +36,6 @@ const timetableState = {
     term: "1"
 
 };
-
 
 // ============================================================
 // 3. NAVIGATION
@@ -64,7 +56,6 @@ document
                     return;
                 }
 
-
                 // Hide all sections
 
                 document
@@ -77,7 +68,6 @@ document
 
                     });
 
-
                 // Remove active navigation
 
                 document
@@ -89,7 +79,6 @@ document
                         );
 
                     });
-
 
                 // Show selected section
 
@@ -106,7 +95,6 @@ document
 
                 }
 
-
                 // Activate button
 
                 button.classList.add(
@@ -118,7 +106,6 @@ document
 
     });
 
-
 // ============================================================
 // 4. LOAD TIMETABLE SCHOOLS
 // ============================================================
@@ -128,7 +115,6 @@ async function loadSchools() {
     console.log(
         "Loading timetable schools..."
     );
-
 
     const {
         data,
@@ -148,7 +134,6 @@ async function loadSchools() {
             }
         );
 
-
     console.log(
         "Timetable schools response:",
         {
@@ -156,7 +141,6 @@ async function loadSchools() {
             error
         }
     );
-
 
     if (error) {
 
@@ -174,12 +158,10 @@ async function loadSchools() {
 
     }
 
-
     const select =
         document.getElementById(
             "schoolSelect"
         );
-
 
     if (!select) {
 
@@ -191,23 +173,19 @@ async function loadSchools() {
 
     }
 
-
-    select.innerHTML =
-        `
+    select.innerHTML = `
         <option value="">
             Select school
         </option>
-        `;
-
+    `;
 
     if (!data || data.length === 0) {
 
-        select.innerHTML =
-            `
+        select.innerHTML = `
             <option value="">
                 No schools found
             </option>
-            `;
+        `;
 
         console.warn(
             "No timetable schools were returned from Supabase."
@@ -217,7 +195,6 @@ async function loadSchools() {
 
     }
 
-
     data.forEach(
         school => {
 
@@ -226,14 +203,11 @@ async function loadSchools() {
                     "option"
                 );
 
-
             option.value =
                 school.id;
 
-
             option.textContent =
                 school.name;
-
 
             select.appendChild(
                 option
@@ -242,13 +216,11 @@ async function loadSchools() {
         }
     );
 
-
     console.log(
         `Loaded ${data.length} timetable schools.`
     );
 
 }
-
 
 // ============================================================
 // 5. SCHOOL SELECTION
@@ -259,7 +231,6 @@ const schoolSelect =
         "schoolSelect"
     );
 
-
 if (schoolSelect) {
 
     schoolSelect.addEventListener(
@@ -269,6 +240,9 @@ if (schoolSelect) {
             const schoolId =
                 this.value;
 
+            // ------------------------------------------------
+            // NO SCHOOL SELECTED
+            // ------------------------------------------------
 
             if (!schoolId) {
 
@@ -278,66 +252,93 @@ if (schoolSelect) {
                 timetableState.schoolName =
                     null;
 
+                const schoolNameElement =
+                    document.getElementById(
+                        "schoolName"
+                    );
 
-                document.getElementById(
-                    "schoolName"
-                ).textContent =
-                    "No school selected";
+                if (schoolNameElement) {
 
+                    schoolNameElement.textContent =
+                        "No school selected";
+
+                }
 
                 resetDashboardCounts();
-
 
                 return;
 
             }
 
+            // ------------------------------------------------
+            // GET SELECTED SCHOOL
+            // ------------------------------------------------
 
             const selectedOption =
                 this.options[
                     this.selectedIndex
                 ];
 
-
             const schoolName =
                 selectedOption.textContent;
 
+            // ------------------------------------------------
+            // UPDATE GLOBAL STATE
+            // ------------------------------------------------
 
             timetableState.schoolId =
                 schoolId;
 
-
             timetableState.schoolName =
                 schoolName;
 
+            const schoolNameElement =
+                document.getElementById(
+                    "schoolName"
+                );
 
-            document.getElementById(
-                "schoolName"
-            ).textContent =
-                schoolName;
+            if (schoolNameElement) {
 
+                schoolNameElement.textContent =
+                    schoolName;
+
+            }
 
             console.log(
                 "Selected timetable school:",
                 schoolName
             );
 
-
             console.log(
                 "Selected school ID:",
                 schoolId
             );
 
+            // ------------------------------------------------
+            // LOAD DASHBOARD DATA
+            // ------------------------------------------------
 
             await loadDashboardData(
                 schoolId
             );
 
+            // ------------------------------------------------
+            // LOAD TIMETABLE GENERATOR
+            // ------------------------------------------------
+
+            if (
+                typeof initializeTimetableGenerator ===
+                "function"
+            ) {
+
+                await initializeTimetableGenerator();
+
+            }
+
         }
     );
 
 }
-
 
 // ============================================================
 // 6. LOAD DASHBOARD DATA
@@ -364,7 +365,6 @@ async function loadDashboardData(
         "======================================"
     );
 
-
     // --------------------------------------------------------
     // TEACHERS
     // --------------------------------------------------------
@@ -375,7 +375,6 @@ async function loadDashboardData(
         schoolId,
         "teacher_name"
     );
-
 
     // --------------------------------------------------------
     // SUBJECTS
@@ -388,7 +387,6 @@ async function loadDashboardData(
         "subject_name"
     );
 
-
     // --------------------------------------------------------
     // STREAMS
     // --------------------------------------------------------
@@ -400,7 +398,6 @@ async function loadDashboardData(
         "stream_name"
     );
 
-
     // --------------------------------------------------------
     // ROOMS
     // --------------------------------------------------------
@@ -411,7 +408,6 @@ async function loadDashboardData(
         schoolId,
         "room_name"
     );
-
 
     console.log(
         "======================================"
@@ -426,7 +422,6 @@ async function loadDashboardData(
     );
 
 }
-
 
 // ============================================================
 // 7. LOAD INDIVIDUAL TABLE COUNT
@@ -443,7 +438,6 @@ async function loadTableCount(
         `Loading ${tableName}...`
     );
 
-
     const {
         data,
         error
@@ -455,7 +449,6 @@ async function loadTableCount(
             `id, school_id, ${displayColumn}`
         );
 
-
     console.log(
         `${tableName} response:`,
         {
@@ -463,7 +456,6 @@ async function loadTableCount(
             error
         }
     );
-
 
     // --------------------------------------------------------
     // ERROR
@@ -476,12 +468,10 @@ async function loadTableCount(
             error
         );
 
-
         const element =
             document.getElementById(
                 elementId
             );
-
 
         if (element) {
 
@@ -490,17 +480,14 @@ async function loadTableCount(
 
         }
 
-
         showDatabaseError(
             tableName,
             error
         );
 
-
         return;
 
     }
-
 
     // --------------------------------------------------------
     // NO DATA
@@ -513,7 +500,6 @@ async function loadTableCount(
                 elementId
             );
 
-
         if (element) {
 
             element.textContent =
@@ -521,16 +507,13 @@ async function loadTableCount(
 
         }
 
-
         console.warn(
             `${tableName}: Supabase returned no data.`
         );
 
-
         return;
 
     }
-
 
     // --------------------------------------------------------
     // FILTER BY SCHOOL
@@ -540,9 +523,9 @@ async function loadTableCount(
         data.filter(
             row =>
                 String(row.school_id)
-                === String(schoolId)
+                ===
+                String(schoolId)
         );
-
 
     console.log(
         `${tableName}:`,
@@ -551,7 +534,6 @@ async function loadTableCount(
         "Selected school rows =",
         schoolRows.length
     );
-
 
     // --------------------------------------------------------
     // DISPLAY COUNT
@@ -562,7 +544,6 @@ async function loadTableCount(
             elementId
         );
 
-
     if (element) {
 
         element.textContent =
@@ -570,9 +551,7 @@ async function loadTableCount(
 
     }
 
-
 }
-
 
 // ============================================================
 // 8. RESET DASHBOARD COUNTS
@@ -587,7 +566,6 @@ function resetDashboardCounts() {
         "roomCount"
     ];
 
-
     counts.forEach(
         id => {
 
@@ -595,7 +573,6 @@ function resetDashboardCounts() {
                 document.getElementById(
                     id
                 );
-
 
             if (element) {
 
@@ -608,7 +585,6 @@ function resetDashboardCounts() {
     );
 
 }
-
 
 // ============================================================
 // 9. DATABASE ERROR DISPLAY
@@ -658,7 +634,6 @@ function showDatabaseError(
 
 }
 
-
 // ============================================================
 // 10. ACADEMIC YEAR
 // ============================================================
@@ -667,7 +642,6 @@ const academicYearInput =
     document.getElementById(
         "academicYear"
     );
-
 
 if (academicYearInput) {
 
@@ -688,7 +662,6 @@ if (academicYearInput) {
 
 }
 
-
 // ============================================================
 // 11. TERM
 // ============================================================
@@ -697,7 +670,6 @@ const termSelect =
     document.getElementById(
         "term"
     );
-
 
 if (termSelect) {
 
@@ -718,123 +690,19 @@ if (termSelect) {
 
 }
 
-
 // ============================================================
-// 12. GENERATE TIMETABLE
+// 12. AUTOMATIC TIMETABLE GENERATOR
 // ============================================================
-
-const generateButton =
-    document.getElementById(
-        "generateBtn"
-    );
-
-
-if (generateButton) {
-
-    generateButton.addEventListener(
-        "click",
-        async function () {
-
-            // -----------------------------------------------
-            // CHECK SCHOOL
-            // -----------------------------------------------
-
-            if (!timetableState.schoolId) {
-
-                alert(
-                    "Please select a school first."
-                );
-
-                return;
-
-            }
-
-
-            // -----------------------------------------------
-            // CONFIRM
-            // -----------------------------------------------
-
-            const confirmed =
-                confirm(
-                    `Generate timetable for ${timetableState.schoolName}?`
-                );
-
-
-            if (!confirmed) {
-
-                return;
-
-            }
-
-
-            console.log(
-                "Starting timetable generation..."
-            );
-
-
-            // -----------------------------------------------
-            // TEMPORARY MESSAGE
-            // -----------------------------------------------
-
-            generateButton.disabled =
-                true;
-
-
-            generateButton.textContent =
-                "⏳ Preparing...";
-
-
-            try {
-
-                /*
-                 * The actual automatic timetable
-                 * generation algorithm will be added
-                 * in a later step.
-                 */
-
-                await new Promise(
-                    resolve =>
-                        setTimeout(
-                            resolve,
-                            1000
-                        )
-                );
-
-
-                alert(
-                    "The timetable generator is ready to be connected. We will build the automatic scheduling algorithm next."
-                );
-
-
-            } catch (error) {
-
-                console.error(
-                    "Generation error:",
-                    error
-                );
-
-
-                alert(
-                    "An error occurred while preparing the timetable."
-                );
-
-
-            } finally {
-
-                generateButton.disabled =
-                    false;
-
-
-                generateButton.textContent =
-                    "⚡ Generate Timetable";
-
-            }
-
-        }
-    );
-
-}
-
+//
+// IMPORTANT:
+// The actual generator is now in:
+//
+// appgen.js
+//
+// Do NOT put the large generator here.
+//
+// appgen.js is loaded after app.js.
+// ============================================================
 
 // ============================================================
 // 13. INITIALIZE APPLICATION
@@ -854,16 +722,13 @@ async function initializeApp() {
         "======================================"
     );
 
-
     try {
 
         await loadSchools();
 
-
         console.log(
             "Application initialized successfully."
         );
-
 
     } catch (error) {
 
@@ -875,6 +740,12 @@ async function initializeApp() {
     }
 
 }
+
+// ============================================================
+// START APPLICATION
+// ============================================================
+
+initializeApp();
 
 
 
