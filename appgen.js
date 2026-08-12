@@ -29,10 +29,6 @@ let timetableGenerationRunning = false;
 // GET TIMETABLE DOM ELEMENTS
 // ============================================================
 
-// ============================================================
-// GET TIMETABLE DOM ELEMENTS
-// ============================================================
-
 const generateTimetableBtn =
     document.getElementById(
         "generateTimetableBtn"
@@ -68,6 +64,37 @@ const timetableViewMode =
         "timetableViewMode"
     );
 
+
+console.log(
+    "Generate button:",
+    generateTimetableBtn
+);
+
+console.log(
+    "Timetable generator DOM check:",
+    {
+        generate:
+            !!generateTimetableBtn,
+
+        regenerate:
+            !!regenerateTimetableBtn,
+
+        clear:
+            !!clearTimetableBtn,
+
+        print:
+            !!printTimetableBtn,
+
+        streamFilter:
+            !!timetableStreamFilter,
+
+        dayFilter:
+            !!timetableDayFilter,
+
+        viewMode:
+            !!timetableViewMode
+    }
+);
 
 // ============================================================
 // DOM CHECK
