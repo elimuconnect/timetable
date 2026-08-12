@@ -1728,7 +1728,6 @@ function createGeneratedEntry(
 
 }
 
-
 // ============================================================
 // FIND SINGLE LESSON SLOT
 // ============================================================
@@ -1741,14 +1740,17 @@ function findSingleLessonSlot(
 ) {
 
     const shuffledPeriods =
-        shuffleArray(
-            periods
-        );
+        shuffleArray(periods);
 
+    let attempts = 0;
+
+    let streamConflicts = 0;
+    let teacherConflicts = 0;
+    let roomConflicts = 0;
+    let dailyLimitConflicts = 0;
 
     for (
-        const period
-        of shuffledPeriods
+        const period of shuffledPeriods
     ) {
 
         const compatibleRooms =
@@ -1757,24 +1759,40 @@ function findSingleLessonSlot(
                 rooms
             );
 
-
-        // ----------------------------------------------------
-        // If no room is required.
-        // ----------------------------------------------------
-
         if (
             compatibleRooms.length === 0
         ) {
 
-            continue;
+            console.warn(
+                "NO COMPATIBLE ROOMS",
+                {
+                    taskId: task.taskId,
+                    requiresRoom: task.requiresRoom,
+                    requestedRoomType: task.roomType,
+                    availableRooms: rooms.map(
+                        room => ({
+                            id: room.id,
+                            name:
+                                getTimetableRoomName(
+                                    room
+                                ),
+                            type:
+                                getTimetableRoomType(
+                                    room
+                                )
+                        })
+                    )
+                }
+            );
 
+            return null;
         }
 
-
         for (
-            const room
-            of compatibleRooms
+            const room of compatibleRooms
         ) {
+
+            attempts++;
 
             const check =
                 checkSingleSlotConflict(
@@ -1784,32 +1802,103 @@ function findSingleLessonSlot(
                     indexes
                 );
 
-
             if (
                 !check.valid
             ) {
 
-                continue;
+                if (
+                    check.reason.includes(
+                        "Stream already"
+                    )
+                ) {
 
+                    streamConflicts++;
+
+                }
+
+                else if (
+                    check.reason.includes(
+                        "Teacher is already"
+                    )
+                ) {
+
+                    teacherConflicts++;
+
+                }
+
+                else if (
+                    check.reason.includes(
+                        "Room is already"
+                    )
+                ) {
+
+                    roomConflicts++;
+
+                }
+
+                else if (
+                    check.reason.includes(
+                        "Maximum lessons"
+                    )
+                ) {
+
+                    dailyLimitConflicts++;
+
+                }
+
+                continue;
             }
 
+            console.log(
+                "SLOT FOUND",
+                {
+                    taskId:
+                        task.taskId,
+
+                    period:
+                        period,
+
+                    room:
+                        room
+                }
+            );
 
             return {
-
                 period,
                 room
-
             };
-
         }
-
     }
 
+    console.error(
+        "FAILED TO FIND SINGLE LESSON SLOT",
+        {
+            taskId:
+                task.taskId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId,
+
+            teacherId:
+                task.teacherId,
+
+            attempts,
+
+            streamConflicts,
+
+            teacherConflicts,
+
+            roomConflicts,
+
+            dailyLimitConflicts
+        }
+    );
 
     return null;
-
 }
-
 
 // ============================================================
 // FIND DOUBLE LESSON SLOT
@@ -1831,7 +1920,6 @@ function findDoubleLessonSlot(
             periods
         );
 
-
     const days =
         shuffleArray(
             Object.keys(
@@ -1839,38 +1927,30 @@ function findDoubleLessonSlot(
             )
         );
 
+    let consecutivePairs = 0;
+    let streamConflicts = 0;
+    let teacherConflicts = 0;
+    let roomConflicts = 0;
+    let dailyLimitConflicts = 0;
 
     for (
-        const day
-        of days
+        const day of days
     ) {
 
         const dayPeriods =
-            periodsByDay[
-                day
-            ];
-
-
-        // ----------------------------------------------------
-        // Need two consecutive teaching periods
-        // ----------------------------------------------------
+            periodsByDay[day];
 
         for (
             let i = 0;
-
-            i <
-            dayPeriods.length - 1;
-
+            i < dayPeriods.length - 1;
             i++
         ) {
 
             const firstPeriod =
                 dayPeriods[i];
 
-
             const secondPeriod =
                 dayPeriods[i + 1];
-
 
             if (
                 !arePeriodsConsecutive(
@@ -1880,19 +1960,14 @@ function findDoubleLessonSlot(
             ) {
 
                 continue;
-
             }
 
-
-            // ------------------------------------------------
-            // Maximum daily lessons
-            // ------------------------------------------------
+            consecutivePairs++;
 
             const maxPerDay =
                 Number(
                     task.maxLessonsPerDay
                 ) || 0;
-
 
             const currentCount =
                 getDailyStreamLessonCount(
@@ -1901,22 +1976,15 @@ function findDoubleLessonSlot(
                     firstPeriod.day_number
                 );
 
-
             if (
                 maxPerDay > 0 &&
-                (
-                    currentCount + 2
-                ) > maxPerDay
+                currentCount + 2 > maxPerDay
             ) {
 
+                dailyLimitConflicts++;
+
                 continue;
-
             }
-
-
-            // ------------------------------------------------
-            // Find compatible room
-            // ------------------------------------------------
 
             const compatibleRooms =
                 getCompatibleRooms(
@@ -1924,24 +1992,44 @@ function findDoubleLessonSlot(
                     rooms
                 );
 
-
             if (
                 compatibleRooms.length === 0
             ) {
 
-                continue;
+                console.warn(
+                    "NO COMPATIBLE ROOMS FOR DOUBLE",
+                    {
+                        taskId:
+                            task.taskId,
 
+                        requestedRoomType:
+                            task.roomType,
+
+                        requiresRoom:
+                            task.requiresRoom,
+
+                        rooms:
+                            rooms.map(
+                                room => ({
+                                    name:
+                                        getTimetableRoomName(
+                                            room
+                                        ),
+                                    type:
+                                        getTimetableRoomType(
+                                            room
+                                        )
+                                })
+                            )
+                    }
+                );
+
+                return null;
             }
 
-
             for (
-                const room
-                of compatibleRooms
+                const room of compatibleRooms
             ) {
-
-                // --------------------------------------------
-                // Check FIRST period
-                // --------------------------------------------
 
                 const firstCheck =
                     checkSingleSlotConflict(
@@ -1951,19 +2039,42 @@ function findDoubleLessonSlot(
                         indexes
                     );
 
-
                 if (
                     !firstCheck.valid
                 ) {
 
+                    if (
+                        firstCheck.reason.includes(
+                            "Stream already"
+                        )
+                    ) {
+
+                        streamConflicts++;
+
+                    }
+
+                    else if (
+                        firstCheck.reason.includes(
+                            "Teacher is already"
+                        )
+                    ) {
+
+                        teacherConflicts++;
+
+                    }
+
+                    else if (
+                        firstCheck.reason.includes(
+                            "Room is already"
+                        )
+                    ) {
+
+                        roomConflicts++;
+
+                    }
+
                     continue;
-
                 }
-
-
-                // --------------------------------------------
-                // Check SECOND period
-                // --------------------------------------------
 
                 const secondCheck =
                     checkSingleSlotConflict(
@@ -1973,15 +2084,59 @@ function findDoubleLessonSlot(
                         indexes
                     );
 
-
                 if (
                     !secondCheck.valid
                 ) {
 
-                    continue;
+                    if (
+                        secondCheck.reason.includes(
+                            "Stream already"
+                        )
+                    ) {
 
+                        streamConflicts++;
+
+                    }
+
+                    else if (
+                        secondCheck.reason.includes(
+                            "Teacher is already"
+                        )
+                    ) {
+
+                        teacherConflicts++;
+
+                    }
+
+                    else if (
+                        secondCheck.reason.includes(
+                            "Room is already"
+                        )
+                    ) {
+
+                        roomConflicts++;
+
+                    }
+
+                    continue;
                 }
 
+                console.log(
+                    "DOUBLE SLOT FOUND",
+                    {
+                        taskId:
+                            task.taskId,
+
+                        firstPeriod:
+                            firstPeriod,
+
+                        secondPeriod:
+                            secondPeriod,
+
+                        room:
+                            room
+                    }
+                );
 
                 return {
 
@@ -1995,16 +2150,38 @@ function findDoubleLessonSlot(
                         room
 
                 };
-
             }
-
         }
-
     }
 
+    console.error(
+        "FAILED TO FIND DOUBLE LESSON SLOT",
+        {
+            taskId:
+                task.taskId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId,
+
+            teacherId:
+                task.teacherId,
+
+            consecutivePairs,
+
+            streamConflicts,
+
+            teacherConflicts,
+
+            roomConflicts,
+
+            dailyLimitConflicts
+        }
+    );
 
     return null;
-
 }
 
 // ============================================================
@@ -2084,6 +2261,51 @@ async function generateTimetable() {
             );
 
 
+console.log(
+    "TOTAL PERIODS:",
+    data.periods.length
+);
+
+console.log(
+    "TEACHING PERIODS:",
+    teachingPeriods.length
+);
+
+console.table(
+    teachingPeriods.map(
+        period => ({
+            id:
+                period.id,
+
+            day:
+                period.day_name,
+
+            dayNumber:
+                period.day_number,
+
+            order:
+                period.period_order,
+
+            number:
+                period.period_number,
+
+            start:
+                period.start_time,
+
+            end:
+                period.end_time,
+
+            teaching:
+                period.is_teaching_period,
+
+            type:
+                period.period_type
+        })
+    )
+);
+
+
+        
         if (
             teachingPeriods.length === 0
         ) {
