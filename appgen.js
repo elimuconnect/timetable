@@ -4556,47 +4556,30 @@ function printGeneratedTimetable() {
 // EVENT: GENERATE TIMETABLE
 // ============================================================
 
-document.addEventListener(
-    "click",
-    async function (event) {
+if (generateTimetableBtn) {
 
-        const button =
-            event.target.closest(
-                "#generateTimetableBtn"
+    generateTimetableBtn.addEventListener(
+        "click",
+        async function (event) {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            console.log(
+                "🚀 GENERATE TIMETABLE BUTTON CLICKED"
             );
 
-        if (!button) {
-            return;
+            console.log(
+                "School ID:",
+                timetableState.schoolId
+            );
+
+            await generateTimetable();
+
         }
+    );
 
-        console.log(
-            "======================================"
-        );
-
-        console.log(
-            "GENERATE TIMETABLE BUTTON CLICKED"
-        );
-
-        console.log(
-            "Button element:",
-            button
-        );
-
-        console.log(
-            "School:",
-            timetableState.schoolId
-        );
-
-        console.log(
-            "======================================"
-        );
-
-        await generateTimetable();
-
-    }
-);
-
-
+}
 // ============================================================
 // EVENT: REGENERATE TIMETABLE
 // ============================================================
