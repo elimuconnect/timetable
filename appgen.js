@@ -33,6 +33,22 @@ const generateTimetableBtn =
         "generateTimetableBtn"
     );
 
+console.log(
+    "Generate button:",
+    generateTimetableBtn
+);
+
+console.log(
+    "Timetable generator DOM check:",
+    {
+        generate: !!generateTimetableBtn,
+        regenerate: !!regenerateTimetableBtn,
+        clear: !!clearTimetableBtn,
+        print: !!printTimetableBtn
+    }
+);
+
+
 const regenerateTimetableBtn =
     document.getElementById(
         "regenerateTimetableBtn"
