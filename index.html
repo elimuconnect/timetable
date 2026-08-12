@@ -1659,47 +1659,297 @@
 
             <!-- TIMETABLE -->
 
-            <div class="section"
-                 id="timetable">
+           <!-- ============================================================
+     TIMETABLE GENERATOR
+     ============================================================ -->
 
-                <div class="page-heading">
+<div class="section"
+     id="timetable">
 
-                    <div>
-                        <h2>📅 Generated Timetable</h2>
+    <div class="page-heading">
 
-                        <p>
-                            Your automatically generated timetable
-                            will appear here.
-                        </p>
-                    </div>
+        <div>
 
-                </div>
+            <h2>📅 Timetable Generator</h2>
 
-                <div id="timetableContent">
+            <p>
+                Generate, review and manage the school's
+                automatic timetable.
+            </p>
 
-                    <div class="empty-state">
+        </div>
 
-                        <div>📅</div>
+    </div>
 
-                        <h3>
-                            No timetable generated yet
-                        </h3>
 
-                        <p>
-                            Configure the requirements and click
-                            Generate Timetable.
-                        </p>
+    <!-- ========================================================
+         GENERATOR CONTROLS
+         ======================================================== -->
 
-                    </div>
+    <div class="card">
 
-                </div>
+        <h3>⚙️ Generate Timetable</h3>
+
+        <p>
+            The system will use the school's streams,
+            subjects, teachers, periods and requirements
+            to automatically create a timetable.
+        </p>
+
+
+        <div class="form-grid">
+
+
+            <!-- STREAM -->
+
+            <div class="form-group">
+
+                <label for="timetableStreamFilter">
+                    Stream
+                </label>
+
+                <select id="timetableStreamFilter">
+
+                    <option value="">
+                        All Streams
+                    </option>
+
+                </select>
 
             </div>
 
-        </section>
 
-    </main>
+            <!-- DAY -->
 
+            <div class="form-group">
+
+                <label for="timetableDayFilter">
+                    Day
+                </label>
+
+                <select id="timetableDayFilter">
+
+                    <option value="">
+                        All Days
+                    </option>
+
+                    <option value="Monday">
+                        Monday
+                    </option>
+
+                    <option value="Tuesday">
+                        Tuesday
+                    </option>
+
+                    <option value="Wednesday">
+                        Wednesday
+                    </option>
+
+                    <option value="Thursday">
+                        Thursday
+                    </option>
+
+                    <option value="Friday">
+                        Friday
+                    </option>
+
+                    <option value="Saturday">
+                        Saturday
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- VIEW -->
+
+            <div class="form-group">
+
+                <label for="timetableViewMode">
+                    View
+                </label>
+
+                <select id="timetableViewMode">
+
+                    <option value="stream">
+                        By Stream
+                    </option>
+
+                    <option value="teacher">
+                        By Teacher
+                    </option>
+
+                    <option value="room">
+                        By Room
+                    </option>
+
+                </select>
+
+            </div>
+
+
+        </div>
+
+
+        <!-- ====================================================
+             GENERATION BUTTONS
+             ==================================================== -->
+
+        <div class="form-actions">
+
+
+            <button
+                type="button"
+                id="generateTimetableBtn"
+                class="primary-btn">
+
+                🚀 Generate Timetable
+
+            </button>
+
+
+            <button
+                type="button"
+                id="regenerateTimetableBtn"
+                class="secondary-btn">
+
+                🔄 Regenerate
+
+            </button>
+
+
+            <button
+                type="button"
+                id="clearTimetableBtn"
+                class="secondary-btn">
+
+                🗑️ Clear Timetable
+
+            </button>
+
+
+            <button
+                type="button"
+                id="printTimetableBtn"
+                class="secondary-btn">
+
+                🖨️ Print
+
+            </button>
+
+
+        </div>
+
+
+        <!-- ====================================================
+             GENERATION STATUS
+             ==================================================== -->
+
+        <div
+            id="timetableGenerationStatus"
+            class="empty-message"
+            style="display:none; margin-top:20px;">
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================================================
+         TIMETABLE SUMMARY
+         ======================================================== -->
+
+    <div
+        id="timetableSummary"
+        class="card"
+        style="display:none;">
+
+        <h3>📊 Timetable Summary</h3>
+
+
+        <div
+            id="timetableSummaryContent"
+            class="form-grid">
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================================================
+         TIMETABLE DISPLAY
+         ======================================================== -->
+
+    <div class="card">
+
+        <div class="page-heading">
+
+            <div>
+
+                <h3>📅 Generated Timetable</h3>
+
+                <p>
+                    Lessons generated for the selected school.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div
+            id="timetableContent">
+
+            <div class="empty-state">
+
+                <div>📅</div>
+
+                <h3>
+                    No timetable generated yet
+                </h3>
+
+                <p>
+                    Configure the requirements and click
+                    <strong>
+                        Generate Timetable
+                    </strong>.
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================================================
+         GENERATION ERRORS / CONFLICTS
+         ======================================================== -->
+
+    <div
+        id="timetableConflicts"
+        class="card"
+        style="display:none;">
+
+        <h3>
+            ⚠️ Timetable Conflicts
+        </h3>
+
+
+        <div
+            id="timetableConflictsContent">
+
+        </div>
+
+    </div>
+
+
+</div>
+
+</section>
+
+</main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
