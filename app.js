@@ -7060,6 +7060,47 @@ function openStreamForm(
 
 
 
+// ============================================================
+// CLOSE STREAM FORM
+// ============================================================
+
+function closeStreamForm() {
+
+    const form =
+        document.getElementById(
+            "streamFormCard"
+        );
+
+
+    if (form) {
+
+        form.style.display =
+            "none";
+
+    }
+
+}
+
+
+// ============================================================
+// CANCEL STREAM FORM
+// ============================================================
+
+const cancelStreamBtn =
+    document.getElementById(
+        "cancelStreamBtn"
+    );
+
+if (cancelStreamBtn) {
+
+    cancelStreamBtn.addEventListener(
+        "click",
+        closeStreamForm
+    );
+
+}
+
+
 
 // ============================================================
 // SAVE STREAM
