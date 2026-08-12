@@ -7061,7 +7061,412 @@ function openStreamForm(
 
 
 
+// ============================================================
+// SAVE STREAM
+// ============================================================
 
+const saveStreamBtn =
+    document.getElementById("saveStreamBtn");
+
+if (saveStreamBtn) {
+
+    console.log(
+        "Save Stream button found."
+    );
+
+    saveStreamBtn.addEventListener(
+        "click",
+        async function () {
+
+            console.log(
+                "SAVE STREAM BUTTON CLICKED"
+            );
+
+            await saveStream();
+
+        }
+    );
+
+}
+else {
+
+    console.error(
+        "saveStreamBtn was NOT found."
+    );
+
+}
+
+
+// ============================================================
+// SAVE STREAM FUNCTION
+// ============================================================
+
+async function saveStream() {
+
+    console.log(
+        "saveStream() started..."
+    );
+
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (!timetableState.schoolId) {
+
+        alert(
+            "Please select a school first."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GET FORM ELEMENTS
+    // --------------------------------------------------------
+
+    const streamIdElement =
+        document.getElementById(
+            "streamId"
+        );
+
+
+    const streamClassIdElement =
+        document.getElementById(
+            "streamClassId"
+        );
+
+
+    const streamNameElement =
+        document.getElementById(
+            "streamName"
+        );
+
+
+    const streamRoomNameElement =
+        document.getElementById(
+            "streamRoomName"
+        );
+
+
+    const streamCapacityElement =
+        document.getElementById(
+            "streamCapacity"
+        );
+
+
+    // --------------------------------------------------------
+    // CHECK ELEMENTS
+    // --------------------------------------------------------
+
+    if (
+        !streamIdElement ||
+        !streamClassIdElement ||
+        !streamNameElement ||
+        !streamRoomNameElement ||
+        !streamCapacityElement
+    ) {
+
+        console.error(
+            "STREAM FORM ELEMENTS MISSING"
+        );
+
+        alert(
+            "Stream form is incomplete. Please check the HTML."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GET VALUES
+    // --------------------------------------------------------
+
+    const streamId =
+        streamIdElement.value.trim();
+
+
+    const classId =
+        streamClassIdElement.value.trim();
+
+
+    const streamName =
+        streamNameElement.value.trim();
+
+
+    const roomName =
+        streamRoomNameElement.value.trim();
+
+
+    const capacity =
+        Number(
+            streamCapacityElement.value
+        );
+
+
+    console.log(
+        "Stream values:",
+        {
+            streamId,
+            classId,
+            streamName,
+            roomName,
+            capacity
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (!classId) {
+
+        alert(
+            "Please select a class."
+        );
+
+        return;
+
+    }
+
+
+    if (!streamName) {
+
+        alert(
+            "Please enter the stream name."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !capacity ||
+        capacity < 1
+    ) {
+
+        alert(
+            "Please enter a valid stream capacity."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // PREPARE DATA
+    // --------------------------------------------------------
+
+    const streamData = {
+
+        school_id:
+            timetableState.schoolId,
+
+        class_id:
+            classId,
+
+        stream_name:
+            streamName,
+
+        room_name:
+            roomName || null,
+
+        capacity:
+            capacity
+
+    };
+
+
+    console.log(
+        "STREAM DATA TO SAVE:",
+        streamData
+    );
+
+
+    // --------------------------------------------------------
+    // DISABLE BUTTON WHILE SAVING
+    // --------------------------------------------------------
+
+    if (saveStreamBtn) {
+
+        saveStreamBtn.disabled = true;
+
+        saveStreamBtn.textContent =
+            "⏳ Saving...";
+
+    }
+
+
+    let result;
+
+
+    try {
+
+        // ====================================================
+        // UPDATE EXISTING STREAM
+        // ====================================================
+
+        if (streamId) {
+
+            console.log(
+                "Updating stream:",
+                streamId
+            );
+
+
+            result =
+                await supabaseClient
+
+                    .from(
+                        "timetable_streams"
+                    )
+
+                    .update(
+                        streamData
+                    )
+
+                    .eq(
+                        "id",
+                        streamId
+                    )
+
+                    .eq(
+                        "school_id",
+                        timetableState.schoolId
+                    )
+
+                    .select();
+
+
+        }
+
+
+        // ====================================================
+        // INSERT NEW STREAM
+        // ====================================================
+
+        else {
+
+            console.log(
+                "Inserting new stream..."
+            );
+
+
+            result =
+                await supabaseClient
+
+                    .from(
+                        "timetable_streams"
+                    )
+
+                    .insert(
+                        streamData
+                    )
+
+                    .select();
+
+        }
+
+
+        // ----------------------------------------------------
+        // DATABASE ERROR
+        // ----------------------------------------------------
+
+        if (result.error) {
+
+            console.error(
+                "STREAM SAVE ERROR:",
+                result.error
+            );
+
+
+            alert(
+                "Failed to save stream:\n\n" +
+                result.error.message
+            );
+
+
+            return;
+
+        }
+
+
+        // ----------------------------------------------------
+        // CHECK RESULT
+        // ----------------------------------------------------
+
+        console.log(
+            "STREAM SAVED SUCCESSFULLY:",
+            result.data
+        );
+
+
+        // ----------------------------------------------------
+        // SUCCESS
+        // ----------------------------------------------------
+
+        alert(
+            streamId
+                ? "Stream updated successfully."
+                : "Stream added successfully."
+        );
+
+
+        // ----------------------------------------------------
+        // CLOSE FORM
+        // ----------------------------------------------------
+
+        closeStreamForm();
+
+
+        // ----------------------------------------------------
+        // RELOAD STREAMS
+        // ----------------------------------------------------
+
+        await loadStreams();
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Unexpected stream save error:",
+            error
+        );
+
+
+        alert(
+            "An unexpected error occurred:\n\n" +
+            error.message
+        );
+
+    }
+
+    finally {
+
+        // ----------------------------------------------------
+        // RESTORE BUTTON
+        // ----------------------------------------------------
+
+        if (saveStreamBtn) {
+
+            saveStreamBtn.disabled = false;
+
+            saveStreamBtn.textContent =
+                "💾 Save Stream";
+
+        }
+
+    }
+
+}
 
 
 
