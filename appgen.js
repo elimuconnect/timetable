@@ -24,28 +24,10 @@ let generatedTimetableEntries = [];
 let timetableGenerationRunning = false;
 
 
+
 // ============================================================
-// EXPOSE FUNCTIONS GLOBALLY
+// GET TIMETABLE DOM ELEMENTS
 // ============================================================
-
-window.generateTimetable =
-    generateTimetable;
-
-window.regenerateTimetable =
-    regenerateTimetable;
-
-window.clearGeneratedTimetable =
-    clearGeneratedTimetable;
-
-window.loadGeneratedTimetable =
-    loadGeneratedTimetable;
-
-window.printGeneratedTimetable =
-    printGeneratedTimetable;
-
-window.initializeTimetableGenerator =
-    initializeTimetableGenerator;
-
 
 // ============================================================
 // GET TIMETABLE DOM ELEMENTS
@@ -55,22 +37,6 @@ const generateTimetableBtn =
     document.getElementById(
         "generateTimetableBtn"
     );
-
-console.log(
-    "Generate button:",
-    generateTimetableBtn
-);
-
-console.log(
-    "Timetable generator DOM check:",
-    {
-        generate: !!generateTimetableBtn,
-        regenerate: !!regenerateTimetableBtn,
-        clear: !!clearTimetableBtn,
-        print: !!printTimetableBtn
-    }
-);
-
 
 const regenerateTimetableBtn =
     document.getElementById(
@@ -103,6 +69,31 @@ const timetableViewMode =
     );
 
 
+// ============================================================
+// DOM CHECK
+// ============================================================
+
+console.log(
+    "Generate button:",
+    generateTimetableBtn
+);
+
+console.log(
+    "Timetable generator DOM check:",
+    {
+        generate:
+            !!generateTimetableBtn,
+
+        regenerate:
+            !!regenerateTimetableBtn,
+
+        clear:
+            !!clearTimetableBtn,
+
+        print:
+            !!printTimetableBtn
+    }
+);
 // ============================================================
 // GENERATION STATUS
 // ============================================================
@@ -4774,6 +4765,30 @@ async function initializeTimetableGenerator() {
 }
 
 
+// ============================================================
+// EXPOSE FUNCTIONS GLOBALLY
+// ============================================================
+
+window.generateTimetable =
+    generateTimetable;
+
+window.regenerateTimetable =
+    regenerateTimetable;
+
+window.clearGeneratedTimetable =
+    clearGeneratedTimetable;
+
+window.loadGeneratedTimetable =
+    loadGeneratedTimetable;
+
+window.printGeneratedTimetable =
+    printGeneratedTimetable;
+
+window.initializeTimetableGenerator =
+    initializeTimetableGenerator;
+
+
+
 
 // ============================================================
 // GENERATOR READY
@@ -4790,3 +4805,4 @@ console.log(
 console.log(
     "======================================"
 );
+
