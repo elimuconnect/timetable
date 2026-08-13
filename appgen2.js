@@ -1177,3 +1177,1979 @@ function createLessonTasks(
     return tasks;
 
 }
+// ============================================================
+// PART 3 — SLOT AVAILABILITY & OCCUPANCY ENGINE
+// ============================================================
+
+
+// ============================================================
+// SHUFFLE ARRAY
+// ============================================================
+
+function shuffleArray(array) {
+
+    const result = [...array];
+
+    for (
+        let i = result.length - 1;
+        i > 0;
+        i--
+    ) {
+
+        const j =
+            Math.floor(
+                Math.random() * (i + 1)
+            );
+
+        [
+            result[i],
+            result[j]
+        ] = [
+            result[j],
+            result[i]
+        ];
+
+    }
+
+    return result;
+
+}
+
+
+// ============================================================
+// CHECK IF TWO PERIODS ARE CONSECUTIVE
+// ============================================================
+
+function arePeriodsConsecutive(
+    first,
+    second
+) {
+
+    if (
+        !first ||
+        !second
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        Number(first.day_number) !==
+        Number(second.day_number)
+    ) {
+
+        return false;
+
+    }
+
+
+    if (
+        first.period_order !== undefined &&
+        second.period_order !== undefined
+    ) {
+
+        return (
+            Number(second.period_order) ===
+            Number(first.period_order) + 1
+        );
+
+    }
+
+
+    return (
+        Number(second.period_number) ===
+        Number(first.period_number) + 1
+    );
+
+}
+
+
+// ============================================================
+// GET COMPATIBLE ROOMS
+// ============================================================
+
+function getCompatibleRooms(
+    task,
+    rooms
+) {
+
+    if (!task.requiresRoom) {
+
+        return [null];
+
+    }
+
+
+    const requestedType =
+        normalizeRoomType(
+            task.roomType
+        );
+
+
+    // --------------------------------------------------------
+    // Room required but no specific type
+    // --------------------------------------------------------
+
+    if (!requestedType) {
+
+        return rooms.length
+            ? shuffleArray(rooms)
+            : [];
+
+    }
+
+
+    // --------------------------------------------------------
+    // Specific room type required
+    // --------------------------------------------------------
+
+    return shuffleArray(
+        rooms.filter(
+            room => {
+
+                return (
+                    getTimetableRoomType(room) ===
+                    requestedType
+                );
+
+            }
+        )
+    );
+
+}
+
+
+// ============================================================
+// CREATE OCCUPANCY INDEXES
+// ============================================================
+
+function createOccupancyIndexes() {
+
+    return {
+
+        // Stream cannot teach two lessons
+        // in the same period.
+        streamPeriod:
+            new Set(),
+
+
+        // Teacher cannot teach two streams
+        // in the same period.
+        teacherPeriod:
+            new Set(),
+
+
+        // Room cannot host two lessons
+        // in the same period.
+        roomPeriod:
+            new Set(),
+
+
+        // Number of lessons assigned to a stream
+        // on each day.
+        dailyStreamLessons:
+            new Map()
+
+    };
+
+}
+
+
+// ============================================================
+// DAILY STREAM KEY
+// ============================================================
+
+function getDailyStreamKey(
+    streamId,
+    dayNumber
+) {
+
+    return (
+        `${streamId}__${dayNumber}`
+    );
+
+}
+
+
+// ============================================================
+// GET DAILY LESSON COUNT
+// ============================================================
+
+function getDailyStreamLessonCount(
+    indexes,
+    streamId,
+    dayNumber
+) {
+
+    const key =
+        getDailyStreamKey(
+            streamId,
+            dayNumber
+        );
+
+
+    return (
+        indexes.dailyStreamLessons.get(key) ||
+        0
+    );
+
+}
+
+
+// ============================================================
+// INCREMENT DAILY LESSON COUNT
+// ============================================================
+
+function incrementDailyStreamLessonCount(
+    indexes,
+    streamId,
+    dayNumber
+) {
+
+    const key =
+        getDailyStreamKey(
+            streamId,
+            dayNumber
+        );
+
+
+    const current =
+        getDailyStreamLessonCount(
+            indexes,
+            streamId,
+            dayNumber
+        );
+
+
+    indexes.dailyStreamLessons.set(
+        key,
+        current + 1
+    );
+
+}
+
+
+// ============================================================
+// CHECK SINGLE SLOT CONFLICT
+// ============================================================
+
+function checkSingleSlotConflict(
+    task,
+    period,
+    room,
+    indexes
+) {
+
+    if (
+        !task ||
+        !period ||
+        !indexes
+    ) {
+
+        return {
+
+            valid: false,
+
+            reason:
+                "Invalid task, period or occupancy indexes."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // STREAM CONFLICT
+    // ========================================================
+
+    const streamKey =
+        `${task.streamId}__${period.id}`;
+
+
+    if (
+        indexes.streamPeriod.has(
+            streamKey
+        )
+    ) {
+
+        return {
+
+            valid: false,
+
+            reason:
+                "Stream already has a lesson in this period."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // TEACHER CONFLICT
+    // ========================================================
+
+    if (
+        task.teacherId
+    ) {
+
+        const teacherKey =
+            `${task.teacherId}__${period.id}`;
+
+
+        if (
+            indexes.teacherPeriod.has(
+                teacherKey
+            )
+        ) {
+
+            return {
+
+                valid: false,
+
+                reason:
+                    "Teacher is already teaching another stream in this period."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // ROOM CONFLICT
+    // ========================================================
+
+    if (
+        room
+    ) {
+
+        const roomKey =
+            `${room.id}__${period.id}`;
+
+
+        if (
+            indexes.roomPeriod.has(
+                roomKey
+            )
+        ) {
+
+            return {
+
+                valid: false,
+
+                reason:
+                    "Room is already occupied in this period."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // DAILY MAXIMUM
+    // ========================================================
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 0;
+
+
+    if (
+        maxPerDay > 0
+    ) {
+
+        const currentCount =
+            getDailyStreamLessonCount(
+                indexes,
+                task.streamId,
+                period.day_number
+            );
+
+
+        if (
+            currentCount >=
+            maxPerDay
+        ) {
+
+            return {
+
+                valid: false,
+
+                reason:
+                    "Maximum lessons per day reached for this requirement."
+
+            };
+
+        }
+
+    }
+
+
+    return {
+
+        valid: true
+
+    };
+
+}
+
+
+// ============================================================
+// RESERVE SLOT
+// ============================================================
+
+function reserveSlot(
+    task,
+    period,
+    room,
+    indexes
+) {
+
+    const streamKey =
+        `${task.streamId}__${period.id}`;
+
+
+    indexes.streamPeriod.add(
+        streamKey
+    );
+
+
+    if (
+        task.teacherId
+    ) {
+
+        indexes.teacherPeriod.add(
+            `${task.teacherId}__${period.id}`
+        );
+
+    }
+
+
+    if (
+        room
+    ) {
+
+        indexes.roomPeriod.add(
+            `${room.id}__${period.id}`
+        );
+
+    }
+
+
+    incrementDailyStreamLessonCount(
+        indexes,
+        task.streamId,
+        period.day_number
+    );
+
+}
+
+
+// ============================================================
+// CREATE GENERATED ENTRY
+// ============================================================
+
+function createGeneratedEntry(
+    task,
+    period,
+    room
+) {
+
+    return {
+
+        school_id:
+            timetableState.schoolId,
+
+        period_id:
+            period.id,
+
+        stream_id:
+            task.streamId,
+
+        subject_id:
+            task.subjectId,
+
+        teacher_id:
+            task.teacherId ||
+            null,
+
+        room_id:
+            room
+                ? room.id
+                : null
+
+    };
+
+}
+
+// ============================================================
+// PART 4 — FIND VALID SINGLE & DOUBLE LESSON SLOTS
+// ============================================================
+
+
+// ============================================================
+// FIND SINGLE LESSON SLOT
+// ============================================================
+
+function findSingleLessonSlot(
+    task,
+    periods,
+    rooms,
+    indexes
+) {
+
+    const shuffledPeriods =
+        shuffleArray(
+            periods
+        );
+
+
+    let attempts = 0;
+
+    let streamConflicts = 0;
+    let teacherConflicts = 0;
+    let roomConflicts = 0;
+    let dailyLimitConflicts = 0;
+
+
+    for (
+        const period of shuffledPeriods
+    ) {
+
+        const compatibleRooms =
+            getCompatibleRooms(
+                task,
+                rooms
+            );
+
+
+        // ----------------------------------------------------
+        // NO COMPATIBLE ROOM
+        // ----------------------------------------------------
+
+        if (
+            compatibleRooms.length === 0
+        ) {
+
+            console.warn(
+                "NO COMPATIBLE ROOMS",
+                {
+
+                    taskId:
+                        task.taskId,
+
+                    requiresRoom:
+                        task.requiresRoom,
+
+                    requestedRoomType:
+                        task.roomType,
+
+                    availableRooms:
+                        rooms.map(
+                            room => ({
+
+                                id:
+                                    room.id,
+
+                                name:
+                                    getTimetableRoomName(
+                                        room
+                                    ),
+
+                                type:
+                                    getTimetableRoomType(
+                                        room
+                                    )
+
+                            })
+                        )
+
+                }
+            );
+
+
+            return null;
+
+        }
+
+
+        // ----------------------------------------------------
+        // TEST EACH ROOM
+        // ----------------------------------------------------
+
+        for (
+            const room of compatibleRooms
+        ) {
+
+            attempts++;
+
+
+            const check =
+                checkSingleSlotConflict(
+                    task,
+                    period,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                !check.valid
+            ) {
+
+                if (
+                    check.reason.includes(
+                        "Stream already"
+                    )
+                ) {
+
+                    streamConflicts++;
+
+                }
+
+                else if (
+                    check.reason.includes(
+                        "Teacher is already"
+                    )
+                ) {
+
+                    teacherConflicts++;
+
+                }
+
+                else if (
+                    check.reason.includes(
+                        "Room is already"
+                    )
+                ) {
+
+                    roomConflicts++;
+
+                }
+
+                else if (
+                    check.reason.includes(
+                        "Maximum lessons"
+                    )
+                ) {
+
+                    dailyLimitConflicts++;
+
+                }
+
+
+                continue;
+
+            }
+
+
+            // ------------------------------------------------
+            // VALID SLOT FOUND
+            // ------------------------------------------------
+
+            console.log(
+                "SLOT FOUND",
+                {
+
+                    taskId:
+                        task.taskId,
+
+                    periodId:
+                        period.id,
+
+                    day:
+                        period.day_name,
+
+                    period:
+                        period.period_order,
+
+                    roomId:
+                        room
+                            ? room.id
+                            : null,
+
+                    room:
+                        room
+                            ? getTimetableRoomName(
+                                room
+                            )
+                            : "No Room"
+
+                }
+            );
+
+
+            return {
+
+                period,
+                room
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NO SLOT FOUND
+    // ========================================================
+
+    console.error(
+        "FAILED TO FIND SINGLE LESSON SLOT",
+        {
+
+            taskId:
+                task.taskId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId,
+
+            teacherId:
+                task.teacherId,
+
+            attempts,
+
+            streamConflicts,
+
+            teacherConflicts,
+
+            roomConflicts,
+
+            dailyLimitConflicts
+
+        }
+    );
+
+
+    return null;
+
+}
+
+
+// ============================================================
+// FIND DOUBLE LESSON SLOT
+// ============================================================
+
+function findDoubleLessonSlot(
+    task,
+    periods,
+    rooms,
+    indexes
+) {
+
+    const periodsByDay =
+        groupPeriodsByDay(
+            periods
+        );
+
+
+    const days =
+        shuffleArray(
+            Object.keys(
+                periodsByDay
+            )
+        );
+
+
+    let consecutivePairs = 0;
+
+    let streamConflicts = 0;
+    let teacherConflicts = 0;
+    let roomConflicts = 0;
+    let dailyLimitConflicts = 0;
+
+
+    // ========================================================
+    // CHECK EACH DAY
+    // ========================================================
+
+    for (
+        const day of days
+    ) {
+
+        const dayPeriods =
+            periodsByDay[day];
+
+
+        // ----------------------------------------------------
+        // CHECK ADJACENT PERIOD PAIRS
+        // ----------------------------------------------------
+
+        for (
+            let i = 0;
+            i < dayPeriods.length - 1;
+            i++
+        ) {
+
+            const firstPeriod =
+                dayPeriods[i];
+
+            const secondPeriod =
+                dayPeriods[i + 1];
+
+
+            // ------------------------------------------------
+            // MUST BE CONSECUTIVE
+            // ------------------------------------------------
+
+            if (
+                !arePeriodsConsecutive(
+                    firstPeriod,
+                    secondPeriod
+                )
+            ) {
+
+                continue;
+
+            }
+
+
+            consecutivePairs++;
+
+
+            // ------------------------------------------------
+            // DAILY LIMIT
+            // ------------------------------------------------
+
+            const maxPerDay =
+                Number(
+                    task.maxLessonsPerDay
+                ) || 0;
+
+
+            const currentCount =
+                getDailyStreamLessonCount(
+                    indexes,
+                    task.streamId,
+                    firstPeriod.day_number
+                );
+
+
+            if (
+                maxPerDay > 0 &&
+                currentCount + 2 >
+                maxPerDay
+            ) {
+
+                dailyLimitConflicts++;
+
+                continue;
+
+            }
+
+
+            // ------------------------------------------------
+            // GET COMPATIBLE ROOMS
+            // ------------------------------------------------
+
+            const compatibleRooms =
+                getCompatibleRooms(
+                    task,
+                    rooms
+                );
+
+
+            if (
+                compatibleRooms.length === 0
+            ) {
+
+                console.warn(
+                    "NO COMPATIBLE ROOMS FOR DOUBLE",
+                    {
+
+                        taskId:
+                            task.taskId,
+
+                        requestedRoomType:
+                            task.roomType,
+
+                        requiresRoom:
+                            task.requiresRoom,
+
+                        rooms:
+                            rooms.map(
+                                room => ({
+
+                                    id:
+                                        room.id,
+
+                                    name:
+                                        getTimetableRoomName(
+                                            room
+                                        ),
+
+                                    type:
+                                        getTimetableRoomType(
+                                            room
+                                        )
+
+                                })
+                            )
+
+                    }
+                );
+
+
+                return null;
+
+            }
+
+
+            // =================================================
+            // TEST EACH ROOM
+            // =================================================
+
+            for (
+                const room of compatibleRooms
+            ) {
+
+
+                // ---------------------------------------------
+                // FIRST PERIOD
+                // ---------------------------------------------
+
+                const firstCheck =
+                    checkSingleSlotConflict(
+                        task,
+                        firstPeriod,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    !firstCheck.valid
+                ) {
+
+                    if (
+                        firstCheck.reason.includes(
+                            "Stream already"
+                        )
+                    ) {
+
+                        streamConflicts++;
+
+                    }
+
+                    else if (
+                        firstCheck.reason.includes(
+                            "Teacher is already"
+                        )
+                    ) {
+
+                        teacherConflicts++;
+
+                    }
+
+                    else if (
+                        firstCheck.reason.includes(
+                            "Room is already"
+                        )
+                    ) {
+
+                        roomConflicts++;
+
+                    }
+
+                    continue;
+
+                }
+
+
+                // ---------------------------------------------
+                // SECOND PERIOD
+                // ---------------------------------------------
+
+                const secondCheck =
+                    checkSingleSlotConflict(
+                        task,
+                        secondPeriod,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    !secondCheck.valid
+                ) {
+
+                    if (
+                        secondCheck.reason.includes(
+                            "Stream already"
+                        )
+                    ) {
+
+                        streamConflicts++;
+
+                    }
+
+                    else if (
+                        secondCheck.reason.includes(
+                            "Teacher is already"
+                        )
+                    ) {
+
+                        teacherConflicts++;
+
+                    }
+
+                    else if (
+                        secondCheck.reason.includes(
+                            "Room is already"
+                        )
+                    ) {
+
+                        roomConflicts++;
+
+                    }
+
+                    continue;
+
+                }
+
+
+                // =================================================
+                // DOUBLE SLOT FOUND
+                // =================================================
+
+                console.log(
+                    "DOUBLE SLOT FOUND",
+                    {
+
+                        taskId:
+                            task.taskId,
+
+                        firstPeriodId:
+                            firstPeriod.id,
+
+                        secondPeriodId:
+                            secondPeriod.id,
+
+                        day:
+                            firstPeriod.day_name,
+
+                        roomId:
+                            room
+                                ? room.id
+                                : null,
+
+                        room:
+                            room
+                                ? getTimetableRoomName(
+                                    room
+                                )
+                                : "No Room"
+
+                    }
+                );
+
+
+                return {
+
+                    firstPeriod:
+                        firstPeriod,
+
+                    secondPeriod:
+                        secondPeriod,
+
+                    room:
+                        room
+
+                };
+
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NO DOUBLE SLOT FOUND
+    // ========================================================
+
+    console.error(
+        "FAILED TO FIND DOUBLE LESSON SLOT",
+        {
+
+            taskId:
+                task.taskId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId,
+
+            teacherId:
+                task.teacherId,
+
+            consecutivePairs,
+
+            streamConflicts,
+
+            teacherConflicts,
+
+            roomConflicts,
+
+            dailyLimitConflicts
+
+        }
+    );
+
+
+    return null;
+
+}
+
+// ============================================================
+// PART 5 — GENERATE TIMETABLE
+// ============================================================
+
+async function generateTimetable() {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "🚀 GENERATE TIMETABLE FUNCTION STARTED"
+    );
+
+    console.log(
+        "School ID:",
+        timetableState.schoolId
+    );
+
+    console.log(
+        "======================================";
+
+
+    // ========================================================
+    // PREVENT DOUBLE GENERATION
+    // ========================================================
+
+    if (timetableGenerationRunning) {
+
+        console.warn(
+            "TIMETABLE GENERATION ALREADY RUNNING"
+        );
+
+        return;
+    }
+
+
+    // ========================================================
+    // CHECK SCHOOL
+    // ========================================================
+
+    if (!timetableState.schoolId) {
+
+        const message =
+            "Please select a school first.";
+
+        console.error(message);
+
+        setTimetableGenerationStatus(
+            message,
+            "error"
+        );
+
+        return;
+    }
+
+
+    timetableGenerationRunning = true;
+
+
+    try {
+
+        // ====================================================
+        // STEP 1 — SHOW STATUS
+        // ====================================================
+
+        setTimetableGenerationStatus(
+            "Loading timetable generator data...",
+            "info"
+        );
+
+
+        console.log(
+            "STEP 1: Loading generator data..."
+        );
+
+
+        // ====================================================
+        // STEP 2 — LOAD DATA
+        // ====================================================
+
+        const data =
+            await loadTimetableGeneratorData();
+
+
+        console.log(
+            "STEP 2: Generator data loaded.",
+            data
+        );
+
+
+        // ====================================================
+        // STEP 3 — VALIDATE DATA
+        // ====================================================
+
+        validateTimetableGeneratorData(
+            data
+        );
+
+
+        console.log(
+            "STEP 3: Generator data validated."
+        );
+
+
+        // ====================================================
+        // STEP 4 — BUILD LOOKUPS
+        // ====================================================
+
+        const lookup =
+            buildTimetableLookupMaps(
+                data
+            );
+
+
+        console.log(
+            "STEP 4: Lookup maps created."
+        );
+
+
+        // ====================================================
+        // STEP 5 — GET TEACHING PERIODS
+        // ====================================================
+
+        const teachingPeriods =
+            getTeachingPeriods(
+                data.periods
+            );
+
+
+        console.log(
+            "STEP 5: Teaching periods:",
+            teachingPeriods.length
+        );
+
+
+        if (
+            teachingPeriods.length === 0
+        ) {
+
+            throw new Error(
+                "No teaching periods are available."
+            );
+
+        }
+
+
+        // ====================================================
+        // STEP 6 — CREATE LESSON TASKS
+        // ====================================================
+
+        let tasks =
+            createLessonTasks(
+                data.requirements,
+                lookup
+            );
+
+
+        console.log(
+            "STEP 6: Lesson tasks created:",
+            tasks.length
+        );
+
+
+        if (
+            tasks.length === 0
+        ) {
+
+            throw new Error(
+                "No lesson tasks could be created from the timetable requirements."
+            );
+
+        }
+
+
+        // ====================================================
+        // STEP 7 — SHUFFLE TASKS
+        // ====================================================
+
+        tasks =
+            shuffleArray(
+                tasks
+            );
+
+
+        // ====================================================
+        // DOUBLE LESSONS FIRST
+        // ====================================================
+
+        tasks.sort(
+            (
+                a,
+                b
+            ) => {
+
+                if (
+                    a.isDouble !==
+                    b.isDouble
+                ) {
+
+                    return a.isDouble
+                        ? -1
+                        : 1;
+
+                }
+
+                return 0;
+
+            }
+        );
+
+
+        console.log(
+            "STEP 7: Tasks ordered."
+        );
+
+
+        console.log(
+            "Total tasks:",
+            tasks.length
+        );
+
+
+        // ====================================================
+        // STEP 8 — CREATE OCCUPANCY INDEXES
+        // ====================================================
+
+        const indexes =
+            createOccupancyIndexes();
+
+
+        console.log(
+            "STEP 8: Occupancy indexes created."
+        );
+
+
+        // ====================================================
+        // STEP 9 — GENERATE ENTRIES
+        // ====================================================
+
+        const entries = [];
+
+        const conflicts = [];
+
+
+        console.log(
+            "STEP 9: Starting lesson placement..."
+        );
+
+
+        for (
+            let i = 0;
+            i < tasks.length;
+            i++
+        ) {
+
+            const task =
+                tasks[i];
+
+
+            console.log(
+                `PLACING TASK ${i + 1}/${tasks.length}`,
+                task
+            );
+
+
+            // =================================================
+            // DOUBLE LESSON
+            // =================================================
+
+            if (
+                task.isDouble
+            ) {
+
+                const slot =
+                    findDoubleLessonSlot(
+                        task,
+                        teachingPeriods,
+                        data.rooms,
+                        indexes
+                    );
+
+
+                if (
+                    !slot
+                ) {
+
+                    console.warn(
+                        "DOUBLE LESSON COULD NOT BE PLACED:",
+                        task
+                    );
+
+
+                    conflicts.push({
+
+                        taskId:
+                            task.taskId,
+
+                        requirementId:
+                            task.requirementId,
+
+                        streamId:
+                            task.streamId,
+
+                        subjectId:
+                            task.subjectId,
+
+                        teacherId:
+                            task.teacherId,
+
+                        reason:
+                            "No two consecutive free periods were available."
+
+                    });
+
+
+                    continue;
+
+                }
+
+
+                // ---------------------------------------------
+                // RESERVE FIRST PERIOD
+                // ---------------------------------------------
+
+                reserveSlot(
+                    task,
+                    slot.firstPeriod,
+                    slot.room,
+                    indexes
+                );
+
+
+                // ---------------------------------------------
+                // RESERVE SECOND PERIOD
+                // ---------------------------------------------
+
+                reserveSlot(
+                    task,
+                    slot.secondPeriod,
+                    slot.room,
+                    indexes
+                );
+
+
+                // ---------------------------------------------
+                // CREATE FIRST ENTRY
+                // ---------------------------------------------
+
+                entries.push(
+
+                    createGeneratedEntry(
+                        task,
+                        slot.firstPeriod,
+                        slot.room
+                    )
+
+                );
+
+
+                // ---------------------------------------------
+                // CREATE SECOND ENTRY
+                // ---------------------------------------------
+
+                entries.push(
+
+                    createGeneratedEntry(
+                        task,
+                        slot.secondPeriod,
+                        slot.room
+                    )
+
+                );
+
+
+                console.log(
+                    "DOUBLE LESSON PLACED:",
+                    task.taskId
+                );
+
+            }
+
+
+            // =================================================
+            // SINGLE LESSON
+            // =================================================
+
+            else {
+
+                const slot =
+                    findSingleLessonSlot(
+                        task,
+                        teachingPeriods,
+                        data.rooms,
+                        indexes
+                    );
+
+
+                if (
+                    !slot
+                ) {
+
+                    console.warn(
+                        "SINGLE LESSON COULD NOT BE PLACED:",
+                        task
+                    );
+
+
+                    conflicts.push({
+
+                        taskId:
+                            task.taskId,
+
+                        requirementId:
+                            task.requirementId,
+
+                        streamId:
+                            task.streamId,
+
+                        subjectId:
+                            task.subjectId,
+
+                        teacherId:
+                            task.teacherId,
+
+                        reason:
+                            "No free period was available."
+
+                    });
+
+
+                    continue;
+
+                }
+
+
+                // ---------------------------------------------
+                // RESERVE SLOT
+                // ---------------------------------------------
+
+                reserveSlot(
+                    task,
+                    slot.period,
+                    slot.room,
+                    indexes
+                );
+
+
+                // ---------------------------------------------
+                // CREATE ENTRY
+                // ---------------------------------------------
+
+                entries.push(
+
+                    createGeneratedEntry(
+                        task,
+                        slot.period,
+                        slot.room
+                    )
+
+                );
+
+
+                console.log(
+                    "SINGLE LESSON PLACED:",
+                    task.taskId
+                );
+
+            }
+
+
+            // =================================================
+            // UPDATE STATUS
+            // =================================================
+
+            setTimetableGenerationStatus(
+
+                `Generating timetable... ${i + 1} / ${tasks.length}`,
+
+                "info"
+
+            );
+
+        }
+
+
+        // ====================================================
+        // STEP 10 — GENERATION RESULT
+        // ====================================================
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "GENERATION COMPLETE"
+        );
+
+        console.log(
+            "Tasks:",
+            tasks.length
+        );
+
+        console.log(
+            "Generated entries:",
+            entries.length
+        );
+
+        console.log(
+            "Conflicts:",
+            conflicts.length
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            conflicts
+        );
+
+
+        // ====================================================
+        // IMPORTANT:
+        // DO NOT SAVE AN EMPTY TIMETABLE
+        // ====================================================
+
+        if (
+            entries.length === 0
+        ) {
+
+            throw new Error(
+
+                "No timetable entries could be generated. " +
+
+                conflicts.length +
+
+                " lesson task(s) could not be placed."
+
+            );
+
+        }
+
+
+        // ====================================================
+        // STEP 11 — CLEAR OLD TIMETABLE
+        // ====================================================
+
+        setTimetableGenerationStatus(
+
+            "Clearing previous timetable...",
+
+            "info"
+
+        );
+
+
+        console.log(
+            "STEP 11: Clearing old timetable..."
+        );
+
+
+        const {
+            error: deleteError
+        } = await supabaseClient
+
+            .from(
+                "timetable_entries"
+            )
+
+            .delete()
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (
+            deleteError
+        ) {
+
+            throw new Error(
+
+                "Failed to clear previous timetable: " +
+
+                deleteError.message
+
+            );
+
+        }
+
+
+        console.log(
+            "Old timetable cleared."
+        );
+
+
+        // ====================================================
+        // STEP 12 — SAVE NEW ENTRIES
+        // ====================================================
+
+        setTimetableGenerationStatus(
+
+            `Saving ${entries.length} timetable entries...`,
+
+            "info"
+
+        );
+
+
+        console.log(
+            "STEP 12: Saving generated entries..."
+        );
+
+
+        const {
+            data: insertedEntries,
+            error: insertError
+        } = await supabaseClient
+
+            .from(
+                "timetable_entries"
+            )
+
+            .insert(
+                entries
+            )
+
+            .select();
+
+
+        if (
+            insertError
+        ) {
+
+            console.error(
+                "SUPABASE INSERT ERROR:",
+                insertError
+            );
+
+
+            throw new Error(
+
+                "Failed to save timetable: " +
+
+                insertError.message
+
+            );
+
+        }
+
+
+        // ====================================================
+        // STORE GENERATED ENTRIES
+        // ====================================================
+
+        generatedTimetableEntries =
+            insertedEntries || entries;
+
+
+        console.log(
+            "STEP 13: Timetable saved."
+        );
+
+
+        console.log(
+            "Saved entries:",
+            generatedTimetableEntries.length
+        );
+
+
+        console.table(
+            generatedTimetableEntries
+        );
+
+
+        // ====================================================
+        // SUCCESS
+        // ====================================================
+
+        setTimetableGenerationStatus(
+
+            `Timetable generated successfully. ${generatedTimetableEntries.length} lesson periods saved.`,
+
+            conflicts.length === 0
+                ? "success"
+                : "warning"
+
+        );
+
+
+        // ====================================================
+        // OPTIONAL UI FUNCTIONS
+        // ====================================================
+        //
+        // These are deliberately optional in V2.
+        // This prevents undefined functions from breaking
+        // the generator.
+        // ====================================================
+
+        if (
+            typeof showTimetableConflicts ===
+            "function"
+        ) {
+
+            showTimetableConflicts(
+                conflicts,
+                lookup
+            );
+
+        }
+
+
+        if (
+            typeof showTimetableSummary ===
+            "function"
+        ) {
+
+            showTimetableSummary(
+
+                tasks.length,
+
+                generatedTimetableEntries.length,
+
+                conflicts.length
+
+            );
+
+        }
+
+
+        if (
+            typeof loadGeneratedTimetable ===
+            "function"
+        ) {
+
+            await loadGeneratedTimetable();
+
+        }
+
+
+        if (
+            typeof loadTimetableFilters ===
+            "function"
+        ) {
+
+            await loadTimetableFilters(
+                data
+            );
+
+        }
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "✅ SMART TIMETABLE GENERATION SUCCESS"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        return {
+
+            entries:
+                generatedTimetableEntries,
+
+            conflicts:
+                conflicts,
+
+            tasks:
+                tasks
+
+        };
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "======================================"
+        );
+
+        console.error(
+            "❌ TIMETABLE GENERATION ERROR"
+        );
+
+        console.error(
+            error
+        );
+
+        console.error(
+            "======================================"
+        );
+
+
+        setTimetableGenerationStatus(
+
+            "Timetable generation failed: " +
+            error.message,
+
+            "error"
+
+        );
+
+
+        // Do NOT use alert here.
+        // Console + status box is easier to debug.
+
+
+        return {
+
+            entries: [],
+
+            conflicts: [],
+
+            error: error
+
+        };
+
+    }
+
+    finally {
+
+        timetableGenerationRunning =
+            false;
+
+
+        console.log(
+            "Generation running reset to false."
+        );
+
+    }
+
+}
