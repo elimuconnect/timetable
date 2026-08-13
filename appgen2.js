@@ -2311,7 +2311,6 @@ function findDoubleLessonSlot(
     return null;
 
 }
-
 // ============================================================
 // PART 5 — GENERATE TIMETABLE
 // ============================================================
@@ -2332,7 +2331,13 @@ async function generateTimetable() {
     );
 
     console.log(
-        "======================================";
+        "Generation running:",
+        timetableGenerationRunning
+    );
+
+    console.log(
+        "======================================"
+    );
 
 
     // ========================================================
@@ -2346,6 +2351,7 @@ async function generateTimetable() {
         );
 
         return;
+
     }
 
 
@@ -2360,14 +2366,26 @@ async function generateTimetable() {
 
         console.error(message);
 
-        setTimetableGenerationStatus(
-            message,
-            "error"
-        );
+        if (
+            typeof setTimetableGenerationStatus ===
+            "function"
+        ) {
+
+            setTimetableGenerationStatus(
+                message,
+                "error"
+            );
+
+        }
 
         return;
+
     }
 
+
+    // ========================================================
+    // START GENERATION
+    // ========================================================
 
     timetableGenerationRunning = true;
 
@@ -2378,10 +2396,17 @@ async function generateTimetable() {
         // STEP 1 — SHOW STATUS
         // ====================================================
 
-        setTimetableGenerationStatus(
-            "Loading timetable generator data...",
-            "info"
-        );
+        if (
+            typeof setTimetableGenerationStatus ===
+            "function"
+        ) {
+
+            setTimetableGenerationStatus(
+                "Loading timetable generator data...",
+                "info"
+            );
+
+        }
 
 
         console.log(
@@ -2398,8 +2423,38 @@ async function generateTimetable() {
 
 
         console.log(
-            "STEP 2: Generator data loaded.",
-            data
+            "STEP 2: Generator data loaded."
+        );
+
+
+        console.log(
+            "Requirements:",
+            data.requirements.length
+        );
+
+        console.log(
+            "Periods:",
+            data.periods.length
+        );
+
+        console.log(
+            "Streams:",
+            data.streams.length
+        );
+
+        console.log(
+            "Subjects:",
+            data.subjects.length
+        );
+
+        console.log(
+            "Teachers:",
+            data.teachers.length
+        );
+
+        console.log(
+            "Rooms:",
+            data.rooms.length
         );
 
 
@@ -2457,6 +2512,48 @@ async function generateTimetable() {
             );
 
         }
+
+
+        // ====================================================
+        // SHOW PERIOD INFORMATION
+        // ====================================================
+
+        console.table(
+
+            teachingPeriods.map(
+                period => ({
+
+                    id:
+                        period.id,
+
+                    day:
+                        period.day_name,
+
+                    dayNumber:
+                        period.day_number,
+
+                    order:
+                        period.period_order,
+
+                    number:
+                        period.period_number,
+
+                    start:
+                        period.start_time,
+
+                    end:
+                        period.end_time,
+
+                    teaching:
+                        period.is_teaching_period,
+
+                    type:
+                        period.period_type
+
+                })
+            )
+
+        );
 
 
         // ====================================================
@@ -2536,6 +2633,39 @@ async function generateTimetable() {
 
 
         // ====================================================
+        // TASK SUMMARY
+        // ====================================================
+
+        console.table(
+
+            tasks.map(
+                task => ({
+
+                    taskId:
+                        task.taskId,
+
+                    streamId:
+                        task.streamId,
+
+                    subjectId:
+                        task.subjectId,
+
+                    teacherId:
+                        task.teacherId,
+
+                    double:
+                        task.isDouble,
+
+                    periods:
+                        task.lessonsRequired
+
+                })
+            )
+
+        );
+
+
+        // ====================================================
         // STEP 8 — CREATE OCCUPANCY INDEXES
         // ====================================================
 
@@ -2562,6 +2692,10 @@ async function generateTimetable() {
         );
 
 
+        // ====================================================
+        // PLACE EACH TASK
+        // ====================================================
+
         for (
             let i = 0;
             i < tasks.length;
@@ -2574,7 +2708,7 @@ async function generateTimetable() {
 
             console.log(
                 `PLACING TASK ${i + 1}/${tasks.length}`,
-                task
+                task.taskId
             );
 
 
@@ -2595,13 +2729,17 @@ async function generateTimetable() {
                     );
 
 
+                // ------------------------------------------------
+                // DOUBLE LESSON FAILED
+                // ------------------------------------------------
+
                 if (
                     !slot
                 ) {
 
                     console.warn(
                         "DOUBLE LESSON COULD NOT BE PLACED:",
-                        task
+                        task.taskId
                     );
 
 
@@ -2628,69 +2766,75 @@ async function generateTimetable() {
                     });
 
 
-                    continue;
-
                 }
 
 
-                // ---------------------------------------------
-                // RESERVE FIRST PERIOD
-                // ---------------------------------------------
+                // ------------------------------------------------
+                // DOUBLE LESSON FOUND
+                // ------------------------------------------------
 
-                reserveSlot(
-                    task,
-                    slot.firstPeriod,
-                    slot.room,
-                    indexes
-                );
+                else {
 
+                    // ---------------------------------------------
+                    // RESERVE FIRST PERIOD
+                    // ---------------------------------------------
 
-                // ---------------------------------------------
-                // RESERVE SECOND PERIOD
-                // ---------------------------------------------
-
-                reserveSlot(
-                    task,
-                    slot.secondPeriod,
-                    slot.room,
-                    indexes
-                );
-
-
-                // ---------------------------------------------
-                // CREATE FIRST ENTRY
-                // ---------------------------------------------
-
-                entries.push(
-
-                    createGeneratedEntry(
+                    reserveSlot(
                         task,
                         slot.firstPeriod,
-                        slot.room
-                    )
+                        slot.room,
+                        indexes
+                    );
 
-                );
 
+                    // ---------------------------------------------
+                    // RESERVE SECOND PERIOD
+                    // ---------------------------------------------
 
-                // ---------------------------------------------
-                // CREATE SECOND ENTRY
-                // ---------------------------------------------
-
-                entries.push(
-
-                    createGeneratedEntry(
+                    reserveSlot(
                         task,
                         slot.secondPeriod,
-                        slot.room
-                    )
+                        slot.room,
+                        indexes
+                    );
 
-                );
+
+                    // ---------------------------------------------
+                    // CREATE FIRST ENTRY
+                    // ---------------------------------------------
+
+                    entries.push(
+
+                        createGeneratedEntry(
+                            task,
+                            slot.firstPeriod,
+                            slot.room
+                        )
+
+                    );
 
 
-                console.log(
-                    "DOUBLE LESSON PLACED:",
-                    task.taskId
-                );
+                    // ---------------------------------------------
+                    // CREATE SECOND ENTRY
+                    // ---------------------------------------------
+
+                    entries.push(
+
+                        createGeneratedEntry(
+                            task,
+                            slot.secondPeriod,
+                            slot.room
+                        )
+
+                    );
+
+
+                    console.log(
+                        "✅ DOUBLE LESSON PLACED:",
+                        task.taskId
+                    );
+
+                }
 
             }
 
@@ -2710,13 +2854,17 @@ async function generateTimetable() {
                     );
 
 
+                // ------------------------------------------------
+                // SINGLE LESSON FAILED
+                // ------------------------------------------------
+
                 if (
                     !slot
                 ) {
 
                     console.warn(
                         "SINGLE LESSON COULD NOT BE PLACED:",
-                        task
+                        task.taskId
                     );
 
 
@@ -2738,47 +2886,44 @@ async function generateTimetable() {
                             task.teacherId,
 
                         reason:
-                            "No free period was available."
+                            "No free period, teacher slot, room, or daily slot was available."
 
                     });
-
-
-                    continue;
 
                 }
 
 
-                // ---------------------------------------------
-                // RESERVE SLOT
-                // ---------------------------------------------
+                // ------------------------------------------------
+                // SINGLE LESSON FOUND
+                // ------------------------------------------------
 
-                reserveSlot(
-                    task,
-                    slot.period,
-                    slot.room,
-                    indexes
-                );
+                else {
 
-
-                // ---------------------------------------------
-                // CREATE ENTRY
-                // ---------------------------------------------
-
-                entries.push(
-
-                    createGeneratedEntry(
+                    reserveSlot(
                         task,
                         slot.period,
-                        slot.room
-                    )
+                        slot.room,
+                        indexes
+                    );
 
-                );
+
+                    entries.push(
+
+                        createGeneratedEntry(
+                            task,
+                            slot.period,
+                            slot.room
+                        )
+
+                    );
 
 
-                console.log(
-                    "SINGLE LESSON PLACED:",
-                    task.taskId
-                );
+                    console.log(
+                        "✅ SINGLE LESSON PLACED:",
+                        task.taskId
+                    );
+
+                }
 
             }
 
@@ -2787,13 +2932,20 @@ async function generateTimetable() {
             // UPDATE STATUS
             // =================================================
 
-            setTimetableGenerationStatus(
+            if (
+                typeof setTimetableGenerationStatus ===
+                "function"
+            ) {
 
-                `Generating timetable... ${i + 1} / ${tasks.length}`,
+                setTimetableGenerationStatus(
 
-                "info"
+                    `Generating timetable... ${i + 1} / ${tasks.length}`,
 
-            );
+                    "info"
+
+                );
+
+            }
 
         }
 
@@ -2811,7 +2963,7 @@ async function generateTimetable() {
         );
 
         console.log(
-            "Tasks:",
+            "Total tasks:",
             tasks.length
         );
 
@@ -2830,19 +2982,44 @@ async function generateTimetable() {
         );
 
 
+        // ====================================================
+        // SHOW GENERATED ENTRIES
+        // ====================================================
+
+        console.table(
+            entries
+        );
+
+
+        // ====================================================
+        // SHOW CONFLICTS
+        // ====================================================
+
         console.table(
             conflicts
         );
 
 
         // ====================================================
-        // IMPORTANT:
-        // DO NOT SAVE AN EMPTY TIMETABLE
+        // DO NOT SAVE EMPTY TIMETABLE
         // ====================================================
 
         if (
             entries.length === 0
         ) {
+
+            if (
+                typeof showTimetableConflicts ===
+                "function"
+            ) {
+
+                showTimetableConflicts(
+                    conflicts,
+                    lookup
+                );
+
+            }
+
 
             throw new Error(
 
@@ -2861,13 +3038,20 @@ async function generateTimetable() {
         // STEP 11 — CLEAR OLD TIMETABLE
         // ====================================================
 
-        setTimetableGenerationStatus(
+        if (
+            typeof setTimetableGenerationStatus ===
+            "function"
+        ) {
 
-            "Clearing previous timetable...",
+            setTimetableGenerationStatus(
 
-            "info"
+                "Clearing previous timetable...",
 
-        );
+                "info"
+
+            );
+
+        }
 
 
         console.log(
@@ -2895,6 +3079,12 @@ async function generateTimetable() {
             deleteError
         ) {
 
+            console.error(
+                "DELETE ERROR:",
+                deleteError
+            );
+
+
             throw new Error(
 
                 "Failed to clear previous timetable: " +
@@ -2912,16 +3102,23 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // STEP 12 — SAVE NEW ENTRIES
+        // STEP 12 — SAVE NEW TIMETABLE
         // ====================================================
 
-        setTimetableGenerationStatus(
+        if (
+            typeof setTimetableGenerationStatus ===
+            "function"
+        ) {
 
-            `Saving ${entries.length} timetable entries...`,
+            setTimetableGenerationStatus(
 
-            "info"
+                `Saving ${entries.length} timetable entries...`,
 
-        );
+                "info"
+
+            );
+
+        }
 
 
         console.log(
@@ -2967,7 +3164,7 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // STORE GENERATED ENTRIES
+        // STEP 13 — STORE GENERATED ENTRIES
         // ====================================================
 
         generatedTimetableEntries =
@@ -2991,27 +3188,7 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // SUCCESS
-        // ====================================================
-
-        setTimetableGenerationStatus(
-
-            `Timetable generated successfully. ${generatedTimetableEntries.length} lesson periods saved.`,
-
-            conflicts.length === 0
-                ? "success"
-                : "warning"
-
-        );
-
-
-        // ====================================================
-        // OPTIONAL UI FUNCTIONS
-        // ====================================================
-        //
-        // These are deliberately optional in V2.
-        // This prevents undefined functions from breaking
-        // the generator.
+        // STEP 14 — SHOW CONFLICTS
         // ====================================================
 
         if (
@@ -3026,6 +3203,10 @@ async function generateTimetable() {
 
         }
 
+
+        // ====================================================
+        // STEP 15 — SHOW SUMMARY
+        // ====================================================
 
         if (
             typeof showTimetableSummary ===
@@ -3045,27 +3226,77 @@ async function generateTimetable() {
         }
 
 
+        // ====================================================
+        // STEP 16 — LOAD GENERATED TIMETABLE
+        // ====================================================
+
         if (
             typeof loadGeneratedTimetable ===
             "function"
         ) {
+
+            console.log(
+                "STEP 16: Loading generated timetable..."
+            );
+
 
             await loadGeneratedTimetable();
 
         }
 
 
+        // ====================================================
+        // DO NOT CALL loadTimetableFilters()
+        // ====================================================
+        //
+        // It is currently not guaranteed to exist.
+        // The generator must not fail because of it.
+        //
+        // Filters can be handled separately later.
+        // ====================================================
+
+
+        // ====================================================
+        // SUCCESS STATUS
+        // ====================================================
+
         if (
-            typeof loadTimetableFilters ===
+            typeof setTimetableGenerationStatus ===
             "function"
         ) {
 
-            await loadTimetableFilters(
-                data
-            );
+            if (
+                conflicts.length === 0
+            ) {
+
+                setTimetableGenerationStatus(
+
+                    `Timetable generated successfully. ${generatedTimetableEntries.length} lesson periods saved.`,
+
+                    "success"
+
+                );
+
+            }
+
+            else {
+
+                setTimetableGenerationStatus(
+
+                    `Timetable generated with ${conflicts.length} unresolved lesson task(s). ${generatedTimetableEntries.length} lesson periods saved.`,
+
+                    "warning"
+
+                );
+
+            }
 
         }
 
+
+        // ====================================================
+        // FINAL LOG
+        // ====================================================
 
         console.log(
             "======================================"
@@ -3076,9 +3307,23 @@ async function generateTimetable() {
         );
 
         console.log(
+            "Entries:",
+            generatedTimetableEntries.length
+        );
+
+        console.log(
+            "Conflicts:",
+            conflicts.length
+        );
+
+        console.log(
             "======================================"
         );
 
+
+        // ====================================================
+        // RETURN RESULT
+        // ====================================================
 
         return {
 
@@ -3095,6 +3340,11 @@ async function generateTimetable() {
 
     }
 
+
+    // ========================================================
+    // ERROR HANDLER
+    // ========================================================
+
     catch (error) {
 
         console.error(
@@ -3110,22 +3360,35 @@ async function generateTimetable() {
         );
 
         console.error(
+            "Message:",
+            error.message
+        );
+
+        console.error(
+            "Stack:",
+            error.stack
+        );
+
+        console.error(
             "======================================"
         );
 
 
-        setTimetableGenerationStatus(
+        if (
+            typeof setTimetableGenerationStatus ===
+            "function"
+        ) {
 
-            "Timetable generation failed: " +
-            error.message,
+            setTimetableGenerationStatus(
 
-            "error"
+                "Timetable generation failed: " +
+                error.message,
 
-        );
+                "error"
 
+            );
 
-        // Do NOT use alert here.
-        // Console + status box is easier to debug.
+        }
 
 
         return {
@@ -3140,6 +3403,11 @@ async function generateTimetable() {
 
     }
 
+
+    // ========================================================
+    // FINALLY
+    // ========================================================
+
     finally {
 
         timetableGenerationRunning =
@@ -3153,8 +3421,12 @@ async function generateTimetable() {
     }
 
 }
+
+
+
+
 // ============================================================
-// PART 6 — LOAD AND DISPLAY GENERATED TIMETABLE
+// PART 5 — LOAD AND DISPLAY GENERATED TIMETABLE
 // ============================================================
 
 // ------------------------------------------------------------
