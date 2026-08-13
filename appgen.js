@@ -4781,6 +4781,10 @@ function printGeneratedTimetable() {
 }
 
 
+// ============================================================
+// EVENT: GENERATE TIMETABLE
+// ============================================================
+
 document.addEventListener(
     "click",
     async function (event) {
@@ -4799,6 +4803,11 @@ document.addEventListener(
         );
 
         console.log(
+            "Generate button:",
+            button
+        );
+
+        console.log(
             "School ID:",
             timetableState.schoolId
         );
@@ -4806,9 +4815,30 @@ document.addEventListener(
         event.preventDefault();
         event.stopPropagation();
 
+        if (!timetableState.schoolId) {
+
+            console.error(
+                "NO SCHOOL SELECTED"
+            );
+
+            alert(
+                "Please select a school first."
+            );
+
+            return;
+        }
+
         try {
 
+            console.log(
+                "CALLING generateTimetable()..."
+            );
+
             await generateTimetable();
+
+            console.log(
+                "generateTimetable() FINISHED"
+            );
 
         }
         catch (error) {
@@ -4826,7 +4856,8 @@ document.addEventListener(
 
         }
 
-    }
+    },
+    true   // IMPORTANT: CAPTURE PHASE
 );
 // ============================================================
 // EVENT: REGENERATE TIMETABLE
