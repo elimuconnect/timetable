@@ -1,18 +1,3 @@
-// ============================================================
-// 19. AUTOMATIC TIMETABLE GENERATOR
-// ============================================================
-//
-// Uses:
-//
-// timetable_requirements
-// timetable_periods
-// timetable_streams
-// timetable_subjects
-// timetable_teachers
-// timetable_rooms
-// timetable_entries
-//
-// ============================================================
 
 
 // ============================================================
@@ -2188,17 +2173,77 @@ function findDoubleLessonSlot(
 // GENERATE TIMETABLE
 // ============================================================
 
+// ============================================================
+// GENERATE TIMETABLE
+// ============================================================
+
 async function generateTimetable() {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "GENERATE TIMETABLE FUNCTION STARTED"
+    );
+
+    console.log(
+        "School ID:",
+        timetableState.schoolId
+    );
+
+    console.log(
+        "Generation running:",
+        timetableGenerationRunning
+    );
+
+    console.log(
+        "======================================"
+    );
+
 
     if (
         timetableGenerationRunning
     ) {
 
-        return;
+        console.warn(
+            "TIMETABLE GENERATION ALREADY RUNNING"
+        );
 
+        return;
     }
 
 
+    if (
+        !timetableState.schoolId
+    ) {
+
+        console.error(
+            "NO SCHOOL SELECTED"
+        );
+
+        alert(
+            "Please select a school first."
+        );
+
+        return;
+    }
+
+
+    timetableGenerationRunning =
+        true;
+
+
+    try {
+
+        console.log(
+            "STARTING TIMETABLE DATA LOAD..."
+        );
+
+        setTimetableGenerationStatus(
+            "Loading timetable data...",
+            "info"
+        );
     // --------------------------------------------------------
     // CHECK SCHOOL
     // --------------------------------------------------------
@@ -4770,38 +4815,53 @@ function printGeneratedTimetable() {
 }
 
 
-// ============================================================
-// EVENT: GENERATE
-// ============================================================
+document.addEventListener(
+    "click",
+    async function (event) {
 
-// ============================================================
-// EVENT: GENERATE TIMETABLE
-// ============================================================
-
-if (generateTimetableBtn) {
-
-    generateTimetableBtn.addEventListener(
-        "click",
-        async function (event) {
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            console.log(
-                "🚀 GENERATE TIMETABLE BUTTON CLICKED"
+        const button =
+            event.target.closest(
+                "#generateTimetableBtn"
             );
 
-            console.log(
-                "School ID:",
-                timetableState.schoolId
-            );
+        if (!button) {
+            return;
+        }
+
+        console.log(
+            "🚀 GENERATE TIMETABLE BUTTON CLICKED"
+        );
+
+        console.log(
+            "School ID:",
+            timetableState.schoolId
+        );
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        try {
 
             await generateTimetable();
 
         }
-    );
+        catch (error) {
 
-}
+            console.error(
+                "GENERATE TIMETABLE CLICK ERROR:",
+                error
+            );
+
+            setTimetableGenerationStatus(
+                "Generation failed: " +
+                error.message,
+                "error"
+            );
+
+        }
+
+    }
+);
 // ============================================================
 // EVENT: REGENERATE TIMETABLE
 // ============================================================
@@ -4947,23 +5007,6 @@ if (
 
 }
 
-
-// ============================================================
-// LOAD GENERATED TIMETABLE WHEN SCHOOL CHANGES
-// ============================================================
-//
-// IMPORTANT:
-// If you already have ONE schoolSelect "change"
-// listener elsewhere, add these calls to that
-// existing listener instead of creating duplicate
-// listeners.
-// ============================================================
-
-
-
-// ============================================================
-// INITIAL TIMETABLE LOAD
-// ============================================================
 
 async function initializeTimetableGenerator() {
 
