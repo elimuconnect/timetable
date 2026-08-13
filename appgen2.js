@@ -165,3 +165,56 @@ document.addEventListener(
 
     }
 );
+
+// ============================================================
+// GENERATION STATUS
+// Compatibility function used by app.js
+// ============================================================
+
+function hideTimetableGenerationStatus() {
+
+    const status =
+        document.getElementById(
+            "timetableGenerationStatus"
+        );
+
+    if (status) {
+
+        status.style.display = "none";
+
+    }
+
+}
+
+function setTimetableGenerationStatus(
+    message,
+    type = "info"
+) {
+
+    const status =
+        document.getElementById(
+            "timetableGenerationStatus"
+        );
+
+    if (!status) {
+
+        console.log(
+            "[TIMETABLE STATUS]",
+            message
+        );
+
+        return;
+
+    }
+
+    status.textContent =
+        message;
+
+    status.style.display =
+        "block";
+
+    status.className =
+        "timetable-generation-status " +
+        type;
+
+}
