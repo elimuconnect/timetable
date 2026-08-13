@@ -3153,3 +3153,829 @@ async function generateTimetable() {
     }
 
 }
+// ============================================================
+// PART 6 — LOAD AND DISPLAY GENERATED TIMETABLE
+// ============================================================
+
+// ------------------------------------------------------------
+// LOAD GENERATED TIMETABLE
+// ------------------------------------------------------------
+
+async function loadGeneratedTimetable() {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "LOADING GENERATED TIMETABLE"
+    );
+
+    console.log(
+        "School ID:",
+        timetableState.schoolId
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    const container =
+        document.getElementById(
+            "timetableContent"
+        );
+
+
+    if (!container) {
+
+        console.warn(
+            "timetableContent element not found."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (
+        !timetableState ||
+        !timetableState.schoolId
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+
+                <div>🏫</div>
+
+                <h3>
+                    Please select a school first.
+                </h3>
+
+            </div>
+        `;
+
+        generatedTimetableEntries = [];
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOADING MESSAGE
+    // --------------------------------------------------------
+
+    container.innerHTML = `
+        <div class="loading-message">
+            Loading generated timetable...
+        </div>
+    `;
+
+
+    try {
+
+        // ====================================================
+        // 1. LOAD TIMETABLE ENTRIES
+        // ====================================================
+
+        const entriesResult =
+            await supabaseClient
+
+                .from(
+                    "timetable_entries"
+                )
+
+                .select("*")
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+
+        if (
+            entriesResult.error
+        ) {
+
+            throw new Error(
+                "Failed to load timetable entries: " +
+                entriesResult.error.message
+            );
+
+        }
+
+
+        const entries =
+            entriesResult.data || [];
+
+
+        console.log(
+            "Generated timetable entries:",
+            entries.length
+        );
+
+
+        // ----------------------------------------------------
+        // NO ENTRIES
+        // ----------------------------------------------------
+
+        if (
+            entries.length === 0
+        ) {
+
+            generatedTimetableEntries = [];
+
+            container.innerHTML = `
+                <div class="empty-state">
+
+                    <div>📅</div>
+
+                    <h3>
+                        No timetable generated yet
+                    </h3>
+
+                    <p>
+                        Click
+                        <strong>
+                            Generate Timetable
+                        </strong>
+                        to create one.
+                    </p>
+
+                </div>
+            `;
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // 2. LOAD PERIODS
+        // ====================================================
+
+        const periodsResult =
+            await supabaseClient
+
+                .from(
+                    "timetable_periods"
+                )
+
+                .select("*")
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+
+        if (
+            periodsResult.error
+        ) {
+
+            throw new Error(
+                "Failed to load timetable periods: " +
+                periodsResult.error.message
+            );
+
+        }
+
+
+        // ====================================================
+        // 3. LOAD STREAMS
+        // ====================================================
+
+        const streamsResult =
+            await supabaseClient
+
+                .from(
+                    "timetable_streams"
+                )
+
+                .select("*")
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+
+        if (
+            streamsResult.error
+        ) {
+
+            throw new Error(
+                "Failed to load timetable streams: " +
+                streamsResult.error.message
+            );
+
+        }
+
+
+        // ====================================================
+        // 4. LOAD SUBJECTS
+        // ====================================================
+
+        const subjectsResult =
+            await supabaseClient
+
+                .from(
+                    "timetable_subjects"
+                )
+
+                .select("*")
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+
+        if (
+            subjectsResult.error
+        ) {
+
+            throw new Error(
+                "Failed to load timetable subjects: " +
+                subjectsResult.error.message
+            );
+
+        }
+
+
+        // ====================================================
+        // 5. LOAD TEACHERS
+        // ====================================================
+
+        const teachersResult =
+            await supabaseClient
+
+                .from(
+                    "timetable_teachers"
+                )
+
+                .select("*")
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+
+        if (
+            teachersResult.error
+        ) {
+
+            throw new Error(
+                "Failed to load timetable teachers: " +
+                teachersResult.error.message
+            );
+
+        }
+
+
+        // ====================================================
+        // 6. LOAD ROOMS
+        // ====================================================
+
+        const roomsResult =
+            await supabaseClient
+
+                .from(
+                    "timetable_rooms"
+                )
+
+                .select("*")
+
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                );
+
+
+        if (
+            roomsResult.error
+        ) {
+
+            throw new Error(
+                "Failed to load timetable rooms: " +
+                roomsResult.error.message
+            );
+
+        }
+
+
+        // ====================================================
+        // 7. BUILD LOOKUP MAPS
+        // ====================================================
+
+        const lookup =
+            buildTimetableLookupMaps({
+
+                periods:
+                    periodsResult.data || [],
+
+                streams:
+                    streamsResult.data || [],
+
+                subjects:
+                    subjectsResult.data || [],
+
+                teachers:
+                    teachersResult.data || [],
+
+                rooms:
+                    roomsResult.data || []
+
+            });
+
+
+        console.log(
+            "Display periods:",
+            periodsResult.data?.length || 0
+        );
+
+        console.log(
+            "Display streams:",
+            streamsResult.data?.length || 0
+        );
+
+        console.log(
+            "Display subjects:",
+            subjectsResult.data?.length || 0
+        );
+
+        console.log(
+            "Display teachers:",
+            teachersResult.data?.length || 0
+        );
+
+        console.log(
+            "Display rooms:",
+            roomsResult.data?.length || 0
+        );
+
+
+        // ====================================================
+        // 8. SAVE ENTRIES IN GLOBAL STATE
+        // ====================================================
+
+        generatedTimetableEntries =
+            entries;
+
+
+        // ====================================================
+        // 9. RENDER
+        // ====================================================
+
+        renderGeneratedTimetable(
+            entries,
+            lookup
+        );
+
+
+        console.log(
+            "TIMETABLE DISPLAY COMPLETE"
+        );
+
+
+    }
+    catch (error) {
+
+        console.error(
+            "FAILED TO LOAD GENERATED TIMETABLE:",
+            error
+        );
+
+
+        generatedTimetableEntries = [];
+
+
+        container.innerHTML = `
+            <div class="empty-message">
+
+                <h3>
+                    Failed to load timetable
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        error.message ||
+                        "Unknown error"
+                    )}
+                </p>
+
+            </div>
+        `;
+
+    }
+
+}
+
+
+
+// ============================================================
+// RENDER GENERATED TIMETABLE
+// ============================================================
+
+function renderGeneratedTimetable(
+    entries,
+    lookup
+) {
+
+    const container =
+        document.getElementById(
+            "timetableContent"
+        );
+
+
+    if (!container) {
+
+        console.warn(
+            "timetableContent element not found."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !entries ||
+        entries.length === 0
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+
+                <div>📅</div>
+
+                <h3>
+                    No timetable entries available.
+                </h3>
+
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    console.log(
+        "Rendering timetable entries:",
+        entries.length
+    );
+
+
+    // ========================================================
+    // SORT ENTRIES
+    // ========================================================
+
+    const sortedEntries =
+        [...entries].sort(
+            (
+                a,
+                b
+            ) => {
+
+                const periodA =
+                    lookup.periods.get(
+                        a.period_id
+                    );
+
+                const periodB =
+                    lookup.periods.get(
+                        b.period_id
+                    );
+
+
+                const dayA =
+                    Number(
+                        periodA?.day_number || 0
+                    );
+
+                const dayB =
+                    Number(
+                        periodB?.day_number || 0
+                    );
+
+
+                if (
+                    dayA !== dayB
+                ) {
+
+                    return dayA - dayB;
+
+                }
+
+
+                const orderA =
+                    Number(
+                        periodA?.period_order || 0
+                    );
+
+                const orderB =
+                    Number(
+                        periodB?.period_order || 0
+                    );
+
+
+                return (
+                    orderA - orderB
+                );
+
+            }
+        );
+
+
+    // ========================================================
+    // GROUP BY STREAM
+    // ========================================================
+
+    const streamGroups =
+        new Map();
+
+
+    sortedEntries.forEach(
+        entry => {
+
+            const streamId =
+                entry.stream_id;
+
+
+            if (
+                !streamGroups.has(
+                    streamId
+                )
+            ) {
+
+                streamGroups.set(
+                    streamId,
+                    []
+                );
+
+            }
+
+
+            streamGroups
+                .get(streamId)
+                .push(entry);
+
+        }
+    );
+
+
+    // ========================================================
+    // BUILD HTML
+    // ========================================================
+
+    let html = "";
+
+
+    html += `
+        <div class="generated-timetable">
+
+            <div class="timetable-header">
+
+                <h2>
+                    📅 Generated Timetable
+                </h2>
+
+                <p>
+                    ${sortedEntries.length}
+                    lesson periods generated.
+                </p>
+
+            </div>
+    `;
+
+
+    // ========================================================
+    // RENDER EACH STREAM
+    // ========================================================
+
+    streamGroups.forEach(
+        (
+            streamEntries,
+            streamId
+        ) => {
+
+            const stream =
+                lookup.streams.get(
+                    streamId
+                );
+
+
+            const streamName =
+                getTimetableStreamName(
+                    stream
+                );
+
+
+            html += `
+                <div class="timetable-stream">
+
+                    <div class="timetable-stream-title">
+
+                        📚
+                        ${escapeHtml(
+                            streamName
+                        )}
+
+                    </div>
+
+                    <div class="timetable-table-wrapper">
+
+                        <table
+                            class="timetable-table"
+                        >
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Day
+                                    </th>
+
+                                    <th>
+                                        Period
+                                    </th>
+
+                                    <th>
+                                        Time
+                                    </th>
+
+                                    <th>
+                                        Subject
+                                    </th>
+
+                                    <th>
+                                        Teacher
+                                    </th>
+
+                                    <th>
+                                        Room
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+            `;
+
+
+            streamEntries.forEach(
+                entry => {
+
+                    const period =
+                        lookup.periods.get(
+                            entry.period_id
+                        );
+
+
+                    const subject =
+                        lookup.subjects.get(
+                            entry.subject_id
+                        );
+
+
+                    const teacher =
+                        lookup.teachers.get(
+                            entry.teacher_id
+                        );
+
+
+                    const room =
+                        lookup.rooms.get(
+                            entry.room_id
+                        );
+
+
+                    const day =
+                        period?.day_name ||
+                        (
+                            period?.day_number
+                                ? `Day ${period.day_number}`
+                                : "Unknown"
+                        );
+
+
+                    const periodNumber =
+                        period?.period_number ||
+                        period?.period_order ||
+                        "-";
+
+
+                    const startTime =
+                        period?.start_time ||
+                        "";
+
+
+                    const endTime =
+                        period?.end_time ||
+                        "";
+
+
+                    const time =
+                        startTime &&
+                        endTime
+                            ? `${startTime} - ${endTime}`
+                            : "-";
+
+
+                    html += `
+                        <tr>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(day)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(
+                                        periodNumber
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(time)
+                                )}
+                            </td>
+
+                            <td>
+                                <strong>
+                                    ${escapeHtml(
+                                        getTimetableSubjectName(
+                                            subject
+                                        )
+                                    )}
+                                </strong>
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableTeacherName(
+                                        teacher
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableRoomName(
+                                        room
+                                    )
+                                )}
+                            </td>
+
+                        </tr>
+                    `;
+
+                }
+            );
+
+
+            html += `
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+            `;
+
+        }
+    );
+
+
+    html += `
+        </div>
+    `;
+
+
+    // ========================================================
+    // DISPLAY
+    // ========================================================
+
+    container.innerHTML =
+        html;
+
+
+    console.log(
+        "Timetable rendered successfully."
+    );
+
+}
