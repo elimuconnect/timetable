@@ -2284,7 +2284,7 @@ function findDoubleLessonSlot(
 // PART 5 — GENERATE TIMETABLE
 // ============================================================
 
-function generateTimetable(tasks, periods, rooms) {
+async function generateTimetable(tasks, periods, rooms) {
     // 1. Run the validator first
     if (!initializeAndVerifyGenerator(tasks, periods, rooms)) {
         console.error("❌ Timetable generation aborted due to invalid preconditions.");
