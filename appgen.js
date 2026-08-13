@@ -2830,7 +2830,7 @@ async function generateTimetable() {
             false;
 
     }
-
+}
 
 
 
