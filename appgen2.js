@@ -5378,3 +5378,1843 @@ function renderTimetableByRoom(
 // ============================================================
 // END PART 6
 // ============================================================
+// ============================================================
+// PART 7 — FILTERS, SUMMARY, CONFLICTS, CLEAR & REGENERATE
+// ============================================================
+
+
+// ============================================================
+// FORMAT PERIOD TIME
+// ============================================================
+
+function formatPeriodTime(
+    period
+) {
+
+    if (!period) {
+
+        return "-";
+
+    }
+
+
+    const start =
+        period.start_time ||
+        "";
+
+
+    const end =
+        period.end_time ||
+        "";
+
+
+    if (
+        start &&
+        end
+    ) {
+
+        return `${start} - ${end}`;
+
+    }
+
+
+    return (
+        start ||
+        end ||
+        "-"
+    );
+
+}
+
+
+// ============================================================
+// LOAD TIMETABLE FILTERS
+// ============================================================
+
+async function loadTimetableFilters(
+    data = null
+) {
+
+    try {
+
+        // ----------------------------------------------------
+        // LOAD DATA IF NOT PROVIDED
+        // ----------------------------------------------------
+
+        if (!data) {
+
+            data =
+                await loadTimetableGeneratorData();
+
+        }
+
+
+        if (!data) {
+
+            console.warn(
+                "No timetable data available for filters."
+            );
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // STREAM FILTER
+        // ====================================================
+
+        if (
+            timetableStreamFilter
+        ) {
+
+            const currentValue =
+                timetableStreamFilter.value;
+
+
+            let html = `
+
+                <option value="">
+                    All Streams
+                </option>
+
+            `;
+
+
+            const streams =
+                Array.isArray(
+                    data.streams
+                )
+                    ? [...data.streams]
+                    : [];
+
+
+            // ------------------------------------------------
+            // SORT STREAMS
+            // ------------------------------------------------
+
+            streams.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    return getTimetableStreamName(
+                        a
+                    ).localeCompare(
+                        getTimetableStreamName(
+                            b
+                        )
+                    );
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // CREATE OPTIONS
+            // ------------------------------------------------
+
+            streams.forEach(
+                stream => {
+
+                    if (!stream) {
+                        return;
+                    }
+
+
+                    html += `
+
+                        <option
+                            value="${escapeHtml(
+                                String(
+                                    stream.id
+                                )
+                            )}"
+                        >
+
+                            ${escapeHtml(
+                                getTimetableStreamName(
+                                    stream
+                                )
+                            )}
+
+                        </option>
+
+                    `;
+
+                }
+            );
+
+
+            timetableStreamFilter.innerHTML =
+                html;
+
+
+            // ------------------------------------------------
+            // RESTORE PREVIOUS VALUE
+            // ------------------------------------------------
+
+            if (
+                currentValue &&
+                streams.some(
+                    stream =>
+                        String(
+                            stream.id
+                        ) ===
+                        String(
+                            currentValue
+                        )
+                )
+            ) {
+
+                timetableStreamFilter.value =
+                    currentValue;
+
+            }
+
+        }
+
+
+        // ====================================================
+        // DAY FILTER
+        // ====================================================
+
+        if (
+            timetableDayFilter
+        ) {
+
+            const currentDay =
+                timetableDayFilter.value;
+
+
+            let html = `
+
+                <option value="">
+                    All Days
+                </option>
+
+            `;
+
+
+            // ------------------------------------------------
+            // GET UNIQUE DAYS
+            // ------------------------------------------------
+
+            const daysMap =
+                new Map();
+
+
+            const periods =
+                Array.isArray(
+                    data.periods
+                )
+                    ? data.periods
+                    : [];
+
+
+            periods.forEach(
+                period => {
+
+                    if (!period) {
+                        return;
+                    }
+
+
+                    const dayName =
+                        period.day_name;
+
+
+                    if (!dayName) {
+                        return;
+                    }
+
+
+                    const dayNumber =
+                        Number(
+                            period.day_number
+                        ) || 0;
+
+
+                    if (
+                        !daysMap.has(
+                            dayName
+                        )
+                    ) {
+
+                        daysMap.set(
+                            dayName,
+                            dayNumber
+                        );
+
+                    }
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // SORT DAYS
+            // ------------------------------------------------
+
+            const days =
+                Array.from(
+                    daysMap.entries()
+                );
+
+
+            days.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    return (
+                        Number(a[1]) -
+                        Number(b[1])
+                    );
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // CREATE DAY OPTIONS
+            // ------------------------------------------------
+
+            days.forEach(
+                (
+                    [dayName, dayNumber]
+                ) => {
+
+                    html += `
+
+                        <option
+                            value="${escapeHtml(
+                                String(
+                                    dayName
+                                )
+                            )}"
+                        >
+
+                            ${escapeHtml(
+                                String(
+                                    dayName
+                                )
+                            )}
+
+                        </option>
+
+                    `;
+
+                }
+            );
+
+
+            timetableDayFilter.innerHTML =
+                html;
+
+
+            // ------------------------------------------------
+            // RESTORE PREVIOUS DAY
+            // ------------------------------------------------
+
+            if (
+                currentDay &&
+                days.some(
+                    item =>
+                        String(
+                            item[0]
+                        ) ===
+                        String(
+                            currentDay
+                        )
+                )
+            ) {
+
+                timetableDayFilter.value =
+                    currentDay;
+
+            }
+
+        }
+
+
+        // ====================================================
+        // VIEW MODE
+        // ====================================================
+
+        if (
+            timetableViewMode
+        ) {
+
+            // Keep existing selection.
+            // If empty, default to stream.
+
+            if (
+                !timetableViewMode.value
+            ) {
+
+                timetableViewMode.value =
+                    "stream";
+
+            }
+
+        }
+
+
+        console.log(
+            "Timetable filters loaded successfully."
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Failed to load timetable filters:",
+            error
+        );
+
+    }
+
+}
+
+
+// ============================================================
+// SHOW TIMETABLE SUMMARY
+// ============================================================
+
+function showTimetableSummary(
+    totalTasks,
+    generatedEntries,
+    conflictCount
+) {
+
+    const summary =
+        document.getElementById(
+            "timetableSummary"
+        );
+
+
+    const content =
+        document.getElementById(
+            "timetableSummaryContent"
+        );
+
+
+    if (
+        !summary ||
+        !content
+    ) {
+
+        console.warn(
+            "Timetable summary elements not found."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // NORMALIZE VALUES
+    // --------------------------------------------------------
+
+    const tasks =
+        Number(
+            totalTasks
+        ) || 0;
+
+
+    const entries =
+        Number(
+            generatedEntries
+        ) || 0;
+
+
+    const conflicts =
+        Number(
+            conflictCount
+        ) || 0;
+
+
+    // --------------------------------------------------------
+    // SHOW SUMMARY
+    // --------------------------------------------------------
+
+    summary.style.display =
+        "block";
+
+
+    content.innerHTML = `
+
+        <div class="summary-item">
+
+            <strong>
+                Requirements
+            </strong>
+
+            <span>
+                ${tasks}
+            </span>
+
+        </div>
+
+
+        <div class="summary-item">
+
+            <strong>
+                Generated Periods
+            </strong>
+
+            <span>
+                ${entries}
+            </span>
+
+        </div>
+
+
+        <div class="summary-item">
+
+            <strong>
+                Conflicts
+            </strong>
+
+            <span>
+                ${conflicts}
+            </span>
+
+        </div>
+
+    `;
+
+}
+
+
+// ============================================================
+// SHOW TIMETABLE CONFLICTS
+// ============================================================
+
+function showTimetableConflicts(
+    conflicts,
+    lookup
+) {
+
+    const container =
+        document.getElementById(
+            "timetableConflicts"
+        );
+
+
+    const content =
+        document.getElementById(
+            "timetableConflictsContent"
+        );
+
+
+    if (
+        !container ||
+        !content
+    ) {
+
+        console.warn(
+            "Timetable conflict elements not found."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // NO CONFLICTS
+    // --------------------------------------------------------
+
+    if (
+        !Array.isArray(conflicts) ||
+        conflicts.length === 0
+    ) {
+
+        container.style.display =
+            "none";
+
+
+        content.innerHTML =
+            "";
+
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SHOW CONFLICTS
+    // --------------------------------------------------------
+
+    container.style.display =
+        "block";
+
+
+    let html = `
+
+        <div class="empty-message">
+
+            <strong>
+                ${conflicts.length}
+                lesson task(s) could not be placed.
+            </strong>
+
+        </div>
+
+
+        <div class="table-responsive">
+
+            <table class="data-table">
+
+                <thead>
+
+                    <tr>
+
+                        <th>Stream</th>
+
+                        <th>Subject</th>
+
+                        <th>Teacher</th>
+
+                        <th>Lesson Type</th>
+
+                        <th>Reason</th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+    `;
+
+
+    // --------------------------------------------------------
+    // RENDER EACH CONFLICT
+    // --------------------------------------------------------
+
+    conflicts.forEach(
+        conflict => {
+
+            if (!conflict) {
+                return;
+            }
+
+
+            // ------------------------------------------------
+            // SUPPORT BOTH CONFLICT FORMATS
+            // ------------------------------------------------
+            //
+            // Part 5 creates:
+            //
+            // conflict.streamId
+            // conflict.subjectId
+            // conflict.teacherId
+            //
+            // Older code may create:
+            //
+            // conflict.task.streamId
+            //
+            // We support both.
+            // ------------------------------------------------
+
+            const task =
+                conflict.task ||
+                null;
+
+
+            const streamId =
+                conflict.streamId ||
+                task?.streamId ||
+                null;
+
+
+            const subjectId =
+                conflict.subjectId ||
+                task?.subjectId ||
+                null;
+
+
+            const teacherId =
+                conflict.teacherId ||
+                task?.teacherId ||
+                null;
+
+
+            const stream =
+                lookup?.streams?.get(
+                    streamId
+                );
+
+
+            const subject =
+                lookup?.subjects?.get(
+                    subjectId
+                );
+
+
+            const teacher =
+                teacherId
+                    ? lookup?.teachers?.get(
+                        teacherId
+                    )
+                    : null;
+
+
+            // ------------------------------------------------
+            // LESSON TYPE
+            // ------------------------------------------------
+
+            let lessonType =
+                "Single";
+
+
+            if (
+                task &&
+                task.isDouble
+            ) {
+
+                lessonType =
+                    "Double";
+
+            }
+
+
+            // If Part 5 only provides taskId,
+            // detect double from taskId.
+
+            if (
+                conflict.taskId &&
+                String(
+                    conflict.taskId
+                ).includes(
+                    "-double-"
+                )
+            ) {
+
+                lessonType =
+                    "Double";
+
+            }
+
+
+            html += `
+
+                <tr>
+
+                    <td>
+                        ${escapeHtml(
+                            getTimetableStreamName(
+                                stream
+                            )
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            getTimetableSubjectName(
+                                subject
+                            )
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            getTimetableTeacherName(
+                                teacher
+                            )
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            lessonType
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            conflict.reason ||
+                            "Unknown conflict"
+                        )}
+                    </td>
+
+                </tr>
+
+            `;
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // CLOSE TABLE
+    // --------------------------------------------------------
+
+    html += `
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    `;
+
+
+    content.innerHTML =
+        html;
+
+}
+
+
+// ============================================================
+// CLEAR GENERATED TIMETABLE
+// ============================================================
+
+async function clearGeneratedTimetable() {
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (
+        !timetableState.schoolId
+    ) {
+
+        setTimetableGenerationStatus(
+            "Please select a school first.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CONFIRM
+    // --------------------------------------------------------
+
+    const confirmed =
+        confirm(
+            "Are you sure you want to clear the generated timetable for this school?"
+        );
+
+
+    if (
+        !confirmed
+    ) {
+
+        return;
+
+    }
+
+
+    try {
+
+        // ----------------------------------------------------
+        // STATUS
+        // ----------------------------------------------------
+
+        setTimetableGenerationStatus(
+            "Clearing timetable...",
+            "info"
+        );
+
+
+        console.log(
+            "Clearing timetable for school:",
+            timetableState.schoolId
+        );
+
+
+        // ----------------------------------------------------
+        // DELETE
+        // ----------------------------------------------------
+
+        const {
+            error
+        } = await supabaseClient
+
+            .from(
+                "timetable_entries"
+            )
+
+            .delete()
+
+            .eq(
+                "school_id",
+                timetableState.schoolId
+            );
+
+
+        if (
+            error
+        ) {
+
+            throw new Error(
+                error.message
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // CLEAR LOCAL STATE
+        // ----------------------------------------------------
+
+        generatedTimetableEntries =
+            [];
+
+
+        // ----------------------------------------------------
+        // HIDE SUMMARY
+        // ----------------------------------------------------
+
+        const summary =
+            document.getElementById(
+                "timetableSummary"
+            );
+
+
+        if (summary) {
+
+            summary.style.display =
+                "none";
+
+        }
+
+
+        // ----------------------------------------------------
+        // CLEAR SUMMARY CONTENT
+        // ----------------------------------------------------
+
+        const summaryContent =
+            document.getElementById(
+                "timetableSummaryContent"
+            );
+
+
+        if (summaryContent) {
+
+            summaryContent.innerHTML =
+                "";
+
+        }
+
+
+        // ----------------------------------------------------
+        // HIDE CONFLICTS
+        // ----------------------------------------------------
+
+        const conflictsContainer =
+            document.getElementById(
+                "timetableConflicts"
+            );
+
+
+        if (conflictsContainer) {
+
+            conflictsContainer.style.display =
+                "none";
+
+        }
+
+
+        const conflictsContent =
+            document.getElementById(
+                "timetableConflictsContent"
+            );
+
+
+        if (conflictsContent) {
+
+            conflictsContent.innerHTML =
+                "";
+
+        }
+
+
+        // ----------------------------------------------------
+        // RELOAD DISPLAY
+        // ----------------------------------------------------
+
+        await loadGeneratedTimetable();
+
+
+        // ----------------------------------------------------
+        // SUCCESS
+        // ----------------------------------------------------
+
+        setTimetableGenerationStatus(
+            "Timetable cleared successfully.",
+            "success"
+        );
+
+
+        console.log(
+            "Timetable cleared successfully."
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Failed to clear timetable:",
+            error
+        );
+
+
+        setTimetableGenerationStatus(
+            "Failed to clear timetable: " +
+            error.message,
+            "error"
+        );
+
+    }
+
+}
+
+
+// ============================================================
+// REGENERATE TIMETABLE
+// ============================================================
+
+async function regenerateTimetable() {
+
+    // --------------------------------------------------------
+    // CHECK SCHOOL
+    // --------------------------------------------------------
+
+    if (
+        !timetableState.schoolId
+    ) {
+
+        setTimetableGenerationStatus(
+            "Please select a school first.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // PREVENT REGENERATION WHILE RUNNING
+    // --------------------------------------------------------
+
+    if (
+        timetableGenerationRunning
+    ) {
+
+        console.warn(
+            "Timetable generation is already running."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CONFIRM
+    // --------------------------------------------------------
+
+    const confirmed =
+        confirm(
+            "Regenerate the timetable? The current generated timetable will be replaced."
+        );
+
+
+    if (
+        !confirmed
+    ) {
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GENERATE
+    // --------------------------------------------------------
+
+    await generateTimetable();
+
+}
+
+
+// ============================================================
+// END PART 7
+// ============================================================
+
+
+// ============================================================
+// PART 8 — PRINT, EVENTS & INITIALIZATION
+// ============================================================
+
+
+// ============================================================
+// PRINT GENERATED TIMETABLE
+// ============================================================
+
+function printGeneratedTimetable() {
+
+    const timetableContent =
+        document.getElementById(
+            "timetableContent"
+        );
+
+
+    if (
+        !timetableContent ||
+        !timetableContent.innerHTML.trim()
+    ) {
+
+        alert(
+            "There is no timetable to print."
+        );
+
+        return;
+
+    }
+
+
+    const printWindow =
+        window.open(
+            "",
+            "_blank"
+        );
+
+
+    if (!printWindow) {
+
+        alert(
+            "Please allow pop-ups to print the timetable."
+        );
+
+        return;
+
+    }
+
+
+    printWindow.document.open();
+
+
+    printWindow.document.write(`
+
+        <!DOCTYPE html>
+
+        <html>
+
+        <head>
+
+            <meta charset="UTF-8">
+
+            <title>
+                School Timetable
+            </title>
+
+            <style>
+
+                * {
+                    box-sizing: border-box;
+                }
+
+                body {
+
+                    font-family:
+                        Arial,
+                        Helvetica,
+                        sans-serif;
+
+                    margin: 0;
+
+                    padding: 20px;
+
+                    color: #000;
+
+                    background: #fff;
+
+                }
+
+
+                h1 {
+
+                    text-align: center;
+
+                    margin:
+                        0 0 25px 0;
+
+                    font-size: 24px;
+
+                }
+
+
+                h2,
+                h3 {
+
+                    margin-top: 20px;
+
+                    margin-bottom: 12px;
+
+                }
+
+
+                .timetable-stream-block {
+
+                    margin-bottom: 35px;
+
+                    page-break-inside: avoid;
+
+                }
+
+
+                .table-responsive {
+
+                    width: 100%;
+
+                    overflow: visible;
+
+                }
+
+
+                table {
+
+                    width: 100%;
+
+                    border-collapse:
+                        collapse;
+
+                    margin-bottom: 25px;
+
+                    page-break-inside:
+                        auto;
+
+                }
+
+
+                tr {
+
+                    page-break-inside:
+                        avoid;
+
+                    page-break-after:
+                        auto;
+
+                }
+
+
+                th,
+                td {
+
+                    border:
+                        1px solid #333;
+
+                    padding:
+                        7px;
+
+                    text-align:
+                        left;
+
+                    vertical-align:
+                        middle;
+
+                    font-size:
+                        12px;
+
+                }
+
+
+                th {
+
+                    font-weight:
+                        bold;
+
+                    background:
+                        #f2f2f2;
+
+                }
+
+
+                strong {
+
+                    font-weight:
+                        bold;
+
+                }
+
+
+                .empty-message,
+                .empty-state,
+                .loading-message {
+
+                    padding:
+                        20px;
+
+                    text-align:
+                        center;
+
+                }
+
+
+                @page {
+
+                    size:
+                        A4 landscape;
+
+                    margin:
+                        10mm;
+
+                }
+
+
+                @media print {
+
+                    body {
+
+                        padding: 0;
+
+                    }
+
+
+                    h1 {
+
+                        margin-bottom:
+                            15px;
+
+                    }
+
+
+                    .timetable-stream-block {
+
+                        page-break-inside:
+                            avoid;
+
+                    }
+
+
+                    table {
+
+                        width: 100%;
+
+                    }
+
+                }
+
+            </style>
+
+        </head>
+
+
+        <body>
+
+            <h1>
+                School Timetable
+            </h1>
+
+            ${timetableContent.innerHTML}
+
+        </body>
+
+        </html>
+
+    `);
+
+
+    printWindow.document.close();
+
+
+    printWindow.focus();
+
+
+    setTimeout(
+        function () {
+
+            printWindow.print();
+
+        },
+        500
+    );
+
+}
+
+
+// ============================================================
+// EVENT — GENERATE TIMETABLE
+// ============================================================
+
+document.addEventListener(
+    "click",
+    async function (event) {
+
+        const button =
+            event.target.closest(
+                "#generateTimetableBtn"
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        event.preventDefault();
+
+        event.stopPropagation();
+
+
+        console.log(
+            "🚀 GENERATE TIMETABLE BUTTON CLICKED"
+        );
+
+
+        console.log(
+            "Generate button:",
+            button
+        );
+
+
+        console.log(
+            "School ID:",
+            timetableState.schoolId
+        );
+
+
+        if (
+            !timetableState.schoolId
+        ) {
+
+            console.error(
+                "NO SCHOOL SELECTED"
+            );
+
+
+            setTimetableGenerationStatus(
+                "Please select a school first.",
+                "error"
+            );
+
+
+            return;
+
+        }
+
+
+        if (
+            timetableGenerationRunning
+        ) {
+
+            console.warn(
+                "Generation is already running."
+            );
+
+
+            return;
+
+        }
+
+
+        try {
+
+            console.log(
+                "CALLING generateTimetable()..."
+            );
+
+
+            await generateTimetable();
+
+
+            console.log(
+                "generateTimetable() FINISHED"
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "GENERATE TIMETABLE CLICK ERROR:",
+                error
+            );
+
+
+            setTimetableGenerationStatus(
+                "Generation failed: " +
+                (
+                    error.message ||
+                    error
+                ),
+                "error"
+            );
+
+        }
+
+    },
+    true
+);
+
+
+// ============================================================
+// EVENT — REGENERATE TIMETABLE
+// ============================================================
+
+document.addEventListener(
+    "click",
+    async function (event) {
+
+        const button =
+            event.target.closest(
+                "#regenerateTimetableBtn"
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        event.preventDefault();
+
+
+        console.log(
+            "🔄 REGENERATE TIMETABLE BUTTON CLICKED"
+        );
+
+
+        try {
+
+            await regenerateTimetable();
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "REGENERATE TIMETABLE ERROR:",
+                error
+            );
+
+        }
+
+    }
+);
+
+
+// ============================================================
+// EVENT — CLEAR TIMETABLE
+// ============================================================
+
+document.addEventListener(
+    "click",
+    async function (event) {
+
+        const button =
+            event.target.closest(
+                "#clearTimetableBtn"
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        event.preventDefault();
+
+
+        console.log(
+            "🗑️ CLEAR TIMETABLE BUTTON CLICKED"
+        );
+
+
+        try {
+
+            await clearGeneratedTimetable();
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "CLEAR TIMETABLE ERROR:",
+                error
+            );
+
+        }
+
+    }
+);
+
+
+// ============================================================
+// EVENT — PRINT TIMETABLE
+// ============================================================
+
+document.addEventListener(
+    "click",
+    function (event) {
+
+        const button =
+            event.target.closest(
+                "#printTimetableBtn"
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        event.preventDefault();
+
+
+        console.log(
+            "🖨️ PRINT TIMETABLE BUTTON CLICKED"
+        );
+
+
+        printGeneratedTimetable();
+
+    }
+);
+
+
+// ============================================================
+// EVENT — STREAM FILTER
+// ============================================================
+
+document.addEventListener(
+    "change",
+    async function (event) {
+
+        if (
+            !event.target.matches(
+                "#timetableStreamFilter"
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        console.log(
+            "STREAM FILTER CHANGED"
+        );
+
+
+        await loadGeneratedTimetable();
+
+    }
+);
+
+
+// ============================================================
+// EVENT — DAY FILTER
+// ============================================================
+
+document.addEventListener(
+    "change",
+    async function (event) {
+
+        if (
+            !event.target.matches(
+                "#timetableDayFilter"
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        console.log(
+            "DAY FILTER CHANGED"
+        );
+
+
+        await loadGeneratedTimetable();
+
+    }
+);
+
+
+// ============================================================
+// EVENT — VIEW MODE
+// ============================================================
+
+document.addEventListener(
+    "change",
+    async function (event) {
+
+        if (
+            !event.target.matches(
+                "#timetableViewMode"
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        console.log(
+            "VIEW MODE CHANGED"
+        );
+
+
+        await loadGeneratedTimetable();
+
+    }
+);
+
+
+// ============================================================
+// INITIALIZE TIMETABLE GENERATOR
+// ============================================================
+
+async function initializeTimetableGenerator() {
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.log(
+        "INITIALIZING TIMETABLE GENERATOR"
+    );
+
+
+    console.log(
+        "School ID:",
+        timetableState.schoolId
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+
+    if (
+        !timetableState.schoolId
+    ) {
+
+        console.warn(
+            "No school selected. Generator initialization skipped."
+        );
+
+
+        return;
+
+    }
+
+
+    try {
+
+        // ----------------------------------------------------
+        // LOAD FILTER OPTIONS
+        // ----------------------------------------------------
+
+        await loadTimetableFilters();
+
+
+        // ----------------------------------------------------
+        // LOAD EXISTING GENERATED TIMETABLE
+        // ----------------------------------------------------
+
+        await loadGeneratedTimetable();
+
+
+        console.log(
+            "TIMETABLE GENERATOR INITIALIZED"
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "TIMETABLE GENERATOR INITIALIZATION ERROR:",
+            error
+        );
+
+
+        setTimetableGenerationStatus(
+            "Failed to initialize timetable generator: " +
+            (
+                error.message ||
+                error
+            ),
+            "error"
+        );
+
+    }
+
+}
+
+
+// ============================================================
+// EXPOSE FUNCTIONS GLOBALLY
+// ============================================================
+
+window.generateTimetable =
+    generateTimetable;
+
+
+window.regenerateTimetable =
+    regenerateTimetable;
+
+
+window.clearGeneratedTimetable =
+    clearGeneratedTimetable;
+
+
+window.loadGeneratedTimetable =
+    loadGeneratedTimetable;
+
+
+window.renderGeneratedTimetable =
+    renderGeneratedTimetable;
+
+
+window.printGeneratedTimetable =
+    printGeneratedTimetable;
+
+
+window.loadTimetableFilters =
+    loadTimetableFilters;
+
+
+window.initializeTimetableGenerator =
+    initializeTimetableGenerator;
+
+
+// ============================================================
+// GENERATOR READY
+// ============================================================
+
+console.log(
+    "======================================"
+);
+
+
+console.log(
+    "✅ TIMETABLE GENERATOR READY"
+);
+
+
+console.log(
+    "======================================"
+);
