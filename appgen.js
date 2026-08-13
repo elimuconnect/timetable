@@ -2176,7 +2176,6 @@ function findDoubleLessonSlot(
 // ============================================================
 // GENERATE TIMETABLE
 // ============================================================
-
 async function generateTimetable() {
 
     console.log(
@@ -2236,37 +2235,6 @@ async function generateTimetable() {
 
     try {
 
-        console.log(
-            "STARTING TIMETABLE DATA LOAD..."
-        );
-
-        setTimetableGenerationStatus(
-            "Loading timetable data...",
-            "info"
-        );
-    // --------------------------------------------------------
-    // CHECK SCHOOL
-    // --------------------------------------------------------
-
-    if (
-        !timetableState.schoolId
-    ) {
-
-        alert(
-            "Please select a school first."
-        );
-
-        return;
-
-    }
-
-
-    timetableGenerationRunning =
-        true;
-
-
-    try {
-
         setTimetableGenerationStatus(
             "Loading timetable data...",
             "info"
@@ -2305,50 +2273,48 @@ async function generateTimetable() {
                 data.periods
             );
 
+        console.log(
+            "TOTAL PERIODS:",
+            data.periods.length
+        );
 
-console.log(
-    "TOTAL PERIODS:",
-    data.periods.length
-);
+        console.log(
+            "TEACHING PERIODS:",
+            teachingPeriods.length
+        );
 
-console.log(
-    "TEACHING PERIODS:",
-    teachingPeriods.length
-);
+        console.table(
+            teachingPeriods.map(
+                period => ({
+                    id:
+                        period.id,
 
-console.table(
-    teachingPeriods.map(
-        period => ({
-            id:
-                period.id,
+                    day:
+                        period.day_name,
 
-            day:
-                period.day_name,
+                    dayNumber:
+                        period.day_number,
 
-            dayNumber:
-                period.day_number,
+                    order:
+                        period.period_order,
 
-            order:
-                period.period_order,
+                    number:
+                        period.period_number,
 
-            number:
-                period.period_number,
+                    start:
+                        period.start_time,
 
-            start:
-                period.start_time,
+                    end:
+                        period.end_time,
 
-            end:
-                period.end_time,
+                    teaching:
+                        period.is_teaching_period,
 
-            teaching:
-                period.is_teaching_period,
-
-            type:
-                period.period_type
-        })
-    )
-);
-
+                    type:
+                        period.period_type
+                })
+            )
+        );
 
         
         if (
