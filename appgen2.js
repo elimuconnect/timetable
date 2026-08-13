@@ -4251,3 +4251,1130 @@ function renderGeneratedTimetable(
     );
 
 }
+// ============================================================
+// PART 6 — RENDER GENERATED TIMETABLE
+// ============================================================
+
+
+// ============================================================
+// RENDER BY STREAM
+// ============================================================
+
+function renderTimetableByStream(
+    entries,
+    lookup,
+    container
+) {
+
+    // --------------------------------------------------------
+    // SAFETY CHECK
+    // --------------------------------------------------------
+
+    if (!container) {
+        console.warn(
+            "renderTimetableByStream: container not found."
+        );
+
+        return;
+    }
+
+
+    if (!Array.isArray(entries)) {
+        console.warn(
+            "renderTimetableByStream: entries is not an array."
+        );
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No timetable entries available.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // GROUP ENTRIES BY STREAM
+    // --------------------------------------------------------
+
+    const streamMap =
+        new Map();
+
+
+    entries.forEach(
+        entry => {
+
+            if (!entry) {
+                return;
+            }
+
+
+            const streamId =
+                entry.stream_id ||
+                "unknown-stream";
+
+
+            if (
+                !streamMap.has(
+                    streamId
+                )
+            ) {
+
+                streamMap.set(
+                    streamId,
+                    []
+                );
+
+            }
+
+
+            streamMap
+                .get(streamId)
+                .push(entry);
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // NOTHING TO RENDER
+    // --------------------------------------------------------
+
+    if (
+        streamMap.size === 0
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No timetable entries available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    let html = "";
+
+
+    // --------------------------------------------------------
+    // RENDER EACH STREAM
+    // --------------------------------------------------------
+
+    streamMap.forEach(
+        (
+            streamEntries,
+            streamId
+        ) => {
+
+            const stream =
+                lookup.streams.get(
+                    streamId
+                );
+
+
+            const streamName =
+                getTimetableStreamName(
+                    stream
+                );
+
+
+            // -----------------------------------------------
+            // SORT STREAM ENTRIES
+            // -----------------------------------------------
+
+            streamEntries.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    const periodA =
+                        lookup.periods.get(
+                            a.period_id
+                        );
+
+
+                    const periodB =
+                        lookup.periods.get(
+                            b.period_id
+                        );
+
+
+                    const dayDifference =
+                        Number(
+                            periodA?.day_number || 0
+                        ) -
+                        Number(
+                            periodB?.day_number || 0
+                        );
+
+
+                    if (
+                        dayDifference !== 0
+                    ) {
+
+                        return dayDifference;
+
+                    }
+
+
+                    return (
+                        Number(
+                            periodA?.period_order || 0
+                        ) -
+                        Number(
+                            periodB?.period_order || 0
+                        )
+                    );
+
+                }
+            );
+
+
+            // -----------------------------------------------
+            // STREAM HEADER
+            // -----------------------------------------------
+
+            html += `
+
+                <div class="timetable-stream-block">
+
+                    <h3>
+                        🏫
+                        ${escapeHtml(
+                            streamName
+                        )}
+                    </h3>
+
+                    <div class="table-responsive">
+
+                        <table class="data-table timetable-grid">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>Day</th>
+
+                                    <th>Period</th>
+
+                                    <th>Time</th>
+
+                                    <th>Subject</th>
+
+                                    <th>Teacher</th>
+
+                                    <th>Room</th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+            `;
+
+
+            // -----------------------------------------------
+            // STREAM ENTRIES
+            // -----------------------------------------------
+
+            streamEntries.forEach(
+                entry => {
+
+                    const period =
+                        lookup.periods.get(
+                            entry.period_id
+                        );
+
+
+                    const subject =
+                        lookup.subjects.get(
+                            entry.subject_id
+                        );
+
+
+                    const teacher =
+                        entry.teacher_id
+                            ? lookup.teachers.get(
+                                entry.teacher_id
+                            )
+                            : null;
+
+
+                    const room =
+                        entry.room_id
+                            ? lookup.rooms.get(
+                                entry.room_id
+                            )
+                            : null;
+
+
+                    const dayName =
+                        period?.day_name ||
+                        (
+                            period?.day_number
+                                ? `Day ${period.day_number}`
+                                : "-"
+                        );
+
+
+                    const periodNumber =
+                        period?.period_number ??
+                        period?.period_order ??
+                        "-";
+
+
+                    const time =
+                        typeof formatPeriodTime ===
+                        "function"
+                            ? formatPeriodTime(
+                                period
+                            )
+                            : (
+                                period
+                                    ? `${period.start_time || ""} - ${period.end_time || ""}`
+                                    : "-"
+                            );
+
+
+                    html += `
+
+                        <tr>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(dayName)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(
+                                        periodNumber
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(time)
+                                )}
+                            </td>
+
+                            <td>
+
+                                <strong>
+                                    ${escapeHtml(
+                                        getTimetableSubjectName(
+                                            subject
+                                        )
+                                    )}
+                                </strong>
+
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableTeacherName(
+                                        teacher
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableRoomName(
+                                        room
+                                    )
+                                )}
+                            </td>
+
+                        </tr>
+
+                    `;
+
+                }
+            );
+
+
+            // -----------------------------------------------
+            // CLOSE STREAM TABLE
+            // -----------------------------------------------
+
+            html += `
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // INSERT HTML
+    // --------------------------------------------------------
+
+    container.innerHTML =
+        html;
+
+}
+
+
+// ============================================================
+// RENDER BY TEACHER
+// ============================================================
+
+function renderTimetableByTeacher(
+    entries,
+    lookup,
+    container
+) {
+
+    // --------------------------------------------------------
+    // SAFETY CHECK
+    // --------------------------------------------------------
+
+    if (!container) {
+        console.warn(
+            "renderTimetableByTeacher: container not found."
+        );
+
+        return;
+    }
+
+
+    if (!Array.isArray(entries)) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No timetable entries available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GROUP BY TEACHER
+    // --------------------------------------------------------
+
+    const teacherMap =
+        new Map();
+
+
+    entries.forEach(
+        entry => {
+
+            if (!entry) {
+                return;
+            }
+
+
+            const teacherId =
+                entry.teacher_id ||
+                "unassigned";
+
+
+            if (
+                !teacherMap.has(
+                    teacherId
+                )
+            ) {
+
+                teacherMap.set(
+                    teacherId,
+                    []
+                );
+
+            }
+
+
+            teacherMap
+                .get(teacherId)
+                .push(entry);
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // NOTHING TO RENDER
+    // --------------------------------------------------------
+
+    if (
+        teacherMap.size === 0
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No timetable entries available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    let html = "";
+
+
+    // --------------------------------------------------------
+    // RENDER EACH TEACHER
+    // --------------------------------------------------------
+
+    teacherMap.forEach(
+        (
+            teacherEntries,
+            teacherId
+        ) => {
+
+            const teacher =
+                lookup.teachers.get(
+                    teacherId
+                );
+
+
+            const teacherName =
+                getTimetableTeacherName(
+                    teacher
+                );
+
+
+            // -----------------------------------------------
+            // SORT
+            // -----------------------------------------------
+
+            teacherEntries.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    const periodA =
+                        lookup.periods.get(
+                            a.period_id
+                        );
+
+
+                    const periodB =
+                        lookup.periods.get(
+                            b.period_id
+                        );
+
+
+                    const dayDifference =
+                        Number(
+                            periodA?.day_number || 0
+                        ) -
+                        Number(
+                            periodB?.day_number || 0
+                        );
+
+
+                    if (
+                        dayDifference !== 0
+                    ) {
+
+                        return dayDifference;
+
+                    }
+
+
+                    return (
+                        Number(
+                            periodA?.period_order || 0
+                        ) -
+                        Number(
+                            periodB?.period_order || 0
+                        )
+                    );
+
+                }
+            );
+
+
+            // -----------------------------------------------
+            // TEACHER HEADER
+            // -----------------------------------------------
+
+            html += `
+
+                <div class="timetable-stream-block">
+
+                    <h3>
+                        👨‍🏫
+                        ${escapeHtml(
+                            teacherName
+                        )}
+                    </h3>
+
+                    <div class="table-responsive">
+
+                        <table class="data-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>Day</th>
+
+                                    <th>Period</th>
+
+                                    <th>Time</th>
+
+                                    <th>Stream</th>
+
+                                    <th>Subject</th>
+
+                                    <th>Room</th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+            `;
+
+
+            // -----------------------------------------------
+            // TEACHER ENTRIES
+            // -----------------------------------------------
+
+            teacherEntries.forEach(
+                entry => {
+
+                    const period =
+                        lookup.periods.get(
+                            entry.period_id
+                        );
+
+
+                    const stream =
+                        lookup.streams.get(
+                            entry.stream_id
+                        );
+
+
+                    const subject =
+                        lookup.subjects.get(
+                            entry.subject_id
+                        );
+
+
+                    const room =
+                        entry.room_id
+                            ? lookup.rooms.get(
+                                entry.room_id
+                            )
+                            : null;
+
+
+                    const dayName =
+                        period?.day_name ||
+                        (
+                            period?.day_number
+                                ? `Day ${period.day_number}`
+                                : "-"
+                        );
+
+
+                    const periodNumber =
+                        period?.period_number ??
+                        period?.period_order ??
+                        "-";
+
+
+                    const time =
+                        typeof formatPeriodTime ===
+                        "function"
+                            ? formatPeriodTime(
+                                period
+                            )
+                            : (
+                                period
+                                    ? `${period.start_time || ""} - ${period.end_time || ""}`
+                                    : "-"
+                            );
+
+
+                    html += `
+
+                        <tr>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(dayName)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(
+                                        periodNumber
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(time)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableStreamName(
+                                        stream
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+
+                                <strong>
+                                    ${escapeHtml(
+                                        getTimetableSubjectName(
+                                            subject
+                                        )
+                                    )}
+                                </strong>
+
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableRoomName(
+                                        room
+                                    )
+                                )}
+                            </td>
+
+                        </tr>
+
+                    `;
+
+                }
+            );
+
+
+            // -----------------------------------------------
+            // CLOSE TABLE
+            // -----------------------------------------------
+
+            html += `
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // INSERT HTML
+    // --------------------------------------------------------
+
+    container.innerHTML =
+        html;
+
+}
+
+
+// ============================================================
+// RENDER BY ROOM
+// ============================================================
+
+function renderTimetableByRoom(
+    entries,
+    lookup,
+    container
+) {
+
+    // --------------------------------------------------------
+    // SAFETY CHECK
+    // --------------------------------------------------------
+
+    if (!container) {
+
+        console.warn(
+            "renderTimetableByRoom: container not found."
+        );
+
+        return;
+
+    }
+
+
+    if (!Array.isArray(entries)) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No timetable entries available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // GROUP BY ROOM
+    // --------------------------------------------------------
+
+    const roomMap =
+        new Map();
+
+
+    entries.forEach(
+        entry => {
+
+            if (!entry) {
+                return;
+            }
+
+
+            const roomId =
+                entry.room_id ||
+                "no-room";
+
+
+            if (
+                !roomMap.has(
+                    roomId
+                )
+            ) {
+
+                roomMap.set(
+                    roomId,
+                    []
+                );
+
+            }
+
+
+            roomMap
+                .get(roomId)
+                .push(entry);
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // NOTHING TO RENDER
+    // --------------------------------------------------------
+
+    if (
+        roomMap.size === 0
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                No timetable entries available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    let html = "";
+
+
+    // --------------------------------------------------------
+    // RENDER EACH ROOM
+    // --------------------------------------------------------
+
+    roomMap.forEach(
+        (
+            roomEntries,
+            roomId
+        ) => {
+
+            const room =
+                lookup.rooms.get(
+                    roomId
+                );
+
+
+            const roomName =
+                getTimetableRoomName(
+                    room
+                );
+
+
+            // -----------------------------------------------
+            // SORT
+            // -----------------------------------------------
+
+            roomEntries.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    const periodA =
+                        lookup.periods.get(
+                            a.period_id
+                        );
+
+
+                    const periodB =
+                        lookup.periods.get(
+                            b.period_id
+                        );
+
+
+                    const dayDifference =
+                        Number(
+                            periodA?.day_number || 0
+                        ) -
+                        Number(
+                            periodB?.day_number || 0
+                        );
+
+
+                    if (
+                        dayDifference !== 0
+                    ) {
+
+                        return dayDifference;
+
+                    }
+
+
+                    return (
+                        Number(
+                            periodA?.period_order || 0
+                        ) -
+                        Number(
+                            periodB?.period_order || 0
+                        )
+                    );
+
+                }
+            );
+
+
+            // -----------------------------------------------
+            // ROOM HEADER
+            // -----------------------------------------------
+
+            html += `
+
+                <div class="timetable-stream-block">
+
+                    <h3>
+                        🚪
+                        ${escapeHtml(
+                            roomName
+                        )}
+                    </h3>
+
+                    <div class="table-responsive">
+
+                        <table class="data-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>Day</th>
+
+                                    <th>Period</th>
+
+                                    <th>Time</th>
+
+                                    <th>Stream</th>
+
+                                    <th>Subject</th>
+
+                                    <th>Teacher</th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+            `;
+
+
+            // -----------------------------------------------
+            // ROOM ENTRIES
+            // -----------------------------------------------
+
+            roomEntries.forEach(
+                entry => {
+
+                    const period =
+                        lookup.periods.get(
+                            entry.period_id
+                        );
+
+
+                    const stream =
+                        lookup.streams.get(
+                            entry.stream_id
+                        );
+
+
+                    const subject =
+                        lookup.subjects.get(
+                            entry.subject_id
+                        );
+
+
+                    const teacher =
+                        entry.teacher_id
+                            ? lookup.teachers.get(
+                                entry.teacher_id
+                            )
+                            : null;
+
+
+                    const dayName =
+                        period?.day_name ||
+                        (
+                            period?.day_number
+                                ? `Day ${period.day_number}`
+                                : "-"
+                        );
+
+
+                    const periodNumber =
+                        period?.period_number ??
+                        period?.period_order ??
+                        "-";
+
+
+                    const time =
+                        typeof formatPeriodTime ===
+                        "function"
+                            ? formatPeriodTime(
+                                period
+                            )
+                            : (
+                                period
+                                    ? `${period.start_time || ""} - ${period.end_time || ""}`
+                                    : "-"
+                            );
+
+
+                    html += `
+
+                        <tr>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(dayName)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(
+                                        periodNumber
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(time)
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableStreamName(
+                                        stream
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+
+                                <strong>
+                                    ${escapeHtml(
+                                        getTimetableSubjectName(
+                                            subject
+                                        )
+                                    )}
+                                </strong>
+
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    getTimetableTeacherName(
+                                        teacher
+                                    )
+                                )}
+                            </td>
+
+                        </tr>
+
+                    `;
+
+                }
+            );
+
+
+            // -----------------------------------------------
+            // CLOSE TABLE
+            // -----------------------------------------------
+
+            html += `
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // INSERT HTML
+    // --------------------------------------------------------
+
+    container.innerHTML =
+        html;
+
+}
+
+
+// ============================================================
+// END PART 6
+// ============================================================
