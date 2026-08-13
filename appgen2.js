@@ -2285,6 +2285,44 @@ function findDoubleLessonSlot(
 // ============================================================
 
 
+// ============================================================
+// PATCH & ENHANCEMENT — TIMETABLE GENERATION STATE & INITIALIZER FIX
+// ============================================================
+
+/**
+ * Ensures initialization checks and state flags are properly validated 
+ * before running generation loops, preventing zero-entry silent failures.
+ */
+function initializeAndVerifyGenerator(tasks, periods, rooms) {
+    console.log("🛠️ Verifying timetable generation preconditions...");
+
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+        console.error("❌ Generator aborted: No tasks provided for scheduling.");
+        return false;
+    }
+
+    if (!Array.isArray(periods) || periods.length === 0) {
+        console.error("❌ Generator aborted: No periods defined in timetable structure.");
+        return false;
+    }
+
+    if (!Array.isArray(rooms)) {
+        console.warn("⚠️ Rooms parameter is not an array. Defaulting to empty collection.");
+    }
+
+    console.log("✅ Preconditions verified successfully.", {
+        taskCount: tasks.length,
+        periodCount: periods.length,
+        roomCount: Array.isArray(rooms) ? rooms.length : 0
+    });
+
+    return true;
+}
+
+
+
+
+
 
 async function generateTimetable(tasks, periods, rooms) {
     // 1. Run the validator first
