@@ -2036,682 +2036,242 @@ function createGeneratedEntry(
 // ============================================================
 // PART 4 — FIND VALID SINGLE & DOUBLE LESSON SLOTS
 // ============================================================
-
-
 // ============================================================
-// FIND SINGLE LESSON SLOT
+// PATCH & ENHANCEMENT — SLOT AVAILABILITY & OCCUPANCY ENGINE
 // ============================================================
 
+/**
+ * Enhanced Single Lesson Slot Finder with Fallback & Diagnostic Logging
+ */
 function findSingleLessonSlot(
     task,
     periods,
     rooms,
     indexes
 ) {
-
-    const orderedPeriods =
-        sortTimetablePeriods(
-            periods
-        );
-
-
-    const shuffledPeriods =
-        shuffleArray(
-            orderedPeriods
-        );
-
+    const orderedPeriods = sortTimetablePeriods(periods);
+    const shuffledPeriods = shuffleArray(orderedPeriods);
 
     let attempts = 0;
-
     let streamConflicts = 0;
-
     let teacherConflicts = 0;
-
     let roomConflicts = 0;
-
     let dailyLimitConflicts = 0;
 
-
     // --------------------------------------------------------
-    // CHECK EVERY PERIOD
+    // PASS 1: Try standard shuffled check across all periods
     // --------------------------------------------------------
+    for (const period of shuffledPeriods) {
+        if (!period) continue;
 
-    for (
-        const period of shuffledPeriods
-    ) {
+        const compatibleRooms = getCompatibleRooms(task, rooms);
+        if (compatibleRooms.length === 0) continue;
 
-        if (!period) {
-            continue;
-        }
-
-
-        const compatibleRooms =
-            getCompatibleRooms(
-                task,
-                rooms
-            );
-
-
-        // ----------------------------------------------------
-        // NO ROOM AVAILABLE
-        // ----------------------------------------------------
-
-        if (
-            compatibleRooms.length === 0
-        ) {
-
-            console.warn(
-                "NO COMPATIBLE ROOMS",
-                {
-
-                    taskId:
-                        task.taskId,
-
-                    streamId:
-                        task.streamId,
-
-                    subjectId:
-                        task.subjectId,
-
-                    requestedRoomType:
-                        task.roomType,
-
-                    requiresRoom:
-                        task.requiresRoom
-
-                }
-            );
-
-
-            return null;
-
-        }
-
-
-        // ----------------------------------------------------
-        // TRY EACH ROOM
-        // ----------------------------------------------------
-
-        for (
-            const room of compatibleRooms
-        ) {
-
+        for (const room of compatibleRooms) {
             attempts++;
+            const check = checkSingleSlotConflict(task, period, room, indexes);
 
-
-            const check =
-                checkSingleSlotConflict(
-                    task,
-                    period,
-                    room,
-                    indexes
-                );
-
-
-            if (
-                !check.valid
-            ) {
-
-                if (
-                    check.reason.includes(
-                        "Stream already"
-                    )
-                ) {
-
-                    streamConflicts++;
-
-                }
-
-                else if (
-                    check.reason.includes(
-                        "Teacher is already"
-                    )
-                ) {
-
-                    teacherConflicts++;
-
-                }
-
-                else if (
-                    check.reason.includes(
-                        "Room is already"
-                    )
-                ) {
-
-                    roomConflicts++;
-
-                }
-
-                else if (
-                    check.reason.includes(
-                        "Maximum lessons"
-                    )
-                ) {
-
-                    dailyLimitConflicts++;
-
-                }
-
-
+            if (!check.valid) {
+                if (check.reason.includes("Stream already")) streamConflicts++;
+                else if (check.reason.includes("Teacher is already")) teacherConflicts++;
+                else if (check.reason.includes("Room is already")) roomConflicts++;
+                else if (check.reason.includes("Maximum lessons")) dailyLimitConflicts++;
                 continue;
-
             }
 
-
-            // ------------------------------------------------
-            // VALID SLOT
-            // ------------------------------------------------
-
-            console.log(
-                "✅ SINGLE SLOT FOUND",
-                {
-
-                    taskId:
-                        task.taskId,
-
-                    day:
-                        period.day_name,
-
-                    dayNumber:
-                        period.day_number,
-
-                    periodId:
-                        period.id,
-
-                    periodNumber:
-                        period.period_number,
-
-                    periodOrder:
-                        period.period_order,
-
-                    roomId:
-                        room?.id ||
-                        null,
-
-                    room:
-                        room
-                            ? getTimetableRoomName(
-                                room
-                            )
-                            : "No Room"
-
-                }
-            );
-
-
-            return {
-
-                period:
-                    period,
-
-                room:
-                    room
-
-            };
-
+            return { period, room };
         }
-
     }
 
+    // --------------------------------------------------------
+    // PASS 2: RELAXATION FALLBACK (Daily Limit Override)
+    // If placement fails strictly due to maxLessonsPerDay constraints,
+    // retry ignoring the daily threshold to prevent unplaced orphan tasks.
+    // --------------------------------------------------------
+    if (dailyLimitConflicts > 0 && streamConflicts === 0 && teacherConflicts === 0) {
+        console.warn("⚠️ Relaxing maxLessonsPerDay constraint for task to prevent deadlock:", {
+            taskId: task.taskId,
+            streamId: task.streamId,
+            subjectId: task.subjectId
+        });
 
-    // ========================================================
-    // NO SLOT
-    // ========================================================
+        for (const period of shuffledPeriods) {
+            if (!period) continue;
+            const compatibleRooms = getCompatibleRooms(task, rooms);
+            if (compatibleRooms.length === 0) continue;
 
-    console.error(
-        "❌ FAILED TO FIND SINGLE LESSON SLOT",
-        {
+            for (const room of compatibleRooms) {
+                const streamId = normalizeTimetableId(task.streamId);
+                const periodId = normalizeTimetableId(period.id);
+                const teacherId = normalizeTimetableId(task.teacherId);
 
-            taskId:
-                task.taskId,
+                // Check hard constraints only (Stream, Teacher, Room)
+                const streamKey = `${streamId}__${periodId}`;
+                const teacherKey = teacherId ? `${teacherId}__${periodId}` : null;
+                const roomKey = room && room.id ? `${normalizeTimetableId(room.id)}__${periodId}` : null;
 
-            streamId:
-                task.streamId,
+                const isStreamBusy = indexes.streamPeriod.has(streamKey);
+                const isTeacherBusy = teacherKey ? indexes.teacherPeriod.has(teacherKey) : false;
+                const isRoomBusy = roomKey ? indexes.roomPeriod.has(roomKey) : false;
 
-            subjectId:
-                task.subjectId,
-
-            teacherId:
-                task.teacherId,
-
-            attempts,
-
-            streamConflicts,
-
-            teacherConflicts,
-
-            roomConflicts,
-
-            dailyLimitConflicts
-
+                if (!isStreamBusy && !isTeacherBusy && !isRoomBusy) {
+                    console.log("✅ SINGLE SLOT FOUND (VIA CONSTRAINT RELAXATION)", {
+                        taskId: task.taskId,
+                        periodId: period.id
+                    });
+                    return { period, room };
+                }
+            }
         }
-    );
+    }
 
+    console.error("❌ FAILED TO FIND SINGLE LESSON SLOT", {
+        taskId: task.taskId,
+        streamId: task.streamId,
+        subjectId: task.subjectId,
+        teacherId: task.teacherId,
+        attempts,
+        streamConflicts,
+        teacherConflicts,
+        roomConflicts,
+        dailyLimitConflicts
+    });
 
     return null;
-
 }
 
 
-// ============================================================
-// FIND DOUBLE LESSON SLOT
-// ============================================================
-
+/**
+ * Enhanced Double Lesson Slot Finder with Fallback & Diagnostic Logging
+ */
 function findDoubleLessonSlot(
     task,
     periods,
     rooms,
     indexes
 ) {
-
-    const orderedPeriods =
-        sortTimetablePeriods(
-            periods
-        );
-
-
-    const periodsByDay =
-        groupPeriodsByDay(
-            orderedPeriods
-        );
-
-
-    const dayKeys =
-        Object.keys(
-            periodsByDay || {}
-        );
-
-
-    const days =
-        shuffleArray(
-            dayKeys
-        );
-
+    const orderedPeriods = sortTimetablePeriods(periods);
+    const periodsByDay = groupPeriodsByDay(orderedPeriods);
+    const dayKeys = Object.keys(periodsByDay || {});
+    const days = shuffleArray(dayKeys);
 
     let consecutivePairs = 0;
-
     let streamConflicts = 0;
-
     let teacherConflicts = 0;
-
     let roomConflicts = 0;
-
     let dailyLimitConflicts = 0;
 
+    // --------------------------------------------------------
+    // PASS 1: Standard Consecutive Pair Check with Daily Limits
+    // --------------------------------------------------------
+    for (const day of days) {
+        const dayPeriods = sortTimetablePeriods(periodsByDay[day]);
+        if (dayPeriods.length < 2) continue;
 
-    // ========================================================
-    // CHECK DAYS
-    // ========================================================
+        for (let i = 0; i < dayPeriods.length - 1; i++) {
+            const firstPeriod = dayPeriods[i];
+            const secondPeriod = dayPeriods[i + 1];
 
-    for (
-        const day of days
-    ) {
-
-        const dayPeriods =
-            sortTimetablePeriods(
-                periodsByDay[day]
-            );
-
-
-        if (
-            dayPeriods.length < 2
-        ) {
-
-            continue;
-
-        }
-
-
-        // ====================================================
-        // CHECK PAIRS
-        // ====================================================
-
-        for (
-            let i = 0;
-            i < dayPeriods.length - 1;
-            i++
-        ) {
-
-            const firstPeriod =
-                dayPeriods[i];
-
-
-            const secondPeriod =
-                dayPeriods[i + 1];
-
-
-            // ------------------------------------------------
-            // MUST BE CONSECUTIVE
-            // ------------------------------------------------
-
-            if (
-                !arePeriodsConsecutive(
-                    firstPeriod,
-                    secondPeriod
-                )
-            ) {
-
-                continue;
-
-            }
-
-
+            if (!arePeriodsConsecutive(firstPeriod, secondPeriod)) continue;
             consecutivePairs++;
 
+            const maxPerDay = Number(task.maxLessonsPerDay) || 0;
+            const currentCount = getDailyStreamLessonCount(indexes, task.streamId, firstPeriod.day_number);
 
-            // =================================================
-            // DAILY LIMIT
-            // =================================================
-
-            const maxPerDay =
-                Number(
-                    task.maxLessonsPerDay
-                ) || 0;
-
-
-            const currentCount =
-                getDailyStreamLessonCount(
-                    indexes,
-                    task.streamId,
-                    firstPeriod.day_number
-                );
-
-
-            /*
-             * IMPORTANT:
-             *
-             * If maxLessonsPerDay is 1, a double lesson
-             * should still be allowed as ONE lesson.
-             *
-             * Therefore we do NOT automatically reject
-             * currentCount + 2 > maxPerDay.
-             *
-             * We only reject if the stream has already
-             * reached the maximum.
-             */
-
-            if (
-                maxPerDay > 0 &&
-                currentCount >=
-                maxPerDay
-            ) {
-
+            if (maxPerDay > 0 && currentCount >= maxPerDay) {
                 dailyLimitConflicts++;
-
                 continue;
-
             }
 
+            const compatibleRooms = getCompatibleRooms(task, rooms);
+            if (compatibleRooms.length === 0) continue;
 
-            // =================================================
-            // COMPATIBLE ROOMS
-            // =================================================
-
-            const compatibleRooms =
-                getCompatibleRooms(
-                    task,
-                    rooms
-                );
-
-
-            if (
-                compatibleRooms.length === 0
-            ) {
-
-                console.warn(
-                    "❌ NO COMPATIBLE ROOMS FOR DOUBLE",
-                    {
-
-                        taskId:
-                            task.taskId,
-
-                        requestedRoomType:
-                            task.roomType,
-
-                        requiresRoom:
-                            task.requiresRoom
-
-                    }
-                );
-
-
-                return null;
-
-            }
-
-
-            // =================================================
-            // TRY EACH ROOM
-            // =================================================
-
-            for (
-                const room of compatibleRooms
-            ) {
-
-                // ---------------------------------------------
-                // FIRST PERIOD
-                // ---------------------------------------------
-
-                const firstCheck =
-                    checkSingleSlotConflict(
-                        task,
-                        firstPeriod,
-                        room,
-                        indexes
-                    );
-
-
-                if (
-                    !firstCheck.valid
-                ) {
-
-                    if (
-                        firstCheck.reason.includes(
-                            "Stream already"
-                        )
-                    ) {
-
-                        streamConflicts++;
-
-                    }
-
-                    else if (
-                        firstCheck.reason.includes(
-                            "Teacher is already"
-                        )
-                    ) {
-
-                        teacherConflicts++;
-
-                    }
-
-                    else if (
-                        firstCheck.reason.includes(
-                            "Room is already"
-                        )
-                    ) {
-
-                        roomConflicts++;
-
-                    }
-
-                    else if (
-                        firstCheck.reason.includes(
-                            "Maximum lessons"
-                        )
-                    ) {
-
-                        dailyLimitConflicts++;
-
-                    }
-
-
+            for (const room of compatibleRooms) {
+                const firstCheck = checkSingleSlotConflict(task, firstPeriod, room, indexes);
+                if (!firstCheck.valid) {
+                    if (firstCheck.reason.includes("Stream already")) streamConflicts++;
+                    else if (firstCheck.reason.includes("Teacher is already")) teacherConflicts++;
+                    else if (firstCheck.reason.includes("Room is already")) roomConflicts++;
+                    else if (firstCheck.reason.includes("Maximum lessons")) dailyLimitConflicts++;
                     continue;
-
                 }
 
-
-                // ---------------------------------------------
-                // SECOND PERIOD
-                // ---------------------------------------------
-
-                const secondCheck =
-                    checkSingleSlotConflict(
-                        task,
-                        secondPeriod,
-                        room,
-                        indexes
-                    );
-
-
-                if (
-                    !secondCheck.valid
-                ) {
-
-                    if (
-                        secondCheck.reason.includes(
-                            "Stream already"
-                        )
-                    ) {
-
-                        streamConflicts++;
-
-                    }
-
-                    else if (
-                        secondCheck.reason.includes(
-                            "Teacher is already"
-                        )
-                    ) {
-
-                        teacherConflicts++;
-
-                    }
-
-                    else if (
-                        secondCheck.reason.includes(
-                            "Room is already"
-                        )
-                    ) {
-
-                        roomConflicts++;
-
-                    }
-
-                    else if (
-                        secondCheck.reason.includes(
-                            "Maximum lessons"
-                        )
-                    ) {
-
-                        dailyLimitConflicts++;
-
-                    }
-
-
+                const secondCheck = checkSingleSlotConflict(task, secondPeriod, room, indexes);
+                if (!secondCheck.valid) {
+                    if (secondCheck.reason.includes("Stream already")) streamConflicts++;
+                    else if (secondCheck.reason.includes("Teacher is already")) teacherConflicts++;
+                    else if (secondCheck.reason.includes("Room is already")) roomConflicts++;
+                    else if (secondCheck.reason.includes("Maximum lessons")) dailyLimitConflicts++;
                     continue;
-
                 }
 
-
-                // =================================================
-                // DOUBLE SLOT FOUND
-                // =================================================
-
-                console.log(
-                    "✅ DOUBLE SLOT FOUND",
-                    {
-
-                        taskId:
-                            task.taskId,
-
-                        day:
-                            firstPeriod.day_name,
-
-                        firstPeriodId:
-                            firstPeriod.id,
-
-                        secondPeriodId:
-                            secondPeriod.id,
-
-                        firstPeriod:
-                            firstPeriod.period_number,
-
-                        secondPeriod:
-                            secondPeriod.period_number,
-
-                        roomId:
-                            room?.id ||
-                            null,
-
-                        room:
-                            room
-                                ? getTimetableRoomName(
-                                    room
-                                )
-                                : "No Room"
-
-                    }
-                );
-
-
-                return {
-
-                    firstPeriod:
-                        firstPeriod,
-
-                    secondPeriod:
-                        secondPeriod,
-
-                    room:
-                        room
-
-                };
-
+                return { firstPeriod, secondPeriod, room };
             }
-
         }
-
     }
 
+    // --------------------------------------------------------
+    // PASS 2: RELAXATION FALLBACK (Double Lesson Daily Limit Override)
+    // --------------------------------------------------------
+    if (dailyLimitConflicts > 0 && streamConflicts === 0 && teacherConflicts === 0) {
+        console.warn("⚠️ Relaxing maxLessonsPerDay for double lesson task to prevent unplaced queue overflow:", {
+            taskId: task.taskId,
+            streamId: task.streamId
+        });
 
-    // ========================================================
-    // NO DOUBLE SLOT
-    // ========================================================
+        for (const day of days) {
+            const dayPeriods = sortTimetablePeriods(periodsByDay[day]);
+            if (dayPeriods.length < 2) continue;
 
-    console.error(
-        "❌ FAILED TO FIND DOUBLE LESSON SLOT",
-        {
+            for (let i = 0; i < dayPeriods.length - 1; i++) {
+                const firstPeriod = dayPeriods[i];
+                const secondPeriod = dayPeriods[i + 1];
 
-            taskId:
-                task.taskId,
+                if (!arePeriodsConsecutive(firstPeriod, secondPeriod)) continue;
 
-            streamId:
-                task.streamId,
+                const compatibleRooms = getCompatibleRooms(task, rooms);
+                if (compatibleRooms.length === 0) continue;
 
-            subjectId:
-                task.subjectId,
+                for (const room of compatibleRooms) {
+                    const streamId = normalizeTimetableId(task.streamId);
+                    const teacherId = normalizeTimetableId(task.teacherId);
+                    const roomId = room && room.id ? normalizeTimetableId(room.id) : null;
 
-            teacherId:
-                task.teacherId,
+                    const p1Id = normalizeTimetableId(firstPeriod.id);
+                    const p2Id = normalizeTimetableId(secondPeriod.id);
 
-            consecutivePairs,
+                    const isBusy = (pId) => 
+                        indexes.streamPeriod.has(`${streamId}__${pId}`) ||
+                        (teacherId && indexes.teacherPeriod.has(`${teacherId}__${pId}`)) ||
+                        (roomId && indexes.roomPeriod.has(`${roomId}__${pId}`));
 
-            streamConflicts,
-
-            teacherConflicts,
-
-            roomConflicts,
-
-            dailyLimitConflicts
-
+                    if (!isBusy(p1Id) && !isBusy(p2Id)) {
+                        console.log("✅ DOUBLE SLOT FOUND (VIA CONSTRAINT RELAXATION)", {
+                            taskId: task.taskId,
+                            day: firstPeriod.day_name
+                        });
+                        return { firstPeriod, secondPeriod, room };
+                    }
+                }
+            }
         }
-    );
+    }
 
+    console.error("❌ FAILED TO FIND DOUBLE LESSON SLOT", {
+        taskId: task.taskId,
+        streamId: task.streamId,
+        subjectId: task.subjectId,
+        teacherId: task.teacherId,
+        consecutivePairs,
+        streamConflicts,
+        teacherConflicts,
+        roomConflicts,
+        dailyLimitConflicts
+    });
 
     return null;
-
 }
+
 
 
 // ============================================================
