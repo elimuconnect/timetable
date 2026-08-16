@@ -3221,16 +3221,142 @@ async function generateTimetable() {
         // STEP 14 — SHOW CONFLICTS
         // ====================================================
 
-        if (
-            typeof showTimetableConflicts ===
-            "function"
-        ) {
+       if (
+    entries.length === 0
+) {
 
-            showTimetableConflicts(
-                conflicts,
-                lookup
-            );
+    console.error(
+        "======================================"
+    );
 
+    console.error(
+        "NO TIMETABLE ENTRIES GENERATED"
+    );
+
+    console.error(
+        "======================================"
+    );
+
+    console.error(
+        "Total tasks:",
+        tasks.length
+    );
+
+    console.error(
+        "Total conflicts:",
+        conflicts.length
+    );
+
+    console.table(
+        conflicts.map(
+            conflict => ({
+                taskId:
+                    conflict.task?.taskId,
+
+                streamId:
+                    conflict.task?.streamId,
+
+                subjectId:
+                    conflict.task?.subjectId,
+
+                teacherId:
+                    conflict.task?.teacherId,
+
+                isDouble:
+                    conflict.task?.isDouble,
+
+                lessonsRequired:
+                    conflict.task?.lessonsRequired,
+
+                requiresRoom:
+                    conflict.task?.requiresRoom,
+
+                roomType:
+                    conflict.task?.roomType,
+
+                maxLessonsPerDay:
+                    conflict.task?.maxLessonsPerDay,
+
+                reason:
+                    conflict.reason
+            })
+        )
+    );
+
+    console.error(
+        "Teaching periods available:",
+        teachingPeriods.length
+    );
+
+    console.table(
+        teachingPeriods.map(
+            period => ({
+                id:
+                    period.id,
+
+                day:
+                    period.day_name,
+
+                dayNumber:
+                    period.day_number,
+
+                order:
+                    period.period_order,
+
+                number:
+                    period.period_number,
+
+                start:
+                    period.start_time,
+
+                end:
+                    period.end_time,
+
+                teaching:
+                    period.is_teaching_period,
+
+                type:
+                    period.period_type
+            })
+        )
+    );
+
+    console.error(
+        "Rooms available:",
+        data.rooms.length
+    );
+
+    console.table(
+        data.rooms.map(
+            room => ({
+                id:
+                    room.id,
+
+                name:
+                    getTimetableRoomName(
+                        room
+                    ),
+
+                type:
+                    getTimetableRoomType(
+                        room
+                    )
+            })
+        )
+    );
+
+    showTimetableConflicts(
+        conflicts,
+        lookup
+    );
+
+    throw new Error(
+        "No timetable entries could be generated. " +
+        conflicts.length +
+        " lesson task(s) could not be placed."
+    );
+
+}
         }
 
 
@@ -3275,20 +3401,6 @@ async function generateTimetable() {
         }
 
 
-        // ====================================================
-        // DO NOT CALL loadTimetableFilters()
-        // ====================================================
-        //
-        // It is currently not guaranteed to exist.
-        // The generator must not fail because of it.
-        //
-        // Filters can be handled separately later.
-        // ====================================================
-
-
-        // ====================================================
-        // SUCCESS STATUS
-        // ====================================================
 
         if (
             typeof setTimetableGenerationStatus ===
