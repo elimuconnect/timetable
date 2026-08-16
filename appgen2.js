@@ -2323,13 +2323,29 @@ function initializeAndVerifyGenerator(tasks, periods, rooms) {
 
 
 
+async function generateTimetable() {
 
-async function generateTimetable(tasks, periods, rooms) {
-    // 1. Run the validator first
-    if (!initializeAndVerifyGenerator(tasks, periods, rooms)) {
-        console.error("❌ Timetable generation aborted due to invalid preconditions.");
-        return []; // Return empty array so it doesn't crash downstream
-    }
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "🚀 GENERATE TIMETABLE FUNCTION STARTED"
+    );
+
+    console.log(
+        "School ID:",
+        timetableState.schoolId
+    );
+
+    console.log(
+        "Generation running:",
+        timetableGenerationRunning
+    );
+
+    console.log(
+        "======================================"
+    );
 
     console.log(
         "======================================"
