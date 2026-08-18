@@ -510,163 +510,160 @@ function buildTimetableLookupMaps(
 // STAGE 2 — NORMALIZE GENERATOR DATA
 // ============================================================
 
+
+
+// ============================================================
+// STAGE 2 — NORMALIZE GENERATOR DATA
+// ============================================================
+
 function normalizeGeneratorData(data) {
 
     const normalized = {
-        school: data.school || null,
 
-        streams: Array.isArray(data.streams)
-            ? data.streams
-            : [],
+        school:
+            data.school || null,
 
-        subjects: Array.isArray(data.subjects)
-            ? data.subjects
-            : [],
+        streams:
+            Array.isArray(data.streams)
+                ? data.streams
+                : [],
 
-        teachers: Array.isArray(data.teachers)
-            ? data.teachers
-            : [],
+        subjects:
+            Array.isArray(data.subjects)
+                ? data.subjects
+                : [],
 
-        rooms: Array.isArray(data.rooms)
-            ? data.rooms
-            : [],
+        teachers:
+            Array.isArray(data.teachers)
+                ? data.teachers
+                : [],
 
-        periods: Array.isArray(data.periods)
-            ? data.periods
-            : [],
+        rooms:
+            Array.isArray(data.rooms)
+                ? data.rooms
+                : [],
 
-        requirements: Array.isArray(data.requirements)
-            ? data.requirements
-            : [],
+        periods:
+            Array.isArray(data.periods)
+                ? data.periods
+                : [],
 
-        lookup: {
-            streams: new Map(),
-            subjects: new Map(),
-            teachers: new Map(),
-            rooms: new Map(),
-            periods: new Map()
-        }
+        requirements:
+            Array.isArray(data.requirements)
+                ? data.requirements
+                : [],
+
+        lookup:
+            buildTimetableLookupMaps(data)
+
     };
 
 
-    // ----------------------------------------------------------
-    // BUILD LOOKUP MAPS
-    // ----------------------------------------------------------
-
-    normalized.streams.forEach(stream => {
-
-        if (stream?.id) {
-            normalized.lookup.streams.set(
-                stream.id,
-                stream
-            );
-        }
-
-    });
-
-
-    normalized.subjects.forEach(subject => {
-
-        if (subject?.id) {
-            normalized.lookup.subjects.set(
-                subject.id,
-                subject
-            );
-        }
-
-    });
-
-
-    normalized.teachers.forEach(teacher => {
-
-        if (teacher?.id) {
-            normalized.lookup.teachers.set(
-                teacher.id,
-                teacher
-            );
-        }
-
-    });
-
-
-    normalized.rooms.forEach(room => {
-
-        if (room?.id) {
-            normalized.lookup.rooms.set(
-                room.id,
-                room
-            );
-
-        }
-
-    });
-
-
-    normalized.periods.forEach(period => {
-
-        if (period?.id) {
-            normalized.lookup.periods.set(
-                period.id,
-                period
-            );
-
-        }
-
-    });
-
-
-    // ----------------------------------------------------------
+    // ========================================================
     // NORMALIZE REQUIREMENTS
-    // ----------------------------------------------------------
+    // ========================================================
 
     normalized.requirements =
-        normalized.requirements.map(requirement => {
+        normalized.requirements.map(
+            requirement => {
 
-            return {
+                return {
 
-                requirementId:
-                    requirement.id,
+                    requirementId:
+                        requirement.id,
 
-                schoolId:
-                    requirement.school_id,
+                    schoolId:
+                        requirement.school_id,
 
-                streamId:
-                    requirement.stream_id,
+                    streamId:
+                        requirement.stream_id,
 
-                subjectId:
-                    requirement.subject_id,
+                    subjectId:
+                        requirement.subject_id,
 
-                teacherId:
-                    requirement.teacher_id || null,
+                    teacherId:
+                        requirement.teacher_id || null,
 
-                lessonsPerWeek:
-                    Number(
-                        requirement.lessons_per_week
-                    ) || 0,
+                    lessonsPerWeek:
+                        Number(
+                            requirement.lessons_per_week
+                        ) || 0,
 
-                doubleLessonsPerWeek:
-                    Number(
-                        requirement.double_lessons_per_week
-                    ) || 0,
+                    doubleLessonsPerWeek:
+                        Number(
+                            requirement.double_lessons_per_week
+                        ) || 0,
 
-                requiresRoom:
-                    Boolean(
-                        requirement.requires_room
-                    ),
+                    requiresRoom:
+                        Boolean(
+                            requirement.requires_room
+                        ),
 
-                roomType:
-                    requirement.room_type || null,
+                    roomType:
+                        requirement.room_type || null,
 
-                maxLessonsPerDay:
-                    Number(
-                        requirement.max_lessons_per_day
-                    ) || 1
-            };
+                    maxLessonsPerDay:
+                        Number(
+                            requirement.max_lessons_per_day
+                        ) || 1
 
-        });
+                };
+
+            }
+        );
+
+
+    // ========================================================
+    // NORMALIZATION DEBUG
+    // ========================================================
+
+    console.log(
+        "Generator data normalized:",
+        {
+            streams:
+                normalized.streams.length,
+
+            subjects:
+                normalized.subjects.length,
+
+            teachers:
+                normalized.teachers.length,
+
+            rooms:
+                normalized.rooms.length,
+
+            periods:
+                normalized.periods.length,
+
+            requirements:
+                normalized.requirements.length
+        }
+    );
+
+
+    console.log(
+        "Lookup maps built:",
+        {
+            streams:
+                normalized.lookup.streams.size,
+
+            subjects:
+                normalized.lookup.subjects.size,
+
+            teachers:
+                normalized.lookup.teachers.size,
+
+            rooms:
+                normalized.lookup.rooms.size,
+
+            periods:
+                normalized.lookup.periods.size
+        }
+    );
 
 
     return normalized;
+
 }
 
 
@@ -880,10 +877,6 @@ function validateGeneratorRelationships(data) {
 
 
 
-// ============================================================
-// PART 2 — NORMALIZATION, VALIDATION & LESSON TASKS
-// ============================================================
-
 
 // ============================================================
 // GET DISPLAY NAME — STREAM
@@ -1014,116 +1007,6 @@ function getTimetableRoomType(room) {
 }
 
 
-// ============================================================
-// VALIDATE GENERATOR DATA
-// ============================================================
-
-function validateTimetableGeneratorData(data) {
-
-    const errors = [];
-
-
-    if (
-        !data ||
-        typeof data !== "object"
-    ) {
-
-        throw new Error(
-            "Invalid timetable generator data."
-        );
-
-    }
-
-
-    if (
-        !Array.isArray(data.requirements) ||
-        data.requirements.length === 0
-    ) {
-
-        errors.push(
-            "No timetable requirements have been configured."
-        );
-
-    }
-
-
-    if (
-        !Array.isArray(data.periods) ||
-        data.periods.length === 0
-    ) {
-
-        errors.push(
-            "No timetable periods have been configured."
-        );
-
-    }
-
-
-    if (
-        !Array.isArray(data.streams) ||
-        data.streams.length === 0
-    ) {
-
-        errors.push(
-            "No streams have been configured."
-        );
-
-    }
-
-
-    if (
-        !Array.isArray(data.subjects) ||
-        data.subjects.length === 0
-    ) {
-
-        errors.push(
-            "No subjects have been configured."
-        );
-
-    }
-
-
-    if (
-        !Array.isArray(data.teachers) ||
-        data.teachers.length === 0
-    ) {
-
-        errors.push(
-            "No teachers have been configured."
-        );
-
-    }
-
-
-    if (
-        !Array.isArray(data.rooms)
-    ) {
-
-        errors.push(
-            "Room data could not be loaded."
-        );
-
-    }
-
-
-    if (errors.length > 0) {
-
-        throw new Error(
-            errors.join("\n")
-        );
-
-    }
-
-
-    console.log(
-        "Generator data validation: PASSED"
-    );
-
-
-    return true;
-
-}
-
 
 // ============================================================
 // GET TEACHING PERIODS
@@ -1238,22 +1121,26 @@ function groupPeriodsByDay(periods) {
 }
 
 
+
 // ============================================================
-// CREATE LESSON TASKS
+// STAGE 5 — CREATE LESSON TASKS
 // ============================================================
+//
+// Converts normalized timetable requirements into individual
+// scheduling tasks.
 //
 // Example:
 //
-// lessons_per_week = 5
-// double_lessons_per_week = 2
+// lessonsPerWeek = 5
+// doubleLessonsPerWeek = 2
 //
 // Creates:
 //
 // Double block 1 = 2 periods
 // Double block 2 = 2 periods
-// Single lesson  = 1 period
+// Single lesson   = 1 period
 //
-// Total = 5 periods
+// Total = 5 teaching periods
 //
 // ============================================================
 
@@ -1276,13 +1163,37 @@ function createLessonTasks(
     }
 
 
+    if (!lookup) {
+
+        console.error(
+            "createLessonTasks: lookup maps are missing."
+        );
+
+        return tasks;
+
+    }
+
+
     requirements.forEach(
         requirement => {
 
+            // =================================================
+            // NORMALIZED REQUIREMENT DATA
+            // =================================================
+
             const lessonsPerWeek =
                 Number(
-                    requirement.lessons_per_week
+                    requirement.lessonsPerWeek
                 ) || 0;
+
+
+            const doubleLessonsPerWeek =
+                Math.max(
+                    0,
+                    Number(
+                        requirement.doubleLessonsPerWeek
+                    ) || 0
+                );
 
 
             if (
@@ -1294,45 +1205,40 @@ function createLessonTasks(
             }
 
 
-            const doubleLessons =
-                Math.max(
-                    0,
-                    Number(
-                        requirement.double_lessons_per_week
-                    ) || 0
-                );
-
+            // =================================================
+            // LOOKUP RELATED DATA
+            // =================================================
 
             const stream =
                 lookup.streams.get(
-                    requirement.stream_id
+                    requirement.streamId
                 );
 
 
             const subject =
                 lookup.subjects.get(
-                    requirement.subject_id
+                    requirement.subjectId
                 );
 
 
             const teacher =
-                requirement.teacher_id
+                requirement.teacherId
                     ? lookup.teachers.get(
-                        requirement.teacher_id
+                        requirement.teacherId
                     )
                     : null;
 
 
-            // ------------------------------------------------
+            // =================================================
             // VALIDATE REFERENCES
-            // ------------------------------------------------
+            // =================================================
 
             if (!stream) {
 
                 console.warn(
                     "Requirement references missing stream:",
-                    requirement.id,
-                    requirement.stream_id
+                    requirement.requirementId,
+                    requirement.streamId
                 );
 
                 return;
@@ -1344,8 +1250,8 @@ function createLessonTasks(
 
                 console.warn(
                     "Requirement references missing subject:",
-                    requirement.id,
-                    requirement.subject_id
+                    requirement.requirementId,
+                    requirement.subjectId
                 );
 
                 return;
@@ -1354,35 +1260,35 @@ function createLessonTasks(
 
 
             if (
-                requirement.teacher_id &&
+                requirement.teacherId &&
                 !teacher
             ) {
 
                 console.warn(
                     "Requirement references missing teacher:",
-                    requirement.id,
-                    requirement.teacher_id
+                    requirement.requirementId,
+                    requirement.teacherId
                 );
 
             }
 
 
-            // ------------------------------------------------
+            // =================================================
             // CALCULATE DOUBLE BLOCKS
-            // ------------------------------------------------
+            // =================================================
 
             const requestedDoubleBlocks =
                 Math.min(
-                    doubleLessons,
+                    doubleLessonsPerWeek,
                     Math.floor(
                         lessonsPerWeek / 2
                     )
                 );
 
 
-            // ------------------------------------------------
+            // =================================================
             // CREATE DOUBLE LESSON TASKS
-            // ------------------------------------------------
+            // =================================================
 
             for (
                 let i = 0;
@@ -1393,33 +1299,33 @@ function createLessonTasks(
                 tasks.push({
 
                     taskId:
-                        `${requirement.id}-double-${i}`,
+                        `${requirement.requirementId}-double-${i}`,
 
                     requirementId:
-                        requirement.id,
+                        requirement.requirementId,
 
                     streamId:
-                        requirement.stream_id,
+                        requirement.streamId,
 
                     subjectId:
-                        requirement.subject_id,
+                        requirement.subjectId,
 
                     teacherId:
-                        requirement.teacher_id ||
+                        requirement.teacherId ||
                         null,
 
                     requiresRoom:
-                        requirement.requires_room === true,
+                        requirement.requiresRoom === true,
 
                     roomType:
                         normalizeRoomType(
-                            requirement.room_type
+                            requirement.roomType
                         ),
 
                     maxLessonsPerDay:
                         Number(
-                            requirement.max_lessons_per_day
-                        ) || 0,
+                            requirement.maxLessonsPerDay
+                        ) || 1,
 
                     isDouble:
                         true,
@@ -1435,9 +1341,9 @@ function createLessonTasks(
             }
 
 
-            // ------------------------------------------------
+            // =================================================
             // CREATE SINGLE LESSON TASKS
-            // ------------------------------------------------
+            // =================================================
 
             const singleLessons =
                 lessonsPerWeek -
@@ -1456,33 +1362,33 @@ function createLessonTasks(
                 tasks.push({
 
                     taskId:
-                        `${requirement.id}-single-${i}`,
+                        `${requirement.requirementId}-single-${i}`,
 
                     requirementId:
-                        requirement.id,
+                        requirement.requirementId,
 
                     streamId:
-                        requirement.stream_id,
+                        requirement.streamId,
 
                     subjectId:
-                        requirement.subject_id,
+                        requirement.subjectId,
 
                     teacherId:
-                        requirement.teacher_id ||
+                        requirement.teacherId ||
                         null,
 
                     requiresRoom:
-                        requirement.requires_room === true,
+                        requirement.requiresRoom === true,
 
                     roomType:
                         normalizeRoomType(
-                            requirement.room_type
+                            requirement.roomType
                         ),
 
                     maxLessonsPerDay:
                         Number(
-                            requirement.max_lessons_per_day
-                        ) || 0,
+                            requirement.maxLessonsPerDay
+                        ) || 1,
 
                     isDouble:
                         false,
@@ -1502,9 +1408,9 @@ function createLessonTasks(
     );
 
 
-    // ========================================================
+    // ============================================================
     // DOUBLE LESSONS FIRST
-    // ========================================================
+    // ============================================================
 
     tasks.sort(
         (
@@ -1529,9 +1435,9 @@ function createLessonTasks(
     );
 
 
-    // ========================================================
+    // ============================================================
     // LOG RESULT
-    // ========================================================
+    // ============================================================
 
     console.log(
         "Lesson tasks created:",
@@ -1546,14 +1452,29 @@ function createLessonTasks(
                 taskId:
                     task.taskId,
 
-                streamId:
-                    task.streamId,
+                requirementId:
+                    task.requirementId,
 
-                subjectId:
-                    task.subjectId,
+                stream:
+                    getTimetableStreamName(
+                        lookup.streams.get(
+                            task.streamId
+                        )
+                    ),
 
-                teacherId:
-                    task.teacherId,
+                subject:
+                    getTimetableSubjectName(
+                        lookup.subjects.get(
+                            task.subjectId
+                        )
+                    ),
+
+                teacher:
+                    getTimetableTeacherName(
+                        lookup.teachers.get(
+                            task.teacherId
+                        )
+                    ),
 
                 requiresRoom:
                     task.requiresRoom,
@@ -1565,7 +1486,10 @@ function createLessonTasks(
                     task.isDouble,
 
                 periods:
-                    task.lessonsRequired
+                    task.lessonsRequired,
+
+                maxPerDay:
+                    task.maxLessonsPerDay
 
             })
         )
@@ -1575,10 +1499,6 @@ function createLessonTasks(
     return tasks;
 
 }
-// ============================================================
-// PART 3 — SLOT AVAILABILITY & OCCUPANCY ENGINE
-// ============================================================
-
 
 
 
