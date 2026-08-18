@@ -1769,9 +1769,13 @@ function validateTimetableGeneratorData(data) {
 
 }
 
-
 // ============================================================
 // GET TEACHING PERIODS
+// ============================================================
+// IMPORTANT:
+// At this stage, periods have already been normalized.
+// Therefore, all generator logic uses the normalized
+// camelCase fields only.
 // ============================================================
 
 function getTeachingPeriods(periods) {
@@ -1788,25 +1792,13 @@ function getTeachingPeriods(periods) {
     return periods.filter(
         period => {
 
-            const periodType =
-                String(
-                    period.period_type ||
-                    period.periodType ||
-                    ""
-                )
-                    .trim()
-                    .toLowerCase();
-
-
             return (
-
-                period.is_teaching_period !== false &&
 
                 period.isTeachingPeriod !== false &&
 
-                periodType !== "break" &&
+                period.periodType !== "break" &&
 
-                periodType !== "lunch"
+                period.periodType !== "lunch"
 
             );
 
@@ -1814,7 +1806,6 @@ function getTeachingPeriods(periods) {
     );
 
 }
-
 
 // ============================================================
 // GROUP PERIODS BY DAY
@@ -1899,6 +1890,87 @@ function groupPeriodsByDay(periods) {
     return groups;
 
 }
+
+
+
+function groupPeriodsByDay(periods) {
+
+    const groups = {};
+
+
+    if (
+        !Array.isArray(periods)
+    ) {
+
+        return groups;
+
+    }
+
+
+    periods.forEach(
+        period => {
+
+            const day =
+                period.dayName ||
+                `Day ${period.dayNumber}`;
+
+
+            if (
+                !groups[day]
+            ) {
+
+                groups[day] = [];
+
+            }
+
+
+            groups[day].push(
+                period
+            );
+
+        }
+    );
+
+
+    Object.keys(groups)
+        .forEach(
+            day => {
+
+                groups[day].sort(
+                    (
+                        a,
+                        b
+                    ) => {
+
+                        const orderA =
+                            Number(
+                                a.periodOrder
+                            ) || 0;
+
+
+                        const orderB =
+                            Number(
+                                b.periodOrder
+                            ) || 0;
+
+
+                        return (
+                            orderA -
+                            orderB
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+
+    return groups;
+
+}
+
+
 
 
 // ============================================================
