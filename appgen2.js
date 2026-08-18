@@ -1,4 +1,9 @@
 
+// ============================================================
+// SMART TIMETABLE GENERATOR
+// STAGE 2 — DATA MODEL, LOADING, NORMALIZATION & VALIDATION
+// ============================================================
+
 let generatedTimetableEntries = [];
 
 let timetableGenerationRunning = false;
@@ -38,39 +43,68 @@ console.log(
 console.log(
     "Timetable generator DOM check:",
     {
-        generate: !!generateTimetableBtn,
-        regenerate: !!regenerateTimetableBtn,
-        clear: !!clearTimetableBtn,
-        print: !!printTimetableBtn,
-        streamFilter: !!timetableStreamFilter,
-        dayFilter: !!timetableDayFilter,
-        viewMode: !!timetableViewMode
+        generate:
+            !!generateTimetableBtn,
+
+        regenerate:
+            !!regenerateTimetableBtn,
+
+        clear:
+            !!clearTimetableBtn,
+
+        print:
+            !!printTimetableBtn,
+
+        streamFilter:
+            !!timetableStreamFilter,
+
+        dayFilter:
+            !!timetableDayFilter,
+
+        viewMode:
+            !!timetableViewMode
     }
 );
 
 
 // ============================================================
-// STAGE 2 — NORMALIZED GENERATOR DATA MODEL
+// NORMALIZED GENERATOR DATA MODEL
 // ============================================================
 
 const generatorData = {
 
     school: null,
 
+    schoolId: null,
+
     streams: [],
+
     subjects: [],
+
     teachers: [],
+
     rooms: [],
+
     periods: [],
+
     requirements: [],
 
     lookup: {
 
-        streams: new Map(),
-        subjects: new Map(),
-        teachers: new Map(),
-        rooms: new Map(),
-        periods: new Map()
+        streams:
+            new Map(),
+
+        subjects:
+            new Map(),
+
+        teachers:
+            new Map(),
+
+        rooms:
+            new Map(),
+
+        periods:
+            new Map()
 
     }
 
@@ -91,6 +125,7 @@ function setTimetableGenerationStatus(
             "timetableGenerationStatus"
         );
 
+
     if (!status) {
 
         console.log(
@@ -102,15 +137,20 @@ function setTimetableGenerationStatus(
 
     }
 
-    status.style.display = "block";
+
+    status.style.display =
+        "block";
+
+
+    const safeMessage =
+        typeof escapeHtml === "function"
+            ? escapeHtml(String(message))
+            : String(message);
+
 
     status.innerHTML = `
         <div class="timetable-status ${type}">
-            ${
-                typeof escapeHtml === "function"
-                    ? escapeHtml(String(message))
-                    : String(message)
-            }
+            ${safeMessage}
         </div>
     `;
 
@@ -128,13 +168,211 @@ function hideTimetableGenerationStatus() {
             "timetableGenerationStatus"
         );
 
+
     if (!status) {
         return;
     }
 
-    status.style.display = "none";
 
-    status.innerHTML = "";
+    status.style.display =
+        "none";
+
+    status.innerHTML =
+        "";
+
+}
+
+
+// ============================================================
+// DISPLAY NAME HELPERS
+// IMPORTANT:
+// These functions are declared BEFORE any filter/render code
+// ============================================================
+
+
+// ============================================================
+// STREAM NAME
+// ============================================================
+
+function getTimetableStreamName(stream) {
+
+    if (!stream) {
+
+        return "Unknown Stream";
+
+    }
+
+
+    return (
+
+        stream.stream_name ||
+
+        stream.name ||
+
+        stream.class_name ||
+
+        stream.stream ||
+
+        "Unknown Stream"
+
+    );
+
+}
+
+
+// ============================================================
+// SUBJECT NAME
+// ============================================================
+
+function getTimetableSubjectName(subject) {
+
+    if (!subject) {
+
+        return "Unknown Subject";
+
+    }
+
+
+    return (
+
+        subject.subject_name ||
+
+        subject.name ||
+
+        subject.subject ||
+
+        subject.code ||
+
+        "Unknown Subject"
+
+    );
+
+}
+
+
+// ============================================================
+// TEACHER NAME
+// ============================================================
+
+function getTimetableTeacherName(teacher) {
+
+    if (!teacher) {
+
+        return "Unassigned";
+
+    }
+
+
+    const fullName = [
+
+        teacher.first_name,
+
+        teacher.middle_name,
+
+        teacher.last_name
+
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+
+    return (
+
+        teacher.teacher_name ||
+
+        teacher.name ||
+
+        teacher.full_name ||
+
+        fullName ||
+
+        teacher.username ||
+
+        "Unknown Teacher"
+
+    );
+
+}
+
+
+// ============================================================
+// ROOM NAME
+// ============================================================
+
+function getTimetableRoomName(room) {
+
+    if (!room) {
+
+        return "No Room";
+
+    }
+
+
+    return (
+
+        room.room_name ||
+
+        room.name ||
+
+        room.room ||
+
+        room.location ||
+
+        "Room"
+
+    );
+
+}
+
+
+// ============================================================
+// NORMALIZE ROOM TYPE
+// ============================================================
+
+function normalizeRoomType(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+
+        return "";
+
+    }
+
+
+    return String(value)
+        .trim()
+        .toLowerCase();
+
+}
+
+
+// ============================================================
+// ROOM TYPE
+// ============================================================
+
+function getTimetableRoomType(room) {
+
+    if (!room) {
+
+        return "";
+
+    }
+
+
+    return normalizeRoomType(
+
+        room.room_type ||
+
+        room.type ||
+
+        room.category ||
+
+        ""
+
+    );
 
 }
 
@@ -145,13 +383,20 @@ function hideTimetableGenerationStatus() {
 
 async function loadTimetableGeneratorData() {
 
-    if (!timetableState.schoolId) {
+    if (
+        !timetableState ||
+        !timetableState.schoolId
+    ) {
 
         throw new Error(
             "Please select a school first."
         );
 
     }
+
+
+    const schoolId =
+        timetableState.schoolId;
 
 
     console.log(
@@ -164,7 +409,7 @@ async function loadTimetableGeneratorData() {
 
     console.log(
         "School:",
-        timetableState.schoolId
+        schoolId
     );
 
     console.log(
@@ -172,21 +417,22 @@ async function loadTimetableGeneratorData() {
     );
 
 
-    const schoolId =
-        timetableState.schoolId;
-
-
     // ========================================================
-    // LOAD ALL REQUIRED DATA
+    // LOAD ALL REQUIRED DATA IN PARALLEL
     // ========================================================
 
     const [
 
         requirementsResult,
+
         periodsResult,
+
         streamsResult,
+
         subjectsResult,
+
         teachersResult,
+
         roomsResult
 
     ] = await Promise.all([
@@ -194,12 +440,18 @@ async function loadTimetableGeneratorData() {
         supabaseClient
             .from("timetable_requirements")
             .select("*")
-            .eq("school_id", schoolId),
+            .eq(
+                "school_id",
+                schoolId
+            ),
 
         supabaseClient
             .from("timetable_periods")
             .select("*")
-            .eq("school_id", schoolId)
+            .eq(
+                "school_id",
+                schoolId
+            )
             .order(
                 "day_number",
                 {
@@ -216,77 +468,126 @@ async function loadTimetableGeneratorData() {
         supabaseClient
             .from("timetable_streams")
             .select("*")
-            .eq("school_id", schoolId),
+            .eq(
+                "school_id",
+                schoolId
+            ),
 
         supabaseClient
             .from("timetable_subjects")
             .select("*")
-            .eq("school_id", schoolId),
+            .eq(
+                "school_id",
+                schoolId
+            ),
 
         supabaseClient
             .from("timetable_teachers")
             .select("*")
-            .eq("school_id", schoolId),
+            .eq(
+                "school_id",
+                schoolId
+            ),
 
         supabaseClient
             .from("timetable_rooms")
             .select("*")
-            .eq("school_id", schoolId)
+            .eq(
+                "school_id",
+                schoolId
+            )
 
     ]);
 
 
     // ========================================================
-    // DATABASE ERROR CHECKING
+    // DATABASE ERROR CHECK
     // ========================================================
 
-    const databaseErrors = [
+    const databaseResults = [
 
         {
-            name: "requirements",
-            result: requirementsResult
+            name:
+                "requirements",
+
+            result:
+                requirementsResult
+
         },
 
         {
-            name: "periods",
-            result: periodsResult
+            name:
+                "periods",
+
+            result:
+                periodsResult
+
         },
 
         {
-            name: "streams",
-            result: streamsResult
+            name:
+                "streams",
+
+            result:
+                streamsResult
+
         },
 
         {
-            name: "subjects",
-            result: subjectsResult
+            name:
+                "subjects",
+
+            result:
+                subjectsResult
+
         },
 
         {
-            name: "teachers",
-            result: teachersResult
+            name:
+                "teachers",
+
+            result:
+                teachersResult
+
         },
 
         {
-            name: "rooms",
-            result: roomsResult
+            name:
+                "rooms",
+
+            result:
+                roomsResult
+
         }
 
     ];
 
 
-    for (const item of databaseErrors) {
+    for (
+        const item
+        of databaseResults
+    ) {
 
-        if (item.result?.error) {
+        if (
+            item.result &&
+            item.result.error
+        ) {
 
             console.error(
+
                 `Failed to load timetable ${item.name}:`,
+
                 item.result.error
+
             );
 
+
             throw new Error(
+
                 `Failed to load timetable ${item.name}: ` +
+
                 item.result.error.message
+
             );
 
         }
@@ -300,35 +601,47 @@ async function loadTimetableGeneratorData() {
 
     const result = {
 
-        schoolId: schoolId,
+        schoolId,
 
         requirements:
-            Array.isArray(requirementsResult.data)
+            Array.isArray(
+                requirementsResult.data
+            )
                 ? requirementsResult.data
                 : [],
 
         periods:
-            Array.isArray(periodsResult.data)
+            Array.isArray(
+                periodsResult.data
+            )
                 ? periodsResult.data
                 : [],
 
         streams:
-            Array.isArray(streamsResult.data)
+            Array.isArray(
+                streamsResult.data
+            )
                 ? streamsResult.data
                 : [],
 
         subjects:
-            Array.isArray(subjectsResult.data)
+            Array.isArray(
+                subjectsResult.data
+            )
                 ? subjectsResult.data
                 : [],
 
         teachers:
-            Array.isArray(teachersResult.data)
+            Array.isArray(
+                teachersResult.data
+            )
                 ? teachersResult.data
                 : [],
 
         rooms:
-            Array.isArray(roomsResult.data)
+            Array.isArray(
+                roomsResult.data
+            )
                 ? roomsResult.data
                 : []
 
@@ -383,16 +696,28 @@ function buildTimetableLookupMaps(data) {
 
     const lookup = {
 
-        streams: new Map(),
-        subjects: new Map(),
-        teachers: new Map(),
-        rooms: new Map(),
-        periods: new Map()
+        streams:
+            new Map(),
+
+        subjects:
+            new Map(),
+
+        teachers:
+            new Map(),
+
+        rooms:
+            new Map(),
+
+        periods:
+            new Map()
 
     };
 
 
-    if (!data || typeof data !== "object") {
+    if (
+        !data ||
+        typeof data !== "object"
+    ) {
 
         console.warn(
             "buildTimetableLookupMaps: Invalid data."
@@ -407,110 +732,126 @@ function buildTimetableLookupMaps(data) {
     // STREAMS
     // --------------------------------------------------------
 
-    (data.streams || []).forEach(
-        item => {
+    (data.streams || [])
+        .forEach(
+            item => {
 
-            if (item?.id) {
+                if (item?.id) {
 
-                lookup.streams.set(
-                    item.id,
-                    item
-                );
+                    lookup.streams.set(
+                        item.id,
+                        item
+                    );
+
+                }
 
             }
-
-        }
-    );
+        );
 
 
     // --------------------------------------------------------
     // SUBJECTS
     // --------------------------------------------------------
 
-    (data.subjects || []).forEach(
-        item => {
+    (data.subjects || [])
+        .forEach(
+            item => {
 
-            if (item?.id) {
+                if (item?.id) {
 
-                lookup.subjects.set(
-                    item.id,
-                    item
-                );
+                    lookup.subjects.set(
+                        item.id,
+                        item
+                    );
+
+                }
 
             }
-
-        }
-    );
+        );
 
 
     // --------------------------------------------------------
     // TEACHERS
     // --------------------------------------------------------
 
-    (data.teachers || []).forEach(
-        item => {
+    (data.teachers || [])
+        .forEach(
+            item => {
 
-            if (item?.id) {
+                if (item?.id) {
 
-                lookup.teachers.set(
-                    item.id,
-                    item
-                );
+                    lookup.teachers.set(
+                        item.id,
+                        item
+                    );
+
+                }
 
             }
-
-        }
-    );
+        );
 
 
     // --------------------------------------------------------
     // ROOMS
     // --------------------------------------------------------
 
-    (data.rooms || []).forEach(
-        item => {
+    (data.rooms || [])
+        .forEach(
+            item => {
 
-            if (item?.id) {
+                if (item?.id) {
 
-                lookup.rooms.set(
-                    item.id,
-                    item
-                );
+                    lookup.rooms.set(
+                        item.id,
+                        item
+                    );
+
+                }
 
             }
-
-        }
-    );
+        );
 
 
     // --------------------------------------------------------
     // PERIODS
     // --------------------------------------------------------
 
-    (data.periods || []).forEach(
-        item => {
+    (data.periods || [])
+        .forEach(
+            item => {
 
-            if (item?.id) {
+                if (item?.id) {
 
-                lookup.periods.set(
-                    item.id,
-                    item
-                );
+                    lookup.periods.set(
+                        item.id,
+                        item
+                    );
+
+                }
 
             }
-
-        }
-    );
+        );
 
 
     console.log(
         "Timetable lookup maps built:",
         {
-            streams: lookup.streams.size,
-            subjects: lookup.subjects.size,
-            teachers: lookup.teachers.size,
-            rooms: lookup.rooms.size,
-            periods: lookup.periods.size
+
+            streams:
+                lookup.streams.size,
+
+            subjects:
+                lookup.subjects.size,
+
+            teachers:
+                lookup.teachers.size,
+
+            rooms:
+                lookup.rooms.size,
+
+            periods:
+                lookup.periods.size
+
         }
     );
 
@@ -521,14 +862,15 @@ function buildTimetableLookupMaps(data) {
 
 
 // ============================================================
-// STAGE 2 — NORMALIZE GENERATOR DATA
+// NORMALIZE GENERATOR DATA
 // ============================================================
 
 function normalizeGeneratorData(data) {
 
     const normalized = {
 
-        school: data?.school || null,
+        school:
+            data?.school || null,
 
         schoolId:
             data?.schoolId ||
@@ -537,41 +879,50 @@ function normalizeGeneratorData(data) {
 
         streams:
             Array.isArray(data?.streams)
-                ? data.streams
+                ? [...data.streams]
                 : [],
 
         subjects:
             Array.isArray(data?.subjects)
-                ? data.subjects
+                ? [...data.subjects]
                 : [],
 
         teachers:
             Array.isArray(data?.teachers)
-                ? data.teachers
+                ? [...data.teachers]
                 : [],
 
         rooms:
             Array.isArray(data?.rooms)
-                ? data.rooms
+                ? [...data.rooms]
                 : [],
 
         periods:
             Array.isArray(data?.periods)
-                ? data.periods
+                ? [...data.periods]
                 : [],
 
         requirements:
             Array.isArray(data?.requirements)
-                ? data.requirements
+                ? [...data.requirements]
                 : [],
 
         lookup: {
 
-            streams: new Map(),
-            subjects: new Map(),
-            teachers: new Map(),
-            rooms: new Map(),
-            periods: new Map()
+            streams:
+                new Map(),
+
+            subjects:
+                new Map(),
+
+            teachers:
+                new Map(),
+
+            rooms:
+                new Map(),
+
+            periods:
+                new Map()
 
         }
 
@@ -579,12 +930,49 @@ function normalizeGeneratorData(data) {
 
 
     // ========================================================
-    // BUILD LOOKUP MAPS
+    // NORMALIZE PERIODS
     // ========================================================
 
-    normalized.lookup =
-        buildTimetableLookupMaps(
-            normalized
+    normalized.periods =
+        normalized.periods.map(
+            period => {
+
+                const periodType =
+                    String(
+                        period.period_type ||
+                        "lesson"
+                    )
+                        .trim()
+                        .toLowerCase();
+
+
+                return {
+
+                    ...period,
+
+                    dayNumber:
+                        Number(
+                            period.day_number
+                        ) || 0,
+
+                    periodNumber:
+                        Number(
+                            period.period_number
+                        ) || 0,
+
+                    periodOrder:
+                        Number(
+                            period.period_order
+                        ) || 0,
+
+                    isTeachingPeriod:
+                        period.is_teaching_period !== false,
+
+                    periodType
+
+                };
+
+            }
         );
 
 
@@ -616,9 +1004,9 @@ function normalizeGeneratorData(data) {
 
                 return {
 
-                    // Database ID
                     requirementId:
-                        requirement.id || null,
+                        requirement.id ||
+                        null,
 
                     schoolId:
                         requirement.school_id ||
@@ -641,78 +1029,39 @@ function normalizeGeneratorData(data) {
                         Number.isFinite(
                             lessonsPerWeek
                         )
-                            ? lessonsPerWeek
+                            ? Math.max(
+                                0,
+                                lessonsPerWeek
+                            )
                             : 0,
 
                     doubleLessonsPerWeek:
                         Number.isFinite(
                             doubleLessonsPerWeek
                         )
-                            ? doubleLessonsPerWeek
+                            ? Math.max(
+                                0,
+                                doubleLessonsPerWeek
+                            )
                             : 0,
 
                     requiresRoom:
                         requirement.requires_room === true,
 
                     roomType:
-                        requirement.room_type
-                            ? String(
-                                requirement.room_type
-                            )
-                                .trim()
-                                .toLowerCase()
-                            : null,
+                        normalizeRoomType(
+                            requirement.room_type
+                        ),
 
                     maxLessonsPerDay:
                         Number.isFinite(
                             maxLessonsPerDay
                         )
-                            ? maxLessonsPerDay
+                            ? Math.max(
+                                1,
+                                maxLessonsPerDay
+                            )
                             : 1
-
-                };
-
-            }
-        );
-
-
-    // ========================================================
-    // NORMALIZE PERIODS
-    // ========================================================
-
-    normalized.periods =
-        normalized.periods.map(
-            period => {
-
-                return {
-
-                    ...period,
-
-                    dayNumber:
-                        Number(
-                            period.day_number
-                        ) || 0,
-
-                    periodNumber:
-                        Number(
-                            period.period_number
-                        ) || 0,
-
-                    periodOrder:
-                        Number(
-                            period.period_order
-                        ) || 0,
-
-                    isTeachingPeriod:
-                        period.is_teaching_period !== false,
-
-                    periodType:
-                        String(
-                            period.period_type ||
-                            "lesson"
-                        )
-                            .trim()
-                            .toLowerCase()
 
                 };
 
@@ -735,17 +1084,29 @@ function normalizeGeneratorData(data) {
                     maxLessonsPerDay:
                         Number(
                             teacher.max_lessons_per_day
-                        ) || 6,
+                        ) > 0
+                            ? Number(
+                                teacher.max_lessons_per_day
+                            )
+                            : 6,
 
                     maxLessonsPerWeek:
                         Number(
                             teacher.max_lessons_per_week
-                        ) || 30,
+                        ) > 0
+                            ? Number(
+                                teacher.max_lessons_per_week
+                            )
+                            : 30,
 
                     maxConsecutiveLessons:
                         Number(
                             teacher.max_consecutive_lessons
-                        ) || 3
+                        ) > 0
+                            ? Number(
+                                teacher.max_consecutive_lessons
+                            )
+                            : 3
 
                 };
 
@@ -766,13 +1127,10 @@ function normalizeGeneratorData(data) {
                     ...room,
 
                     roomType:
-                        room.room_type
-                            ? String(
-                                room.room_type
-                            )
-                                .trim()
-                                .toLowerCase()
-                            : "classroom",
+                        getTimetableRoomType(
+                            room
+                        ) ||
+                        "classroom",
 
                     available:
                         room.available !== false
@@ -784,7 +1142,7 @@ function normalizeGeneratorData(data) {
 
 
     // ========================================================
-    // REBUILD LOOKUPS AFTER NORMALIZATION
+    // REBUILD LOOKUPS
     // ========================================================
 
     normalized.lookup =
@@ -793,33 +1151,46 @@ function normalizeGeneratorData(data) {
         );
 
 
+    console.log(
+        "Generator data normalized successfully."
+    );
+
+
     return normalized;
 
 }
 
 
 // ============================================================
-// STAGE 4 — VERIFY GENERATOR RELATIONSHIPS
+// VALIDATE GENERATOR RELATIONSHIPS
 // ============================================================
 
 function validateGeneratorRelationships(data) {
 
     const errors = [];
+
     const warnings = [];
 
 
-    if (!data) {
+    if (
+        !data ||
+        typeof data !== "object"
+    ) {
 
         return {
 
             valid: false,
+
             errors: [
                 {
-                    type: "NO_DATA",
+                    type:
+                        "NO_DATA",
+
                     message:
                         "No generator data was supplied."
                 }
             ],
+
             warnings
 
         };
@@ -827,21 +1198,22 @@ function validateGeneratorRelationships(data) {
     }
 
 
+    // ========================================================
+    // SCHOOL
+    // ========================================================
+
     const schoolId =
         data.schoolId ||
         timetableState?.schoolId ||
         null;
 
 
-    // ========================================================
-    // BASIC SCHOOL CHECK
-    // ========================================================
-
     if (!schoolId) {
 
         errors.push({
 
-            type: "MISSING_SCHOOL",
+            type:
+                "MISSING_SCHOOL",
 
             message:
                 "No school has been selected."
@@ -851,7 +1223,417 @@ function validateGeneratorRelationships(data) {
     }
 
 
-  
+    // ========================================================
+    // REQUIREMENTS
+    // ========================================================
+
+    data.requirements.forEach(
+        requirement => {
+
+            const requirementId =
+                requirement.requirementId;
+
+
+            if (!requirementId) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_REQUIREMENT",
+
+                    message:
+                        "A timetable requirement has no ID."
+
+                });
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // SCHOOL
+            // ------------------------------------------------
+
+            if (
+                requirement.schoolId &&
+                schoolId &&
+                requirement.schoolId !== schoolId
+            ) {
+
+                errors.push({
+
+                    type:
+                        "WRONG_SCHOOL",
+
+                    requirementId,
+
+                    message:
+                        "Requirement belongs to another school."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // STREAM
+            // ------------------------------------------------
+
+            if (
+                !requirement.streamId
+            ) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_STREAM",
+
+                    requirementId,
+
+                    message:
+                        "Requirement has no stream assigned."
+
+                });
+
+            }
+
+            else if (
+                !data.lookup.streams.has(
+                    requirement.streamId
+                )
+            ) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_STREAM",
+
+                    requirementId,
+
+                    streamId:
+                        requirement.streamId,
+
+                    message:
+                        "Requirement references a stream that does not exist."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // SUBJECT
+            // ------------------------------------------------
+
+            if (
+                !requirement.subjectId
+            ) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_SUBJECT",
+
+                    requirementId,
+
+                    message:
+                        "Requirement has no subject assigned."
+
+                });
+
+            }
+
+            else if (
+                !data.lookup.subjects.has(
+                    requirement.subjectId
+                )
+            ) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_SUBJECT",
+
+                    requirementId,
+
+                    subjectId:
+                        requirement.subjectId,
+
+                    message:
+                        "Requirement references a subject that does not exist."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // TEACHER
+            // ------------------------------------------------
+
+            if (
+                !requirement.teacherId
+            ) {
+
+                warnings.push({
+
+                    type:
+                        "MISSING_TEACHER",
+
+                    requirementId,
+
+                    message:
+                        "No teacher is assigned to this requirement."
+
+                });
+
+            }
+
+            else if (
+                !data.lookup.teachers.has(
+                    requirement.teacherId
+                )
+            ) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_TEACHER",
+
+                    requirementId,
+
+                    teacherId:
+                        requirement.teacherId,
+
+                    message:
+                        "Requirement references a teacher that does not exist."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // LESSON COUNT
+            // ------------------------------------------------
+
+            if (
+                !Number.isFinite(
+                    requirement.lessonsPerWeek
+                ) ||
+                requirement.lessonsPerWeek <= 0
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_LESSONS_PER_WEEK",
+
+                    requirementId,
+
+                    message:
+                        "Lessons per week must be greater than zero."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // DOUBLE LESSON COUNT
+            // ------------------------------------------------
+
+            if (
+                requirement.doubleLessonsPerWeek < 0
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_DOUBLE_LESSONS",
+
+                    requirementId,
+
+                    message:
+                        "Double lessons per week cannot be negative."
+
+                });
+
+            }
+
+
+            if (
+                requirement.doubleLessonsPerWeek >
+                Math.floor(
+                    requirement.lessonsPerWeek / 2
+                )
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_DOUBLE_LESSONS",
+
+                    requirementId,
+
+                    message:
+                        "The requested number of double lessons is greater than the available lesson count."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // MAX LESSONS PER DAY
+            // ------------------------------------------------
+
+            if (
+                requirement.maxLessonsPerDay <= 0
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_MAX_LESSONS_PER_DAY",
+
+                    requirementId,
+
+                    message:
+                        "Maximum lessons per day must be greater than zero."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM VALIDATION
+            // ------------------------------------------------
+
+            if (
+                requirement.requiresRoom
+            ) {
+
+                const matchingRooms =
+                    data.rooms.filter(
+                        room => {
+
+                            if (
+                                room.available === false
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            if (
+                                !requirement.roomType
+                            ) {
+
+                                return true;
+
+                            }
+
+
+                            return (
+                                getTimetableRoomType(
+                                    room
+                                ) ===
+                                requirement.roomType
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    matchingRooms.length === 0
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "NO_ROOM",
+
+                        requirementId,
+
+                        roomType:
+                            requirement.roomType,
+
+                        message:
+                            requirement.roomType
+                                ? `No available room of type "${requirement.roomType}" exists.`
+                                : "Requirement requires a room but no available room exists."
+
+                    });
+
+                }
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    const result = {
+
+        valid:
+            errors.length === 0,
+
+        errors,
+
+        warnings
+
+    };
+
+
+    console.log(
+        "Generator relationship validation:",
+        {
+            valid:
+                result.valid,
+
+            errors:
+                errors.length,
+
+            warnings:
+                warnings.length
+        }
+    );
+
+
+    if (errors.length > 0) {
+
+        console.error(
+            "Generator relationship errors:",
+            errors
+        );
+
+    }
+
+
+    if (warnings.length > 0) {
+
+        console.warn(
+            "Generator relationship warnings:",
+            warnings
+        );
+
+    }
+
+
+    return result;
+
+}
+
+
 // ============================================================
 // BASIC GENERATOR DATA VALIDATION
 // ============================================================
@@ -885,7 +1667,9 @@ function validateTimetableGeneratorData(data) {
 
 
     if (
-        !Array.isArray(data.requirements) ||
+        !Array.isArray(
+            data.requirements
+        ) ||
         data.requirements.length === 0
     ) {
 
@@ -897,7 +1681,9 @@ function validateTimetableGeneratorData(data) {
 
 
     if (
-        !Array.isArray(data.periods) ||
+        !Array.isArray(
+            data.periods
+        ) ||
         data.periods.length === 0
     ) {
 
@@ -909,7 +1695,9 @@ function validateTimetableGeneratorData(data) {
 
 
     if (
-        !Array.isArray(data.streams) ||
+        !Array.isArray(
+            data.streams
+        ) ||
         data.streams.length === 0
     ) {
 
@@ -921,7 +1709,9 @@ function validateTimetableGeneratorData(data) {
 
 
     if (
-        !Array.isArray(data.subjects) ||
+        !Array.isArray(
+            data.subjects
+        ) ||
         data.subjects.length === 0
     ) {
 
@@ -933,7 +1723,9 @@ function validateTimetableGeneratorData(data) {
 
 
     if (
-        !Array.isArray(data.teachers) ||
+        !Array.isArray(
+            data.teachers
+        ) ||
         data.teachers.length === 0
     ) {
 
@@ -945,7 +1737,9 @@ function validateTimetableGeneratorData(data) {
 
 
     if (
-        !Array.isArray(data.rooms)
+        !Array.isArray(
+            data.rooms
+        )
     ) {
 
         errors.push(
@@ -955,7 +1749,9 @@ function validateTimetableGeneratorData(data) {
     }
 
 
-    if (errors.length > 0) {
+    if (
+        errors.length > 0
+    ) {
 
         throw new Error(
             errors.join("\n")
@@ -974,148 +1770,18 @@ function validateTimetableGeneratorData(data) {
 }
 
 
-
-
-
-
-// ============================================================
-// GET DISPLAY NAME — STREAM
-// ============================================================
-
-function getTimetableStreamName(stream) {
-
-    if (!stream) {
-        return "Unknown Stream";
-    }
-
-    return (
-        stream.stream_name ||
-        stream.name ||
-        stream.class_name ||
-        "Unknown Stream"
-    );
-
-}
-
-
-// ============================================================
-// GET DISPLAY NAME — SUBJECT
-// ============================================================
-
-function getTimetableSubjectName(subject) {
-
-    if (!subject) {
-        return "Unknown Subject";
-    }
-
-    return (
-        subject.subject_name ||
-        subject.name ||
-        subject.subject ||
-        "Unknown Subject"
-    );
-
-}
-
-
-// ============================================================
-// GET DISPLAY NAME — TEACHER
-// ============================================================
-
-function getTimetableTeacherName(teacher) {
-
-    if (!teacher) {
-        return "Unassigned";
-    }
-
-    const fullName = [
-        teacher.first_name,
-        teacher.last_name
-    ]
-        .filter(Boolean)
-        .join(" ");
-
-    return (
-        teacher.teacher_name ||
-        teacher.name ||
-        teacher.full_name ||
-        fullName ||
-        teacher.username ||
-        "Unknown Teacher"
-    );
-
-}
-
-
-// ============================================================
-// GET DISPLAY NAME — ROOM
-// ============================================================
-
-function getTimetableRoomName(room) {
-
-    if (!room) {
-        return "No Room";
-    }
-
-    return (
-        room.room_name ||
-        room.name ||
-        room.room ||
-        "Room"
-    );
-
-}
-
-
-// ============================================================
-// NORMALIZE ROOM TYPE
-// ============================================================
-
-function normalizeRoomType(value) {
-
-    if (
-        value === null ||
-        value === undefined
-    ) {
-        return "";
-    }
-
-    return String(value)
-        .trim()
-        .toLowerCase();
-
-}
-
-
-// ============================================================
-// GET ROOM TYPE
-// ============================================================
-
-function getTimetableRoomType(room) {
-
-    if (!room) {
-        return "";
-    }
-
-    return normalizeRoomType(
-        room.room_type ||
-        room.type ||
-        room.category ||
-        ""
-    );
-
-}
-
-
-
 // ============================================================
 // GET TEACHING PERIODS
 // ============================================================
 
 function getTeachingPeriods(periods) {
 
-    if (!Array.isArray(periods)) {
+    if (
+        !Array.isArray(periods)
+    ) {
+
         return [];
+
     }
 
 
@@ -1124,7 +1790,9 @@ function getTeachingPeriods(periods) {
 
             const periodType =
                 String(
-                    period.period_type || ""
+                    period.period_type ||
+                    period.periodType ||
+                    ""
                 )
                     .trim()
                     .toLowerCase();
@@ -1133,6 +1801,8 @@ function getTeachingPeriods(periods) {
             return (
 
                 period.is_teaching_period !== false &&
+
+                period.isTeachingPeriod !== false &&
 
                 periodType !== "break" &&
 
@@ -1155,8 +1825,12 @@ function groupPeriodsByDay(periods) {
     const groups = {};
 
 
-    if (!Array.isArray(periods)) {
+    if (
+        !Array.isArray(periods)
+    ) {
+
         return groups;
+
     }
 
 
@@ -1165,10 +1839,13 @@ function groupPeriodsByDay(periods) {
 
             const day =
                 period.day_name ||
-                `Day ${period.day_number}`;
+                period.dayName ||
+                `Day ${period.day_number || period.dayNumber}`;
 
 
-            if (!groups[day]) {
+            if (
+                !groups[day]
+            ) {
 
                 groups[day] = [];
 
@@ -1195,12 +1872,15 @@ function groupPeriodsByDay(periods) {
 
                         const orderA =
                             Number(
-                                a.period_order
+                                a.period_order ??
+                                a.periodOrder
                             ) || 0;
+
 
                         const orderB =
                             Number(
-                                b.period_order
+                                b.period_order ??
+                                b.periodOrder
                             ) || 0;
 
 
@@ -1221,8 +1901,190 @@ function groupPeriodsByDay(periods) {
 }
 
 
+// ============================================================
+// DEBUG / DIAGNOSTIC SUMMARY
+// ============================================================
+
+function logTimetableGeneratorSummary(data) {
+
+    if (!data) {
+
+        console.warn(
+            "No timetable generator data to summarize."
+        );
+
+        return;
+
+    }
 
 
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "TIMETABLE GENERATOR DATA SUMMARY"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.log(
+        "School:",
+        data.schoolId
+    );
+
+    console.log(
+        "Requirements:",
+        data.requirements.length
+    );
+
+    console.log(
+        "Streams:",
+        data.streams.length
+    );
+
+    console.log(
+        "Subjects:",
+        data.subjects.length
+    );
+
+    console.log(
+        "Teachers:",
+        data.teachers.length
+    );
+
+    console.log(
+        "Rooms:",
+        data.rooms.length
+    );
+
+    console.log(
+        "Periods:",
+        data.periods.length
+    );
+
+
+    console.log(
+        "Teaching periods:",
+        getTeachingPeriods(
+            data.periods
+        ).length
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+}
+
+
+// ============================================================
+// INITIAL DATA PREPARATION HELPER
+// ============================================================
+// This gives the later generator stages ONE clean pipeline:
+// LOAD → NORMALIZE → VALIDATE → READY
+// ============================================================
+
+async function prepareTimetableGeneratorData() {
+
+    const rawData =
+        await loadTimetableGeneratorData();
+
+
+    const normalizedData =
+        normalizeGeneratorData(
+            rawData
+        );
+
+
+    validateTimetableGeneratorData(
+        normalizedData
+    );
+
+
+    const relationshipValidation =
+        validateGeneratorRelationships(
+            normalizedData
+        );
+
+
+    if (
+        !relationshipValidation.valid
+    ) {
+
+        const messages =
+            relationshipValidation.errors
+                .map(
+                    error =>
+                        error.message
+                );
+
+
+        throw new Error(
+            "Timetable generator validation failed:\n\n" +
+            messages.join("\n")
+        );
+
+    }
+
+
+    // --------------------------------------------------------
+    // UPDATE GLOBAL GENERATOR DATA
+    // --------------------------------------------------------
+
+    generatorData.school =
+        normalizedData.school;
+
+    generatorData.schoolId =
+        normalizedData.schoolId;
+
+    generatorData.streams =
+        normalizedData.streams;
+
+    generatorData.subjects =
+        normalizedData.subjects;
+
+    generatorData.teachers =
+        normalizedData.teachers;
+
+    generatorData.rooms =
+        normalizedData.rooms;
+
+    generatorData.periods =
+        normalizedData.periods;
+
+    generatorData.requirements =
+        normalizedData.requirements;
+
+    generatorData.lookup =
+        normalizedData.lookup;
+
+
+    logTimetableGeneratorSummary(
+        normalizedData
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "TIMETABLE GENERATOR DATA READY"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    return normalizedData;
+
+}
 
 
 
