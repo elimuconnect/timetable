@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>
+   Smart Timetable Generator
+  </title>
+  <link href="style.css" rel="stylesheet"/>
+  <meta content="Smart CBC School Timetable Generator &mdash; configure teachers, subjects, streams, rooms, periods and requirements, then generate and review a school timetable." name="description"/>
+ </head>
+ <body data-app="smart-cbc-timetable" data-stage="1-html-foundation">
+  <header class="topbar">
+   <div class="brand">
+    <div class="brand-icon">
+     📅
+    </div>
+    <div>
+     <h1>
+      Smart Timetable
+     </h1>
+     <p>
+      Automatic School Timetable Generator
+     </p>
+    </div>
+   </div>
+   <div class="school-info">
+    <div aria-label="Application information" class="topbar-meta">
+     <span class="app-badge">
+      CBC Timetable Management
+     </span>
+    </div>
+    <span aria-label="Currently selected school" aria-live="polite" id="schoolName">
+     No school selected
+    </span>
+   </div>
+  </header>
+  <main class="app-container">
+   <!-- SIDEBAR -->
+   <aside aria-label="Timetable navigation" class="sidebar">
+    <nav aria-label="Timetable setup and views" class="sidebar-nav">
+     <button aria-label="🏠 Dashboard" class="nav-btn active" data-section="dashboard" type="button">
+      🏠 Dashboard
+     </button>
+     <button aria-label="👨&zwj;🏫 Teachers" class="nav-btn" data-section="teachers" type="button">
+      👨&zwj;🏫 Teachers
+     </button>
+     <button aria-label="📚 Subjects" class="nav-btn" data-section="subjects" type="button">
+      📚 Subjects
+     </button>
+     <button aria-label="🎓 Streams" class="nav-btn" data-section="streams" type="button">
+      🎓 Streams
+     </button>
+     <button aria-label="🏫 Rooms" class="nav-btn" data-section="rooms" type="button">
+      🏫 Rooms
+     </button>
+     <button aria-label="⏰ Periods" class="nav-btn" data-section="periods" type="button">
+      ⏰ Periods
+     </button>
+     <button aria-label="📋 Requirements" class="nav-btn" data-section="requirements" type="button">
+      📋 Requirements
+     </button>
+     <div class="sidebar-divider">
+     </div>
+     <button aria-label="⚡ Generate Timetable" class="generate-btn" id="generateTimetableBtn" type="button">
+      ⚡ Generate Timetable
+     </button>
+     <button aria-label="📅 View Timetable" class="nav-btn" data-section="timetable" type="button">
+      📅 View Timetable
+     </button>
+    </nav>
+   </aside>
+   <!-- MAIN CONTENT -->
+   <section class="content">
+    <!-- DASHBOARD -->
+    <div aria-labelledby="dashboard-section-title" class="section active" data-module="dashboard" id="dashboard">
+     <div class="page-heading">
+      <div>
+       <h2 id="dashboard-section-title">
+        Timetable Dashboard
+       </h2>
+       <p>
+        Automatically create and manage
+                            conflict-free school timetables.
+       </p>
+      </div>
+     </div>
+     <div class="stats-grid">
+      <div class="stat-card">
+       <div class="stat-icon">
+        👨&zwj;🏫
+       </div>
+       <div>
+        <span>
+         Teachers
+        </span>
+        <strong id="teacherCount">
+         0
+        </strong>
+       </div>
+      </div>
+      <div class="stat-card">
+       <div class="stat-icon">
+        📚
+       </div>
+       <div>
+        <span>
+         Subjects
+        </span>
+        <strong id="subjectCount">
+         0
+        </strong>
+       </div>
+      </div>
+      <div class="stat-card">
+       <div class="stat-icon">
+        🎓
+       </div>
+       <div>
+        <span>
+         Streams
+        </span>
+        <strong id="streamCount">
+         0
+        </strong>
+       </div>
+      </div>
+      <div class="stat-card">
+       <div class="stat-icon">
+        🏫
+       </div>
+       <div>
+        <span>
+         Rooms
+        </span>
+        <strong id="roomCount">
+         0
+        </strong>
+       </div>
+      </div>
+     </div>
+     <div class="setup-card">
+      <h3>
+       ⚙️ Timetable Setup
+      </h3>
+      <p>
+       Select a school to begin configuring
+                        and generating its timetable.
+      </p>
+      <div class="form-group">
+       <label for="schoolSelect">
+        School
+       </label>
+       <select id="schoolSelect">
+        <option value="">
+         Loading schools...
+        </option>
+       </select>
+      </div>
+      <div class="form-row">
+       <div class="form-group">
+        <label for="academicYear">
+         Academic Year
+        </label>
+        <input id="academicYear" type="number" value="2026"/>
+       </div>
+       <div class="form-group">
+        <label for="term">
+         Term
+        </label>
+        <select id="term">
+         <option value="1">
+          Term 1
+         </option>
+         <option value="2">
+          Term 2
+         </option>
+         <option value="3">
+          Term 3
+         </option>
+        </select>
+       </div>
+      </div>
+     </div>
+     <div class="info-card">
+      <h3>
+       🚀 How it works
+      </h3>
+      <ol>
+       <li>
+        Configure teachers and their limits.
+       </li>
+       <li>
+        Configure subjects and lessons per week.
+       </li>
+       <li>
+        Configure streams and rooms.
+       </li>
+       <li>
+        Assign teachers to subjects.
+       </li>
+       <li>
+        Click
+        <strong>
+         Generate Timetable
+        </strong>
+        .
+       </li>
+       <li>
+        The system automatically searches
+                            for a valid timetable.
+       </li>
+      </ol>
+     </div>
+     <div aria-label="Timetable setup roadmap" class="setup-roadmap">
+      <h3>
+       🧭 Recommended Setup Order
+      </h3>
+      <p>
+       Complete the configuration in this order before generating the timetable.
+      </p>
+      <ol>
+       <li>
+        <strong>
+         Step 1 &mdash;
+        </strong>
+        School &amp; academic period
+       </li>
+       <li>
+        <strong>
+         Step 2 &mdash;
+        </strong>
+        Teachers &amp; workload limits
+       </li>
+       <li>
+        <strong>
+         Step 3 &mdash;
+        </strong>
+        Subjects &amp; lesson rules
+       </li>
+       <li>
+        <strong>
+         Step 4 &mdash;
+        </strong>
+        Streams &amp; classrooms
+       </li>
+       <li>
+        <strong>
+         Step 5 &mdash;
+        </strong>
+        Rooms &amp; facilities
+       </li>
+       <li>
+        <strong>
+         Step 6 &mdash;
+        </strong>
+        Daily periods &amp; activities
+       </li>
+       <li>
+        <strong>
+         Step 7 &mdash;
+        </strong>
+        Stream-subject-teacher requirements
+       </li>
+       <li>
+        <strong>
+         Step 8 &mdash;
+        </strong>
+        Generate, review and resolve conflicts
+       </li>
+      </ol>
+     </div>
+    </div>
+    <!-- TEACHERS -->
+    <div aria-labelledby="teachers-section-title" class="section" data-module="teachers" id="teachers">
+     <div class="page-heading">
+      <div>
+       <h2 id="teachers-section-title">
+        👨&zwj;🏫 Teachers
+       </h2>
+       <p>
+        Manage teachers and their timetable workload limits.
+       </p>
+      </div>
+      <button aria-label="+ Add Teacher" class="primary-btn" id="addTeacherBtn" type="button">
+       + Add Teacher
+      </button>
+     </div>
+     <!-- TEACHER FORM -->
+     <div class="form-card" id="teacherFormCard" style="display:none;">
+      <h3 id="teacherFormTitle">
+       Add Teacher
+      </h3>
+      <input id="teacherId" type="hidden"/>
+      <div class="form-row">
+       <div class="form-group">
+        <label>
+         Teacher Name
+        </label>
+        <input id="teacherName" placeholder="e.g. John Kamau" type="text"/>
+       </div>
+       <div class="form-group">
+        <label>
+         Teacher Code
+        </label>
+        <input id="teacherCode" placeholder="e.g. T001" type="text"/>
+       </div>
+      </div>
+      <div class="form-row">
+       <div class="form-group">
+        <label>
+         Maximum Lessons Per Day
+        </label>
+        <input id="maxLessonsDay" max="15" min="1" type="number" value="6"/>
+       </div>
+       <div class="form-group">
+        <label>
+         Maximum Lessons Per Week
+        </label>
+        <input id="maxLessonsWeek" max="50" min="1" type="number" value="30"/>
+       </div>
+       <div class="form-group">
+        <label>
+         Maximum Consecutive Lessons
+        </label>
+        <input id="maxConsecutive" max="6" min="1" type="number" value="2"/>
+       </div>
+      </div>
+      <div class="form-actions">
+       <button aria-label="Cancel" class="secondary-btn" id="cancelTeacherBtn" type="button">
+        Cancel
+       </button>
+       <button aria-label="Save Teacher" class="primary-btn" id="saveTeacherBtn" type="button">
+        Save Teacher
+       </button>
+      </div>
+     </div>
+     <!-- TEACHERS TABLE -->
+     <div aria-atomic="false" aria-live="polite" class="data-card" id="teachersTableContainer">
+      <div class="loading-message">
+       Loading teachers...
+      </div>
+     </div>
+    </div>
+    <!-- SUBJECTS -->
+    <div aria-labelledby="subjects-section-title" class="section" data-module="subjects" id="subjects">
+     <div class="page-heading">
+      <div>
+       <h2 id="subjects-section-title">
+        📚 Subjects
+       </h2>
+       <p>
+        Manage subjects and lesson requirements.
+       </p>
+      </div>
+      <button aria-label="➕ Add Subject" class="primary-btn" id="addSubjectBtn" type="button">
+       ➕ Add Subject
+      </button>
+     </div>
+     <!-- SUBJECT FORM -->
+     <div class="form-card" id="subjectFormCard" style="display:none;">
+      <div class="form-card-header">
+       <h3 id="subjectFormTitle">
+        Add Subject
+       </h3>
+      </div>
+      <input id="subjectId" type="hidden"/>
+      <div class="form-grid">
+       <!-- SUBJECT NAME -->
+       <div class="form-group">
+        <label for="subjectName">
+         Subject Name
+        </label>
+        <input id="subjectName" placeholder="e.g. Mathematics" type="text"/>
+       </div>
+       <!-- SUBJECT CODE -->
+       <div class="form-group">
+        <label for="subjectCode">
+         Subject Code
+        </label>
+        <input id="subjectCode" placeholder="e.g. MAT" type="text"/>
+       </div>
+       <!-- LESSONS PER WEEK -->
+       <div class="form-group">
+        <label for="lessonsPerWeek">
+         Lessons Per Week
+        </label>
+        <input id="lessonsPerWeek" min="1" type="number" value="1"/>
+       </div>
+       <!-- DOUBLE LESSON -->
+       <div class="form-group checkbox-group">
+        <label for="requiresDoubleLesson">
+         <input id="requiresDoubleLesson" type="checkbox"/>
+         Requires Double Lesson
+        </label>
+       </div>
+       <!-- ROOM REQUIRED -->
+       <div class="form-group checkbox-group">
+        <label for="requiresRoom">
+         <input id="requiresRoom" type="checkbox"/>
+         Requires Special Room
+        </label>
+       </div>
+       <!-- ROOM TYPE -->
+       <div class="form-group">
+        <label for="roomType">
+         Required Room Type
+        </label>
+        <input id="roomType" placeholder="e.g. Laboratory" type="text"/>
+       </div>
+      </div>
+      <!-- FORM BUTTONS -->
+      <div class="form-actions">
+       <button aria-label="Cancel" class="secondary-btn" id="cancelSubjectBtn" type="button">
+        Cancel
+       </button>
+       <button aria-label="💾 Save Subject" class="primary-btn" id="saveSubjectBtn" type="button">
+        💾 Save Subject
+       </button>
+      </div>
+     </div>
+     <!-- SUBJECT TABLE -->
+     <div aria-atomic="false" aria-live="polite" class="data-container" id="subjectsTableContainer">
+      <div class="empty-message" role="status">
+       Please select a school to view subjects.
+      </div>
+     </div>
+    </div>
+    <!-- STREAMS -->
+    <!-- ====================================================
+     STREAMS
+     ==================================================== -->
+    <div aria-labelledby="streams-section-title" class="section" data-module="streams" id="streams">
+     <div class="page-heading">
+      <div>
+       <h2 id="streams-section-title">
+        🏫 Streams
+       </h2>
+       <p>
+        Manage streams and classrooms for the selected school.
+       </p>
+      </div>
+     </div>
+     <div id="streamsContent">
+      <!-- ====================================================
+             ADD STREAM BUTTON
+             ==================================================== -->
+      <button aria-label="➕ Add Stream" class="primary-btn" id="addStreamBtn" type="button">
+       ➕ Add Stream
+      </button>
+      <!-- ====================================================
+             STREAM FORM
+             ==================================================== -->
+      <div class="form-card" id="streamFormCard" style="display:none;">
+       <h3 id="streamFormTitle">
+        Add Stream
+       </h3>
+       <!-- STREAM ID -->
+       <input id="streamId" type="hidden"/>
+       <div class="form-grid">
+        <!-- =================================================
+                     CLASS
+                     ================================================= -->
+        <div class="form-group">
+         <label for="streamClassId">
+          Class
+         </label>
+         <select id="streamClassId" required="">
+          <option value="">
+           Select class
+          </option>
+         </select>
+        </div>
+        <!-- =================================================
+                     STREAM NAME
+                     ================================================= -->
+        <div class="form-group">
+         <label for="streamName">
+          Stream Name
+         </label>
+         <input id="streamName" placeholder="e.g. 7A" required="" type="text"/>
+         <small>
+          Example: 7A, 7B, 8A, 8B.
+         </small>
+        </div>
+        <!-- =================================================
+                     ROOM NAME
+                     ================================================= -->
+        <div class="form-group">
+         <label for="streamRoomName">
+          Room Name
+         </label>
+         <input id="streamRoomName" placeholder="e.g. Room 12" type="text"/>
+         <small>
+          Optional classroom or room assigned
+                        to this stream.
+         </small>
+        </div>
+        <!-- =================================================
+                     CAPACITY
+                     ================================================= -->
+        <div class="form-group">
+         <label for="streamCapacity">
+          Capacity
+         </label>
+         <input id="streamCapacity" min="1" required="" type="number" value="50"/>
+         <small>
+          Maximum number of learners in the stream.
+         </small>
+        </div>
+       </div>
+       <!-- ====================================================
+                 FORM BUTTONS
+                 ==================================================== -->
+       <div class="form-actions">
+        <button aria-label="💾 Save Stream" class="primary-btn" id="saveStreamBtn" type="button">
+         💾 Save Stream
+        </button>
+        <button aria-label="Cancel" class="secondary-btn" id="cancelStreamBtn" type="button">
+         Cancel
+        </button>
+       </div>
+      </div>
+      <!-- ====================================================
+             STREAM TABLE
+             ==================================================== -->
+      <div aria-atomic="false" aria-live="polite" id="streamsTableContainer" style="margin-top:20px;">
+       <div class="empty-message" role="status">
+        Please select a school first.
+       </div>
+      </div>
+     </div>
+    </div>
+    <!-- ROOMS -->
+    <!-- ROOMS -->
+    <div aria-labelledby="rooms-section-title" class="section" data-module="rooms" id="rooms">
+     <div class="page-heading">
+      <div>
+       <h2 id="rooms-section-title">
+        🏫 Rooms
+       </h2>
+       <p>
+        Manage classrooms, laboratories
+                and special rooms.
+       </p>
+      </div>
+      <button aria-label="➕ Add Room" class="primary-btn" id="addRoomBtn" type="button">
+       ➕ Add Room
+      </button>
+     </div>
+     <!-- ROOM FORM -->
+     <div class="form-card" id="roomFormCard" style="display:none;">
+      <div class="form-card-header">
+       <h3 id="roomFormTitle">
+        Add Room
+       </h3>
+      </div>
+      <input id="roomId" type="hidden"/>
+      <div class="form-grid">
+       <!-- ROOM NAME -->
+       <div class="form-group">
+        <label for="roomName">
+         Room Name
+        </label>
+        <input id="roomName" placeholder="e.g. Room 1" type="text"/>
+       </div>
+       <!-- ROOM TYPE -->
+       <div class="form-group">
+        <label for="roomTypeSelect">
+         Room Type
+        </label>
+        <select id="roomTypeSelect">
+         <option value="Classroom">
+          Classroom
+         </option>
+         <option value="Laboratory">
+          Laboratory
+         </option>
+         <option value="Computer Lab">
+          Computer Lab
+         </option>
+         <option value="Library">
+          Library
+         </option>
+         <option value="Workshop">
+          Workshop
+         </option>
+         <option value="Hall">
+          Hall
+         </option>
+         <option value="Other">
+          Other
+         </option>
+        </select>
+       </div>
+       <!-- CAPACITY -->
+       <div class="form-group">
+        <label for="roomCapacity">
+         Capacity
+        </label>
+        <input id="roomCapacity" min="1" type="number" value="50"/>
+       </div>
+      </div>
+      <!-- FORM BUTTONS -->
+      <div class="form-actions">
+       <button aria-label="Cancel" class="secondary-btn" id="cancelRoomBtn" type="button">
+        Cancel
+       </button>
+       <button aria-label="💾 Save Room" class="primary-btn" id="saveRoomBtn" type="button">
+        💾 Save Room
+       </button>
+      </div>
+     </div>
+     <!-- ROOM TABLE -->
+     <div aria-atomic="false" aria-live="polite" class="data-container" id="roomsTableContainer">
+      <div class="empty-message" role="status">
+       Please select a school to view rooms.
+      </div>
+     </div>
+    </div>
+    <!-- ============================================================
+     PERIODS
+     ============================================================ -->
+    <div aria-labelledby="periods-section-title" class="section" data-module="periods" id="periods">
+     <div class="page-heading">
+      <div>
+       <h2 id="periods-section-title">
+        ⏰ Periods
+       </h2>
+       <p>
+        Configure the school's daily schedule.
+       </p>
+      </div>
+     </div>
+     <div id="periodsContent">
+      <!-- ====================================================
+             ADD PERIOD BUTTON
+             ==================================================== -->
+      <button aria-label="➕ Add Period" class="primary-btn" id="addPeriodBtn" type="button">
+       ➕ Add Period
+      </button>
+      <!-- ====================================================
+             PERIOD FORM
+             ==================================================== -->
+      <div class="form-card" id="periodFormCard" style="display:none;">
+       <h3 id="periodFormTitle">
+        Add Period
+       </h3>
+       <!-- PERIOD ID -->
+       <input id="periodId" type="hidden"/>
+       <div class="form-grid">
+        <!-- =================================================
+                     DAY
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodDayName">
+          Day
+         </label>
+         <select id="periodDayName" required="">
+          <option value="">
+           Select day
+          </option>
+          <option value="Monday">
+           Monday
+          </option>
+          <option value="Tuesday">
+           Tuesday
+          </option>
+          <option value="Wednesday">
+           Wednesday
+          </option>
+          <option value="Thursday">
+           Thursday
+          </option>
+          <option value="Friday">
+           Friday
+          </option>
+          <option value="Saturday">
+           Saturday
+          </option>
+         </select>
+        </div>
+        <!-- =================================================
+                     DAY NUMBER
+                     Automatically determined from Day
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodDayNumber">
+          Day Number
+         </label>
+         <input id="periodDayNumber" max="6" min="1" readonly="" required="" type="number" value="1"/>
+        </div>
+        <!-- =================================================
+                     PERIOD NUMBER
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodNumber">
+          Period Number
+         </label>
+         <input id="periodNumber" min="1" required="" type="number" value="1"/>
+         <small>
+          Example: 1, 2, 3, 4...
+         </small>
+        </div>
+        <!-- =================================================
+                     PERIOD ORDER
+                     Automatically calculated by JavaScript
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodOrder">
+          Period Order
+         </label>
+         <input id="periodOrder" min="1" readonly="" required="" type="number" value="1"/>
+         <small>
+          Automatically calculated.
+         </small>
+        </div>
+        <!-- =================================================
+                     PERIOD NAME
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodName">
+          Period Name
+         </label>
+         <input id="periodName" placeholder="Automatically generated" readonly="" required="" type="text"/>
+         <small>
+          Example: Period 1, Period 2, Break, Lunch.
+         </small>
+        </div>
+        <!-- =================================================
+                     START TIME
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodStartTime">
+          Start Time
+         </label>
+         <input id="periodStartTime" required="" type="time"/>
+        </div>
+        <!-- =================================================
+                     END TIME
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodEndTime">
+          End Time
+         </label>
+         <input id="periodEndTime" required="" type="time"/>
+        </div>
+        <!-- =================================================
+                     PERIOD TYPE
+                     ================================================= -->
+        <div class="form-group">
+         <label for="periodType">
+          Period Type
+         </label>
+         <select id="periodType" required="">
+          <option value="lesson">
+           Lesson
+          </option>
+          <option value="registration">
+           Registration
+          </option>
+          <option value="break">
+           Break
+          </option>
+          <option value="lunch">
+           Lunch
+          </option>
+          <option value="assembly">
+           Assembly
+          </option>
+          <option value="activity">
+           Activity
+          </option>
+          <option value="other">
+           Other
+          </option>
+         </select>
+        </div>
+        <!-- =================================================
+                     TEACHING PERIOD
+                     ================================================= -->
+        <div class="form-group">
+         <label for="isTeachingPeriod">
+          <input checked="" id="isTeachingPeriod" type="checkbox"/>
+          Teaching Period
+         </label>
+         <small>
+          Enable this for periods where lessons
+                        can be scheduled.
+         </small>
+        </div>
+       </div>
+       <!-- ====================================================
+                 FORM BUTTONS
+                 ==================================================== -->
+       <div class="form-actions">
+        <button aria-label="💾 Save Period" class="primary-btn" id="savePeriodBtn" type="button">
+         💾 Save Period
+        </button>
+        <button aria-label="Cancel" class="secondary-btn" id="cancelPeriodBtn" type="button">
+         Cancel
+        </button>
+       </div>
+      </div>
+      <!-- ====================================================
+             PERIOD TABLE
+             ==================================================== -->
+      <div aria-atomic="false" aria-live="polite" id="periodsTableContainer" style="margin-top:20px;">
+       <div class="empty-message" role="status">
+        Please select a school first.
+       </div>
+      </div>
+     </div>
+    </div>
+    <!-- REQUIREMENTS -->
+    <div aria-labelledby="requirements-section-title" class="section" data-module="requirements" id="requirements">
+     <div class="page-heading">
+      <div>
+       <h2 id="requirements-section-title">
+        📋 Requirements
+       </h2>
+       <p>
+        Define what each stream must learn
+                each week.
+       </p>
+      </div>
+     </div>
+     <!-- REQUIREMENT FORM -->
+     <div class="card">
+      <h3>
+       ➕ Add Subject Requirement
+      </h3>
+      <div class="form-grid">
+       <!-- STREAM -->
+       <div class="form-group">
+        <label>
+         Stream
+        </label>
+        <select id="requirementStream">
+         <option value="">
+          Select stream
+         </option>
+        </select>
+       </div>
+       <!-- SUBJECT -->
+       <div class="form-group">
+        <label>
+         Subject
+        </label>
+        <select id="requirementSubject">
+         <option value="">
+          Select subject
+         </option>
+        </select>
+       </div>
+       <!-- TEACHER -->
+       <div class="form-group">
+        <label>
+         Teacher
+        </label>
+        <select id="requirementTeacher">
+         <option value="">
+          Select teacher
+         </option>
+        </select>
+       </div>
+       <!-- LESSONS PER WEEK -->
+       <div class="form-group">
+        <label>
+         Lessons per Week
+        </label>
+        <input id="requirementLessons" min="1" type="number" value="1"/>
+       </div>
+       <!-- DOUBLE LESSONS -->
+       <div class="form-group">
+        <label>
+         Double Lessons per Week
+        </label>
+        <input id="requirementDoubleLessons" min="0" type="number" value="0"/>
+       </div>
+       <!-- MAX PER DAY -->
+       <div class="form-group">
+        <label>
+         Maximum Lessons per Day
+        </label>
+        <input id="requirementMaxPerDay" min="1" type="number" value="1"/>
+       </div>
+       <!-- ROOM REQUIRED -->
+       <div class="form-group">
+        <label>
+         Requires Special Room?
+        </label>
+        <select id="requirementRequiresRoom">
+         <option value="false">
+          No
+         </option>
+         <option value="true">
+          Yes
+         </option>
+        </select>
+       </div>
+       <!-- ROOM TYPE -->
+       <div class="form-group">
+        <label>
+         Room Type
+        </label>
+        <input id="requirementRoomType" placeholder="e.g. Laboratory" type="text"/>
+       </div>
+      </div>
+      <div class="form-actions">
+       <button aria-label="💾 Save Requirement" class="primary-btn" id="saveRequirementBtn" type="button">
+        💾 Save Requirement
+       </button>
+      </div>
+     </div>
+     <!-- EXISTING REQUIREMENTS -->
+     <div class="card">
+      <h3>
+       📚 Current Requirements
+      </h3>
+      <div aria-atomic="false" aria-live="polite" id="requirementsTableContainer">
+       <div class="empty-message" role="status">
+        Select a school to view requirements.
+       </div>
+      </div>
+     </div>
+    </div>
+    <!-- TIMETABLE -->
+    <!-- ============================================================
+     TIMETABLE GENERATOR
+     ============================================================ -->
+    <div aria-labelledby="timetable-section-title" class="section" data-module="timetable" id="timetable">
+     <div class="page-heading">
+      <div>
+       <h2 id="timetable-section-title">
+        📅 Timetable Generator
+       </h2>
+       <p>
+        Generate, review and manage the school's
+                automatic timetable.
+       </p>
+      </div>
+     </div>
+     <!-- ========================================================
+         GENERATOR CONTROLS
+         ======================================================== -->
+     <div class="generator-workflow" role="note">
+      <strong>
+       Professional workflow:
+      </strong>
+      Configure &rarr; Validate &rarr; Generate &rarr; Review &rarr; Resolve conflicts &rarr; Print
+     </div>
+     <div class="card">
+      <h3>
+       ⚙️ Generate Timetable
+      </h3>
+      <p>
+       The system will use the school's streams,
+            subjects, teachers, periods and requirements
+            to automatically create a timetable.
+      </p>
+      <div class="form-grid">
+       <!-- STREAM -->
+       <div class="form-group">
+        <label for="timetableStreamFilter">
+         Stream
+        </label>
+        <select id="timetableStreamFilter">
+         <option value="">
+          All Streams
+         </option>
+        </select>
+       </div>
+       <!-- DAY -->
+       <div class="form-group">
+        <label for="timetableDayFilter">
+         Day
+        </label>
+        <select id="timetableDayFilter">
+         <option value="">
+          All Days
+         </option>
+         <option value="Monday">
+          Monday
+         </option>
+         <option value="Tuesday">
+          Tuesday
+         </option>
+         <option value="Wednesday">
+          Wednesday
+         </option>
+         <option value="Thursday">
+          Thursday
+         </option>
+         <option value="Friday">
+          Friday
+         </option>
+         <option value="Saturday">
+          Saturday
+         </option>
+        </select>
+       </div>
+       <!-- VIEW -->
+       <div class="form-group">
+        <label for="timetableViewMode">
+         View
+        </label>
+        <select id="timetableViewMode">
+         <option value="stream">
+          By Stream
+         </option>
+         <option value="teacher">
+          By Teacher
+         </option>
+         <option value="room">
+          By Room
+         </option>
+        </select>
+       </div>
+      </div>
+      <!-- ====================================================
+             GENERATION BUTTONS
+             ==================================================== -->
+      <div class="form-actions">
+       <button aria-label="🚀 Generate Timetable" class="primary-btn" id="generateTimetableBtn" type="button">
+        🚀 Generate Timetable
+       </button>
+       <button aria-label="🔄 Regenerate" class="secondary-btn" id="regenerateTimetableBtn" type="button">
+        🔄 Regenerate
+       </button>
+       <button aria-label="🗑️ Clear Timetable" class="secondary-btn" id="clearTimetableBtn" type="button">
+        🗑️ Clear Timetable
+       </button>
+       <button aria-label="🖨️ Print" class="secondary-btn" id="printTimetableBtn" type="button">
+        🖨️ Print
+       </button>
+      </div>
+      <!-- ====================================================
+             GENERATION STATUS
+             ==================================================== -->
+      <div aria-atomic="false" aria-live="polite" class="empty-message" id="timetableGenerationStatus" role="status" style="display:none; margin-top:20px;">
+      </div>
+     </div>
+     <!-- ========================================================
+         TIMETABLE SUMMARY
+         ======================================================== -->
+     <div class="card" id="timetableSummary" style="display:none;">
+      <h3>
+       📊 Timetable Summary
+      </h3>
+      <div class="form-grid" id="timetableSummaryContent">
+      </div>
+     </div>
+     <!-- ========================================================
+         TIMETABLE DISPLAY
+         ======================================================== -->
+     <div class="card">
+      <div class="page-heading">
+       <div>
+        <h3>
+         📅 Generated Timetable
+        </h3>
+        <p>
+         Lessons generated for the selected school.
+        </p>
+       </div>
+      </div>
+      <div aria-atomic="false" aria-live="polite" id="timetableContent">
+       <div class="empty-state" role="status">
+        <div>
+         📅
+        </div>
+        <h3>
+         No timetable generated yet
+        </h3>
+        <p>
+         Configure the requirements and click
+         <strong>
+          Generate Timetable
+         </strong>
+         .
+        </p>
+       </div>
+      </div>
+     </div>
+     <!-- ========================================================
+         GENERATION ERRORS / CONFLICTS
+         ======================================================== -->
+     <div class="card" id="timetableConflicts" style="display:none;">
+      <h3>
+       ⚠️ Timetable Conflicts
+      </h3>
+      <div aria-atomic="false" aria-live="polite" id="timetableConflictsContent">
+      </div>
+     </div>
+    </div>
+   </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+  </script>
+  <script src="app.js">
+  </script>
+  <script src="appgen2.js">
+  </script>
+  <footer class="app-footer">
+   <p>
+    Smart Timetable &bull; CBC School Scheduling &bull; Stage 1 HTML Foundation
+   </p>
+  </footer>
+ </body>
+</html>
