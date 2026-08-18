@@ -1,5 +1,4 @@
 
-
 let generatedTimetableEntries = [];
 
 let timetableGenerationRunning = false;
@@ -10,39 +9,25 @@ let timetableGenerationRunning = false;
 // ============================================================
 
 const generateTimetableBtn =
-    document.getElementById(
-        "generateTimetableBtn"
-    );
+    document.getElementById("generateTimetableBtn");
 
 const regenerateTimetableBtn =
-    document.getElementById(
-        "regenerateTimetableBtn"
-    );
+    document.getElementById("regenerateTimetableBtn");
 
 const clearTimetableBtn =
-    document.getElementById(
-        "clearTimetableBtn"
-    );
+    document.getElementById("clearTimetableBtn");
 
 const printTimetableBtn =
-    document.getElementById(
-        "printTimetableBtn"
-    );
+    document.getElementById("printTimetableBtn");
 
 const timetableStreamFilter =
-    document.getElementById(
-        "timetableStreamFilter"
-    );
+    document.getElementById("timetableStreamFilter");
 
 const timetableDayFilter =
-    document.getElementById(
-        "timetableDayFilter"
-    );
+    document.getElementById("timetableDayFilter");
 
 const timetableViewMode =
-    document.getElementById(
-        "timetableViewMode"
-    );
+    document.getElementById("timetableViewMode");
 
 
 console.log(
@@ -53,31 +38,15 @@ console.log(
 console.log(
     "Timetable generator DOM check:",
     {
-
-        generate:
-            !!generateTimetableBtn,
-
-        regenerate:
-            !!regenerateTimetableBtn,
-
-        clear:
-            !!clearTimetableBtn,
-
-        print:
-            !!printTimetableBtn,
-
-        streamFilter:
-            !!timetableStreamFilter,
-
-        dayFilter:
-            !!timetableDayFilter,
-
-        viewMode:
-            !!timetableViewMode
-
+        generate: !!generateTimetableBtn,
+        regenerate: !!regenerateTimetableBtn,
+        clear: !!clearTimetableBtn,
+        print: !!printTimetableBtn,
+        streamFilter: !!timetableStreamFilter,
+        dayFilter: !!timetableDayFilter,
+        viewMode: !!timetableViewMode
     }
 );
-
 
 
 // ============================================================
@@ -85,6 +54,7 @@ console.log(
 // ============================================================
 
 const generatorData = {
+
     school: null,
 
     streams: [],
@@ -95,18 +65,16 @@ const generatorData = {
     requirements: [],
 
     lookup: {
+
         streams: new Map(),
         subjects: new Map(),
         teachers: new Map(),
         rooms: new Map(),
         periods: new Map()
+
     }
+
 };
-
-
-
-
-
 
 
 // ============================================================
@@ -134,15 +102,14 @@ function setTimetableGenerationStatus(
 
     }
 
-    status.style.display =
-        "block";
+    status.style.display = "block";
 
     status.innerHTML = `
         <div class="timetable-status ${type}">
             ${
                 typeof escapeHtml === "function"
-                    ? escapeHtml(message)
-                    : message
+                    ? escapeHtml(String(message))
+                    : String(message)
             }
         </div>
     `;
@@ -165,11 +132,9 @@ function hideTimetableGenerationStatus() {
         return;
     }
 
-    status.style.display =
-        "none";
+    status.style.display = "none";
 
-    status.innerHTML =
-        "";
+    status.innerHTML = "";
 
 }
 
@@ -218,15 +183,10 @@ async function loadTimetableGeneratorData() {
     const [
 
         requirementsResult,
-
         periodsResult,
-
         streamsResult,
-
         subjectsResult,
-
         teachersResult,
-
         roomsResult
 
     ] = await Promise.all([
@@ -277,65 +237,59 @@ async function loadTimetableGeneratorData() {
 
 
     // ========================================================
-    // CHECK DATABASE ERRORS
+    // DATABASE ERROR CHECKING
     // ========================================================
 
-    if (requirementsResult.error) {
+    const databaseErrors = [
 
-        throw new Error(
-            "Failed to load timetable requirements: " +
-            requirementsResult.error.message
-        );
+        {
+            name: "requirements",
+            result: requirementsResult
+        },
 
-    }
+        {
+            name: "periods",
+            result: periodsResult
+        },
 
+        {
+            name: "streams",
+            result: streamsResult
+        },
 
-    if (periodsResult.error) {
+        {
+            name: "subjects",
+            result: subjectsResult
+        },
 
-        throw new Error(
-            "Failed to load timetable periods: " +
-            periodsResult.error.message
-        );
+        {
+            name: "teachers",
+            result: teachersResult
+        },
 
-    }
+        {
+            name: "rooms",
+            result: roomsResult
+        }
 
-
-    if (streamsResult.error) {
-
-        throw new Error(
-            "Failed to load timetable streams: " +
-            streamsResult.error.message
-        );
-
-    }
-
-
-    if (subjectsResult.error) {
-
-        throw new Error(
-            "Failed to load timetable subjects: " +
-            subjectsResult.error.message
-        );
-
-    }
+    ];
 
 
-    if (teachersResult.error) {
+    for (const item of databaseErrors) {
 
-        throw new Error(
-            "Failed to load timetable teachers: " +
-            teachersResult.error.message
-        );
+        if (item.result?.error) {
 
-    }
+            console.error(
+                `Failed to load timetable ${item.name}:`,
+                item.result.error
+            );
 
+            throw new Error(
+                `Failed to load timetable ${item.name}: ` +
+                item.result.error.message
+            );
 
-    if (roomsResult.error) {
-
-        throw new Error(
-            "Failed to load timetable rooms: " +
-            roomsResult.error.message
-        );
+        }
 
     }
 
@@ -346,23 +300,37 @@ async function loadTimetableGeneratorData() {
 
     const result = {
 
+        schoolId: schoolId,
+
         requirements:
-            requirementsResult.data || [],
+            Array.isArray(requirementsResult.data)
+                ? requirementsResult.data
+                : [],
 
         periods:
-            periodsResult.data || [],
+            Array.isArray(periodsResult.data)
+                ? periodsResult.data
+                : [],
 
         streams:
-            streamsResult.data || [],
+            Array.isArray(streamsResult.data)
+                ? streamsResult.data
+                : [],
 
         subjects:
-            subjectsResult.data || [],
+            Array.isArray(subjectsResult.data)
+                ? subjectsResult.data
+                : [],
 
         teachers:
-            teachersResult.data || [],
+            Array.isArray(teachersResult.data)
+                ? teachersResult.data
+                : [],
 
         rooms:
-            roomsResult.data || []
+            Array.isArray(roomsResult.data)
+                ? roomsResult.data
+                : []
 
     };
 
@@ -411,105 +379,145 @@ async function loadTimetableGeneratorData() {
 // BUILD LOOKUP MAPS
 // ============================================================
 
-function buildTimetableLookupMaps(
-    data
-) {
+function buildTimetableLookupMaps(data) {
 
-    const streams =
-        new Map();
+    const lookup = {
 
-    const subjects =
-        new Map();
-
-    const teachers =
-        new Map();
-
-    const rooms =
-        new Map();
-
-    const periods =
-        new Map();
-
-
-    data.streams.forEach(
-        function (item) {
-
-            streams.set(
-                item.id,
-                item
-            );
-
-        }
-    );
-
-
-    data.subjects.forEach(
-        function (item) {
-
-            subjects.set(
-                item.id,
-                item
-            );
-
-        }
-    );
-
-
-    data.teachers.forEach(
-        function (item) {
-
-            teachers.set(
-                item.id,
-                item
-            );
-
-        }
-    );
-
-
-    data.rooms.forEach(
-        function (item) {
-
-            rooms.set(
-                item.id,
-                item
-            );
-
-        }
-    );
-
-
-    data.periods.forEach(
-        function (item) {
-
-            periods.set(
-                item.id,
-                item
-            );
-
-        }
-    );
-
-
-    return {
-
-        streams,
-        subjects,
-        teachers,
-        rooms,
-        periods
+        streams: new Map(),
+        subjects: new Map(),
+        teachers: new Map(),
+        rooms: new Map(),
+        periods: new Map()
 
     };
 
+
+    if (!data || typeof data !== "object") {
+
+        console.warn(
+            "buildTimetableLookupMaps: Invalid data."
+        );
+
+        return lookup;
+
+    }
+
+
+    // --------------------------------------------------------
+    // STREAMS
+    // --------------------------------------------------------
+
+    (data.streams || []).forEach(
+        item => {
+
+            if (item?.id) {
+
+                lookup.streams.set(
+                    item.id,
+                    item
+                );
+
+            }
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // SUBJECTS
+    // --------------------------------------------------------
+
+    (data.subjects || []).forEach(
+        item => {
+
+            if (item?.id) {
+
+                lookup.subjects.set(
+                    item.id,
+                    item
+                );
+
+            }
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // TEACHERS
+    // --------------------------------------------------------
+
+    (data.teachers || []).forEach(
+        item => {
+
+            if (item?.id) {
+
+                lookup.teachers.set(
+                    item.id,
+                    item
+                );
+
+            }
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // ROOMS
+    // --------------------------------------------------------
+
+    (data.rooms || []).forEach(
+        item => {
+
+            if (item?.id) {
+
+                lookup.rooms.set(
+                    item.id,
+                    item
+                );
+
+            }
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // PERIODS
+    // --------------------------------------------------------
+
+    (data.periods || []).forEach(
+        item => {
+
+            if (item?.id) {
+
+                lookup.periods.set(
+                    item.id,
+                    item
+                );
+
+            }
+
+        }
+    );
+
+
+    console.log(
+        "Timetable lookup maps built:",
+        {
+            streams: lookup.streams.size,
+            subjects: lookup.subjects.size,
+            teachers: lookup.teachers.size,
+            rooms: lookup.rooms.size,
+            periods: lookup.periods.size
+        }
+    );
+
+
+    return lookup;
+
 }
-
-
-
-
-// ============================================================
-// STAGE 2 — NORMALIZE GENERATOR DATA
-// ============================================================
-
 
 
 // ============================================================
@@ -520,43 +528,64 @@ function normalizeGeneratorData(data) {
 
     const normalized = {
 
-        school:
-            data.school || null,
+        school: data?.school || null,
+
+        schoolId:
+            data?.schoolId ||
+            timetableState?.schoolId ||
+            null,
 
         streams:
-            Array.isArray(data.streams)
+            Array.isArray(data?.streams)
                 ? data.streams
                 : [],
 
         subjects:
-            Array.isArray(data.subjects)
+            Array.isArray(data?.subjects)
                 ? data.subjects
                 : [],
 
         teachers:
-            Array.isArray(data.teachers)
+            Array.isArray(data?.teachers)
                 ? data.teachers
                 : [],
 
         rooms:
-            Array.isArray(data.rooms)
+            Array.isArray(data?.rooms)
                 ? data.rooms
                 : [],
 
         periods:
-            Array.isArray(data.periods)
+            Array.isArray(data?.periods)
                 ? data.periods
                 : [],
 
         requirements:
-            Array.isArray(data.requirements)
+            Array.isArray(data?.requirements)
                 ? data.requirements
                 : [],
 
-        lookup:
-            buildTimetableLookupMaps(data)
+        lookup: {
+
+            streams: new Map(),
+            subjects: new Map(),
+            teachers: new Map(),
+            rooms: new Map(),
+            periods: new Map()
+
+        }
 
     };
+
+
+    // ========================================================
+    // BUILD LOOKUP MAPS
+    // ========================================================
+
+    normalized.lookup =
+        buildTimetableLookupMaps(
+            normalized
+        );
 
 
     // ========================================================
@@ -567,45 +596,79 @@ function normalizeGeneratorData(data) {
         normalized.requirements.map(
             requirement => {
 
+                const lessonsPerWeek =
+                    Number(
+                        requirement.lessons_per_week
+                    );
+
+
+                const doubleLessonsPerWeek =
+                    Number(
+                        requirement.double_lessons_per_week
+                    );
+
+
+                const maxLessonsPerDay =
+                    Number(
+                        requirement.max_lessons_per_day
+                    );
+
+
                 return {
 
+                    // Database ID
                     requirementId:
-                        requirement.id,
+                        requirement.id || null,
 
                     schoolId:
-                        requirement.school_id,
+                        requirement.school_id ||
+                        normalized.schoolId ||
+                        null,
 
                     streamId:
-                        requirement.stream_id,
+                        requirement.stream_id ||
+                        null,
 
                     subjectId:
-                        requirement.subject_id,
+                        requirement.subject_id ||
+                        null,
 
                     teacherId:
-                        requirement.teacher_id || null,
+                        requirement.teacher_id ||
+                        null,
 
                     lessonsPerWeek:
-                        Number(
-                            requirement.lessons_per_week
-                        ) || 0,
+                        Number.isFinite(
+                            lessonsPerWeek
+                        )
+                            ? lessonsPerWeek
+                            : 0,
 
                     doubleLessonsPerWeek:
-                        Number(
-                            requirement.double_lessons_per_week
-                        ) || 0,
+                        Number.isFinite(
+                            doubleLessonsPerWeek
+                        )
+                            ? doubleLessonsPerWeek
+                            : 0,
 
                     requiresRoom:
-                        Boolean(
-                            requirement.requires_room
-                        ),
+                        requirement.requires_room === true,
 
                     roomType:
-                        requirement.room_type || null,
+                        requirement.room_type
+                            ? String(
+                                requirement.room_type
+                            )
+                                .trim()
+                                .toLowerCase()
+                            : null,
 
                     maxLessonsPerDay:
-                        Number(
-                            requirement.max_lessons_per_day
-                        ) || 1
+                        Number.isFinite(
+                            maxLessonsPerDay
+                        )
+                            ? maxLessonsPerDay
+                            : 1
 
                 };
 
@@ -614,52 +677,120 @@ function normalizeGeneratorData(data) {
 
 
     // ========================================================
-    // NORMALIZATION DEBUG
+    // NORMALIZE PERIODS
     // ========================================================
 
-    console.log(
-        "Generator data normalized:",
-        {
-            streams:
-                normalized.streams.length,
+    normalized.periods =
+        normalized.periods.map(
+            period => {
 
-            subjects:
-                normalized.subjects.length,
+                return {
 
-            teachers:
-                normalized.teachers.length,
+                    ...period,
 
-            rooms:
-                normalized.rooms.length,
+                    dayNumber:
+                        Number(
+                            period.day_number
+                        ) || 0,
 
-            periods:
-                normalized.periods.length,
+                    periodNumber:
+                        Number(
+                            period.period_number
+                        ) || 0,
 
-            requirements:
-                normalized.requirements.length
-        }
-    );
+                    periodOrder:
+                        Number(
+                            period.period_order
+                        ) || 0,
+
+                    isTeachingPeriod:
+                        period.is_teaching_period !== false,
+
+                    periodType:
+                        String(
+                            period.period_type ||
+                            "lesson"
+                        )
+                            .trim()
+                            .toLowerCase()
+
+                };
+
+            }
+        );
 
 
-    console.log(
-        "Lookup maps built:",
-        {
-            streams:
-                normalized.lookup.streams.size,
+    // ========================================================
+    // NORMALIZE TEACHERS
+    // ========================================================
 
-            subjects:
-                normalized.lookup.subjects.size,
+    normalized.teachers =
+        normalized.teachers.map(
+            teacher => {
 
-            teachers:
-                normalized.lookup.teachers.size,
+                return {
 
-            rooms:
-                normalized.lookup.rooms.size,
+                    ...teacher,
 
-            periods:
-                normalized.lookup.periods.size
-        }
-    );
+                    maxLessonsPerDay:
+                        Number(
+                            teacher.max_lessons_per_day
+                        ) || 6,
+
+                    maxLessonsPerWeek:
+                        Number(
+                            teacher.max_lessons_per_week
+                        ) || 30,
+
+                    maxConsecutiveLessons:
+                        Number(
+                            teacher.max_consecutive_lessons
+                        ) || 3
+
+                };
+
+            }
+        );
+
+
+    // ========================================================
+    // NORMALIZE ROOMS
+    // ========================================================
+
+    normalized.rooms =
+        normalized.rooms.map(
+            room => {
+
+                return {
+
+                    ...room,
+
+                    roomType:
+                        room.room_type
+                            ? String(
+                                room.room_type
+                            )
+                                .trim()
+                                .toLowerCase()
+                            : "classroom",
+
+                    available:
+                        room.available !== false
+
+                };
+
+            }
+        );
+
+
+    // ========================================================
+    // REBUILD LOOKUPS AFTER NORMALIZATION
+    // ========================================================
+
+    normalized.lookup =
+        buildTimetableLookupMaps(
+            normalized
+        );
 
 
     return normalized;
@@ -667,9 +798,8 @@ function normalizeGeneratorData(data) {
 }
 
 
-
 // ============================================================
-// STAGE 2 — VERIFY GENERATOR RELATIONSHIPS
+// STAGE 4 — VERIFY GENERATOR RELATIONSHIPS
 // ============================================================
 
 function validateGeneratorRelationships(data) {
@@ -678,291 +808,802 @@ function validateGeneratorRelationships(data) {
     const warnings = [];
 
 
-    // ----------------------------------------------------------
-    // REQUIREMENTS
-    // ----------------------------------------------------------
+    if (!data) {
 
-    data.requirements.forEach(requirement => {
+        return {
 
-        if (!requirement.requirementId) {
+            valid: false,
+            errors: [
+                {
+                    type: "NO_DATA",
+                    message:
+                        "No generator data was supplied."
+                }
+            ],
+            warnings
 
-            errors.push({
-                type: "INVALID_REQUIREMENT",
-                message:
-                    "Requirement has no ID."
-            });
+        };
 
-            return;
+    }
+
+
+    const schoolId =
+        data.schoolId ||
+        timetableState?.schoolId ||
+        null;
+
+
+    // ========================================================
+    // BASIC SCHOOL CHECK
+    // ========================================================
+
+    if (!schoolId) {
+
+        errors.push({
+
+            type: "MISSING_SCHOOL",
+
+            message:
+                "No school has been selected."
+
+        });
+
+    }
+
+
+    // ========================================================
+    // CHECK ALL LOADED RECORDS BELONG TO SCHOOL
+    // ========================================================
+
+    function checkSchoolOwnership(
+        records,
+        entityName
+    ) {
+
+        (records || []).forEach(
+            record => {
+
+                if (
+                    record.school_id &&
+                    schoolId &&
+                    record.school_id !== schoolId
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "WRONG_SCHOOL_REFERENCE",
+
+                        entity:
+                            entityName,
+
+                        id:
+                            record.id,
+
+                        message:
+                            `${entityName} record does not belong to the selected school.`
+
+                    });
+
+                }
+
+            }
+        );
+
+    }
+
+
+    checkSchoolOwnership(
+        data.streams,
+        "Stream"
+    );
+
+    checkSchoolOwnership(
+        data.subjects,
+        "Subject"
+    );
+
+    checkSchoolOwnership(
+        data.teachers,
+        "Teacher"
+    );
+
+    checkSchoolOwnership(
+        data.rooms,
+        "Room"
+    );
+
+    checkSchoolOwnership(
+        data.periods,
+        "Period"
+    );
+
+
+    // ========================================================
+    // PERIOD VALIDATION
+    // ========================================================
+
+    const periodKeys =
+        new Set();
+
+
+    data.periods.forEach(
+        period => {
+
+            if (!period.id) {
+
+                errors.push({
+
+                    type: "INVALID_PERIOD",
+
+                    message:
+                        "A timetable period has no ID."
+
+                });
+
+                return;
+
+            }
+
+
+            if (
+                !period.day_name &&
+                !period.day_number
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_PERIOD_DAY",
+
+                    periodId:
+                        period.id,
+
+                    message:
+                        "A timetable period has no valid day."
+
+                });
+
+            }
+
+
+            if (
+                !period.period_order ||
+                Number(period.period_order) <= 0
+            ) {
+
+                warnings.push({
+
+                    type:
+                        "MISSING_PERIOD_ORDER",
+
+                    periodId:
+                        period.id,
+
+                    message:
+                        `Period ${
+                            period.period_name ||
+                            period.id
+                        } has no valid period_order.`
+
+                });
+
+            }
+
+
+            const key =
+                `${period.day_number}-${period.period_order}`;
+
+
+            if (periodKeys.has(key)) {
+
+                warnings.push({
+
+                    type:
+                        "DUPLICATE_PERIOD_ORDER",
+
+                    periodId:
+                        period.id,
+
+                    message:
+                        `Duplicate day/period order detected: ${key}.`
+
+                });
+
+            }
+
+            else {
+
+                periodKeys.add(key);
+
+            }
+
         }
+    );
 
 
-        // STREAM
+    // ========================================================
+    // REQUIREMENT VALIDATION
+    // ========================================================
 
-        if (
-            !data.lookup.streams.has(
-                requirement.streamId
-            )
-        ) {
+    data.requirements.forEach(
+        requirement => {
 
-            errors.push({
+            if (!requirement.requirementId) {
 
-                type: "MISSING_STREAM",
+                errors.push({
 
-                requirementId:
-                    requirement.requirementId,
+                    type:
+                        "INVALID_REQUIREMENT",
 
-                streamId:
+                    message:
+                        "Requirement has no ID."
+
+                });
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // SCHOOL
+            // ------------------------------------------------
+
+            if (
+                requirement.schoolId &&
+                schoolId &&
+                requirement.schoolId !== schoolId
+            ) {
+
+                errors.push({
+
+                    type:
+                        "WRONG_SCHOOL_REFERENCE",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    message:
+                        "Requirement belongs to another school."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // STREAM
+            // ------------------------------------------------
+
+            const stream =
+                data.lookup.streams.get(
+                    requirement.streamId
+                );
+
+
+            if (!stream) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_STREAM",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    streamId:
+                        requirement.streamId,
+
+                    message:
+                        "Requirement references a stream that does not exist."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // SUBJECT
+            // ------------------------------------------------
+
+            const subject =
+                data.lookup.subjects.get(
+                    requirement.subjectId
+                );
+
+
+            if (!subject) {
+
+                errors.push({
+
+                    type:
+                        "MISSING_SUBJECT",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    subjectId:
+                        requirement.subjectId,
+
+                    message:
+                        "Requirement references a subject that does not exist."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // TEACHER
+            // ------------------------------------------------
+
+            if (!requirement.teacherId) {
+
+                warnings.push({
+
+                    type:
+                        "MISSING_TEACHER",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    message:
+                        "Requirement has no teacher assigned."
+
+                });
+
+            }
+
+            else {
+
+                const teacher =
+                    data.lookup.teachers.get(
+                        requirement.teacherId
+                    );
+
+
+                if (!teacher) {
+
+                    errors.push({
+
+                        type:
+                            "MISSING_TEACHER",
+
+                        requirementId:
+                            requirement.requirementId,
+
+                        teacherId:
+                            requirement.teacherId,
+
+                        message:
+                            "Requirement references a teacher that does not exist."
+
+                    });
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
+            // LESSONS PER WEEK
+            // ------------------------------------------------
+
+            if (
+                !Number.isInteger(
+                    requirement.lessonsPerWeek
+                ) ||
+                requirement.lessonsPerWeek <= 0
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_LESSONS_PER_WEEK",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    message:
+                        "Lessons per week must be a positive whole number."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // DOUBLE LESSONS
+            // ------------------------------------------------
+
+            if (
+                !Number.isInteger(
+                    requirement.doubleLessonsPerWeek
+                ) ||
+                requirement.doubleLessonsPerWeek < 0
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_DOUBLE_LESSONS",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    message:
+                        "Double lessons per week must be zero or a positive whole number."
+
+                });
+
+            }
+
+
+            if (
+                requirement.doubleLessonsPerWeek >
+                Math.floor(
+                    requirement.lessonsPerWeek / 2
+                )
+            ) {
+
+                errors.push({
+
+                    type:
+                        "IMPOSSIBLE_DOUBLE_LESSONS",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    message:
+                        `This requirement requests ${
+                            requirement.doubleLessonsPerWeek
+                        } double lesson(s), but only ${
+                            requirement.lessonsPerWeek
+                        } lesson periods are required per week.`
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // MAX LESSONS PER DAY
+            // ------------------------------------------------
+
+            if (
+                !Number.isInteger(
+                    requirement.maxLessonsPerDay
+                ) ||
+                requirement.maxLessonsPerDay <= 0
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_MAX_LESSONS_PER_DAY",
+
+                    requirementId:
+                        requirement.requirementId,
+
+                    message:
+                        "Maximum lessons per day must be a positive whole number."
+
+                });
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM REQUIREMENT
+            // ------------------------------------------------
+
+            if (
+                requirement.requiresRoom
+            ) {
+
+                const compatibleRooms =
+                    data.rooms.filter(
+                        room => {
+
+                            if (
+                                room.available === false
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            if (
+                                !requirement.roomType
+                            ) {
+
+                                return true;
+
+                            }
+
+
+                            return (
+                                normalizeTimetableRoomType(
+                                    room.room_type
+                                ) ===
+                                normalizeTimetableRoomType(
+                                    requirement.roomType
+                                )
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    compatibleRooms.length === 0
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "NO_COMPATIBLE_ROOM",
+
+                        requirementId:
+                            requirement.requirementId,
+
+                        roomType:
+                            requirement.roomType,
+
+                        message:
+                            requirement.roomType
+                                ? `No available room of type "${requirement.roomType}" exists.`
+                                : "This requirement needs a room, but no available room exists."
+
+                    });
+
+                }
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // TEACHER CAPACITY VALIDATION
+    // ========================================================
+
+    const teachingPeriods =
+        getTeachingPeriodsForValidation(
+            data.periods
+        );
+
+
+    const teachingPeriodsPerWeek =
+        teachingPeriods.length;
+
+
+    data.teachers.forEach(
+        teacher => {
+
+            const requestedLessons =
+                data.requirements
+                    .filter(
+                        requirement =>
+                            requirement.teacherId ===
+                            teacher.id
+                    )
+                    .reduce(
+                        (
+                            total,
+                            requirement
+                        ) =>
+                            total +
+                            requirement.lessonsPerWeek,
+                        0
+                    );
+
+
+            const teacherMaximum =
+                Number(
+                    teacher.max_lessons_per_week
+                ) || 0;
+
+
+            if (
+                teacherMaximum > 0 &&
+                requestedLessons >
+                teacherMaximum
+            ) {
+
+                warnings.push({
+
+                    type:
+                        "TEACHER_WEEKLY_WORKLOAD",
+
+                    teacherId:
+                        teacher.id,
+
+                    message:
+                        `Teacher "${getTimetableTeacherName(teacher)}" has ${requestedLessons} requested lessons, exceeding the configured weekly maximum of ${teacherMaximum}.`
+
+                });
+
+            }
+
+
+            if (
+                requestedLessons >
+                teachingPeriodsPerWeek
+            ) {
+
+                errors.push({
+
+                    type:
+                        "TEACHER_CAPACITY",
+
+                    teacherId:
+                        teacher.id,
+
+                    message:
+                        `Teacher "${getTimetableTeacherName(teacher)}" requires ${requestedLessons} lessons but only ${teachingPeriodsPerWeek} teaching periods are available in the week.`
+
+                });
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // STREAM CAPACITY VALIDATION
+    // ========================================================
+
+    const streamTeachingCapacity =
+        new Map();
+
+
+    data.streams.forEach(
+        stream => {
+
+            streamTeachingCapacity.set(
+                stream.id,
+                0
+            );
+
+        }
+    );
+
+
+    data.requirements.forEach(
+        requirement => {
+
+            if (
+                streamTeachingCapacity.has(
+                    requirement.streamId
+                )
+            ) {
+
+                streamTeachingCapacity.set(
+
                     requirement.streamId,
 
-                message:
-                    "Requirement references a stream that does not exist."
-            });
+                    streamTeachingCapacity.get(
+                        requirement.streamId
+                    ) +
+                    requirement.lessonsPerWeek
+
+                );
+
+            }
 
         }
+    );
 
 
-        // SUBJECT
+    streamTeachingCapacity.forEach(
+        (
+            requestedLessons,
+            streamId
+        ) => {
 
-        if (
-            !data.lookup.subjects.has(
-                requirement.subjectId
-            )
-        ) {
+            if (
+                requestedLessons >
+                teachingPeriodsPerWeek
+            ) {
 
-            errors.push({
-
-                type: "MISSING_SUBJECT",
-
-                requirementId:
-                    requirement.requirementId,
-
-                subjectId:
-                    requirement.subjectId,
-
-                message:
-                    "Requirement references a subject that does not exist."
-            });
-
-        }
+                const stream =
+                    data.lookup.streams.get(
+                        streamId
+                    );
 
 
-        // TEACHER
+                errors.push({
 
-        if (!requirement.teacherId) {
+                    type:
+                        "STREAM_CAPACITY",
 
-            warnings.push({
+                    streamId:
+                        streamId,
 
-                type: "MISSING_TEACHER",
+                    message:
+                        `Stream "${getTimetableStreamName(stream)}" requires ${requestedLessons} lessons but only ${teachingPeriodsPerWeek} teaching periods are available in the week.`
 
-                requirementId:
-                    requirement.requirementId,
+                });
 
-                message:
-                    "Requirement has no teacher assigned."
-            });
+            }
 
         }
-
-        else if (
-            !data.lookup.teachers.has(
-                requirement.teacherId
-            )
-        ) {
-
-            errors.push({
-
-                type: "MISSING_TEACHER",
-
-                requirementId:
-                    requirement.requirementId,
-
-                teacherId:
-                    requirement.teacherId,
-
-                message:
-                    "Requirement references a teacher that does not exist."
-            });
-
-        }
+    );
 
 
-        // LESSONS
-
-        if (
-            requirement.lessonsPerWeek <= 0
-        ) {
-
-            errors.push({
-
-                type: "INVALID_LESSONS_PER_WEEK",
-
-                requirementId:
-                    requirement.requirementId,
-
-                message:
-                    "Lessons per week must be greater than zero."
-            });
-
-        }
-
-
-        // DOUBLE LESSONS
-
-        if (
-            requirement.doubleLessonsPerWeek <
-            0
-        ) {
-
-            errors.push({
-
-                type: "INVALID_DOUBLE_LESSONS",
-
-                requirementId:
-                    requirement.requirementId,
-
-                message:
-                    "Double lessons per week cannot be negative."
-            });
-
-        }
-
-
-        if (
-            requirement.doubleLessonsPerWeek >
-            requirement.lessonsPerWeek
-        ) {
-
-            errors.push({
-
-                type: "INVALID_DOUBLE_LESSONS",
-
-                requirementId:
-                    requirement.requirementId,
-
-                message:
-                    "Double lessons per week cannot exceed lessons per week."
-            });
-
-        }
-
-    });
-
-
-    // ----------------------------------------------------------
+    // ========================================================
     // RESULT
-    // ----------------------------------------------------------
+    // ========================================================
 
-    return {
+    const result = {
+
         valid:
             errors.length === 0,
 
         errors,
         warnings
+
     };
-}
 
 
+    // ========================================================
+    // DEBUG SUMMARY
+    // ========================================================
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ============================================================
-// GET DISPLAY NAME — STREAM
-// ============================================================
-
-function getTimetableStreamName(stream) {
-
-    if (!stream) {
-        return "Unknown Stream";
-    }
-
-    return (
-        stream.stream_name ||
-        stream.name ||
-        stream.class_name ||
-        "Unknown Stream"
+    console.log(
+        "======================================"
     );
 
-}
-
-
-// ============================================================
-// GET DISPLAY NAME — SUBJECT
-// ============================================================
-
-function getTimetableSubjectName(subject) {
-
-    if (!subject) {
-        return "Unknown Subject";
-    }
-
-    return (
-        subject.subject_name ||
-        subject.name ||
-        subject.subject ||
-        "Unknown Subject"
+    console.log(
+        "TIMETABLE RELATIONSHIP VALIDATION"
     );
 
-}
-
-
-// ============================================================
-// GET DISPLAY NAME — TEACHER
-// ============================================================
-
-function getTimetableTeacherName(teacher) {
-
-    if (!teacher) {
-        return "Unassigned";
-    }
-
-    const fullName = [
-        teacher.first_name,
-        teacher.last_name
-    ]
-        .filter(Boolean)
-        .join(" ");
-
-    return (
-        teacher.teacher_name ||
-        teacher.name ||
-        teacher.full_name ||
-        fullName ||
-        teacher.username ||
-        "Unknown Teacher"
+    console.log(
+        "Errors:",
+        errors.length
     );
 
-}
+    console.log(
+        "Warnings:",
+        warnings.length
+    );
+
+    console.log(
+        "Valid:",
+        result.valid
+    );
+
+    console.log(
+        "======================================"
+    );
 
 
-// ============================================================
-// GET DISPLAY NAME — ROOM
-// ============================================================
+    if (errors.length > 0) {
 
-function getTimetableRoomName(room) {
+        console.error(
+            "TIMETABLE VALIDATION ERRORS:",
+            errors
+        );
 
-    if (!room) {
-        return "No Room";
     }
 
-    return (
-        room.room_name ||
-        room.name ||
-        room.room ||
-        "Room"
-    );
+
+    if (warnings.length > 0) {
+
+        console.warn(
+            "TIMETABLE VALIDATION WARNINGS:",
+            warnings
+        );
+
+    }
+
+
+    return result;
 
 }
 
@@ -971,14 +1612,17 @@ function getTimetableRoomName(room) {
 // NORMALIZE ROOM TYPE
 // ============================================================
 
-function normalizeRoomType(value) {
+function normalizeTimetableRoomType(value) {
 
     if (
         value === null ||
         value === undefined
     ) {
+
         return "";
+
     }
+
 
     return String(value)
         .trim()
@@ -988,24 +1632,179 @@ function normalizeRoomType(value) {
 
 
 // ============================================================
-// GET ROOM TYPE
+// GET TEACHING PERIODS FOR VALIDATION
 // ============================================================
 
-function getTimetableRoomType(room) {
+function getTeachingPeriodsForValidation(periods) {
 
-    if (!room) {
-        return "";
+    if (!Array.isArray(periods)) {
+
+        return [];
+
     }
 
-    return normalizeRoomType(
-        room.room_type ||
-        room.type ||
-        room.category ||
-        ""
+
+    return periods.filter(
+        period => {
+
+            const type =
+                String(
+                    period.period_type ||
+                    period.periodType ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            return (
+
+                period.is_teaching_period !== false &&
+
+                type !== "break" &&
+
+                type !== "lunch" &&
+
+                type !== "games" &&
+
+                type !== "club" &&
+
+                type !== "clubs" &&
+
+                type !== "society" &&
+
+                type !== "societies" &&
+
+                type !== "assembly"
+
+            );
+
+        }
     );
 
 }
 
+
+// ============================================================
+// BASIC GENERATOR DATA VALIDATION
+// ============================================================
+
+function validateTimetableGeneratorData(data) {
+
+    const errors = [];
+
+
+    if (
+        !data ||
+        typeof data !== "object"
+    ) {
+
+        throw new Error(
+            "Invalid timetable generator data."
+        );
+
+    }
+
+
+    if (
+        !data.schoolId
+    ) {
+
+        errors.push(
+            "No school has been selected."
+        );
+
+    }
+
+
+    if (
+        !Array.isArray(data.requirements) ||
+        data.requirements.length === 0
+    ) {
+
+        errors.push(
+            "No timetable requirements have been configured."
+        );
+
+    }
+
+
+    if (
+        !Array.isArray(data.periods) ||
+        data.periods.length === 0
+    ) {
+
+        errors.push(
+            "No timetable periods have been configured."
+        );
+
+    }
+
+
+    if (
+        !Array.isArray(data.streams) ||
+        data.streams.length === 0
+    ) {
+
+        errors.push(
+            "No streams have been configured."
+        );
+
+    }
+
+
+    if (
+        !Array.isArray(data.subjects) ||
+        data.subjects.length === 0
+    ) {
+
+        errors.push(
+            "No subjects have been configured."
+        );
+
+    }
+
+
+    if (
+        !Array.isArray(data.teachers) ||
+        data.teachers.length === 0
+    ) {
+
+        errors.push(
+            "No teachers have been configured."
+        );
+
+    }
+
+
+    if (
+        !Array.isArray(data.rooms)
+    ) {
+
+        errors.push(
+            "Room data could not be loaded."
+        );
+
+    }
+
+
+    if (errors.length > 0) {
+
+        throw new Error(
+            errors.join("\n")
+        );
+
+    }
+
+
+    console.log(
+        "Generator data validation: PASSED"
+    );
+
+
+    return true;
+
+}
 
 
 // ============================================================
@@ -1015,7 +1814,9 @@ function getTimetableRoomType(room) {
 function getTeachingPeriods(periods) {
 
     if (!Array.isArray(periods)) {
+
         return [];
+
     }
 
 
@@ -1024,7 +1825,9 @@ function getTeachingPeriods(periods) {
 
             const periodType =
                 String(
-                    period.period_type || ""
+                    period.period_type ||
+                    period.periodType ||
+                    ""
                 )
                     .trim()
                     .toLowerCase();
@@ -1036,7 +1839,19 @@ function getTeachingPeriods(periods) {
 
                 periodType !== "break" &&
 
-                periodType !== "lunch"
+                periodType !== "lunch" &&
+
+                periodType !== "games" &&
+
+                periodType !== "club" &&
+
+                periodType !== "clubs" &&
+
+                periodType !== "society" &&
+
+                periodType !== "societies" &&
+
+                periodType !== "assembly"
 
             );
 
@@ -1056,7 +1871,9 @@ function groupPeriodsByDay(periods) {
 
 
     if (!Array.isArray(periods)) {
+
         return groups;
+
     }
 
 
@@ -1119,6 +1936,12 @@ function groupPeriodsByDay(periods) {
     return groups;
 
 }
+
+
+
+
+
+
 
 
 
