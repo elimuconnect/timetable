@@ -1,3 +1,85 @@
+
+
+let generatedTimetableEntries = [];
+
+let timetableGenerationRunning = false;
+
+
+// ============================================================
+// GET TIMETABLE DOM ELEMENTS
+// ============================================================
+
+const generateTimetableBtn =
+    document.getElementById(
+        "generateTimetableBtn"
+    );
+
+const regenerateTimetableBtn =
+    document.getElementById(
+        "regenerateTimetableBtn"
+    );
+
+const clearTimetableBtn =
+    document.getElementById(
+        "clearTimetableBtn"
+    );
+
+const printTimetableBtn =
+    document.getElementById(
+        "printTimetableBtn"
+    );
+
+const timetableStreamFilter =
+    document.getElementById(
+        "timetableStreamFilter"
+    );
+
+const timetableDayFilter =
+    document.getElementById(
+        "timetableDayFilter"
+    );
+
+const timetableViewMode =
+    document.getElementById(
+        "timetableViewMode"
+    );
+
+
+console.log(
+    "Generate button:",
+    generateTimetableBtn
+);
+
+console.log(
+    "Timetable generator DOM check:",
+    {
+
+        generate:
+            !!generateTimetableBtn,
+
+        regenerate:
+            !!regenerateTimetableBtn,
+
+        clear:
+            !!clearTimetableBtn,
+
+        print:
+            !!printTimetableBtn,
+
+        streamFilter:
+            !!timetableStreamFilter,
+
+        dayFilter:
+            !!timetableDayFilter,
+
+        viewMode:
+            !!timetableViewMode
+
+    }
+);
+
+
+
 // ============================================================
 // STAGE 2 — NORMALIZED GENERATOR DATA MODEL
 // ============================================================
@@ -20,6 +102,10 @@ const generatorData = {
         periods: new Map()
     }
 };
+
+
+
+
 
 
 
@@ -380,413 +466,25 @@ function validateGeneratorRelationships(data) {
     };
 }
 
-// ============================================================
-// STAGE 2 — BUILD GENERATOR DATA
-// ============================================================
-
-async function buildGeneratorData() {
-
-    if (!timetableState.schoolId) {
-
-        throw new Error(
-            "No school selected."
-        );
-
-    }
-
-
-    console.log(
-        "======================================"
-    );
-
-    console.log(
-        "STAGE 2 — BUILD GENERATOR DATA"
-    );
-
-    console.log(
-        "School:",
-        timetableState.schoolId
-    );
-
-    console.log(
-        "======================================"
-    );
-
-
-    const [
-        periodsResult,
-        requirementsResult,
-        streamsResult,
-        subjectsResult,
-        teachersResult,
-        roomsResult
-    ] = await Promise.all([
-
-        supabaseClient
-            .from("timetable_periods")
-            .select("*")
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            ),
-
-        supabaseClient
-            .from("timetable_requirements")
-            .select("*")
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            ),
-
-        supabaseClient
-            .from("timetable_streams")
-            .select("*")
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            ),
-
-        supabaseClient
-            .from("timetable_subjects")
-            .select("*")
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            ),
-
-        supabaseClient
-            .from("timetable_teachers")
-            .select("*")
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            ),
-
-        supabaseClient
-            .from("timetable_rooms")
-            .select("*")
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            )
-
-    ]);
-
-
-    // ----------------------------------------------------------
-    // DATABASE ERRORS
-    // ----------------------------------------------------------
-
-    const results = [
-        {
-            name: "periods",
-            result: periodsResult
-        },
-        {
-            name: "requirements",
-            result: requirementsResult
-        },
-        {
-            name: "streams",
-            result: streamsResult
-        },
-        {
-            name: "subjects",
-            result: subjectsResult
-        },
-        {
-            name: "teachers",
-            result: teachersResult
-        },
-        {
-            name: "rooms",
-            result: roomsResult
-        }
-    ];
 
 
-    const failed =
-        results.find(
-            item => item.result.error
-        );
 
 
-    if (failed) {
 
-        throw new Error(
-            `Failed to load timetable ${failed.name}: ` +
-            failed.result.error.message
-        );
 
-    }
 
 
-    // ----------------------------------------------------------
-    // NORMALIZE
-    // ----------------------------------------------------------
 
-    const normalized =
-        normalizeGeneratorData({
 
-            school: {
-                id:
-                    timetableState.schoolId
-            },
 
-            periods:
-                periodsResult.data || [],
 
-            requirements:
-                requirementsResult.data || [],
 
-            streams:
-                streamsResult.data || [],
 
-            subjects:
-                subjectsResult.data || [],
 
-            teachers:
-                teachersResult.data || [],
 
-            rooms:
-                roomsResult.data || []
 
-        });
 
 
-    // ----------------------------------------------------------
-    // VALIDATE RELATIONSHIPS
-    // ----------------------------------------------------------
-
-    const validation =
-        validateGeneratorRelationships(
-            normalized
-        );
-
-
-    // ----------------------------------------------------------
-    // SAVE GLOBAL STATE
-    // ----------------------------------------------------------
-
-    generatorData.school =
-        normalized.school;
-
-    generatorData.streams =
-        normalized.streams;
-
-    generatorData.subjects =
-        normalized.subjects;
-
-    generatorData.teachers =
-        normalized.teachers;
-
-    generatorData.rooms =
-        normalized.rooms;
-
-    generatorData.periods =
-        normalized.periods;
-
-    generatorData.requirements =
-        normalized.requirements;
-
-    generatorData.lookup =
-        normalized.lookup;
-
-
-    // ----------------------------------------------------------
-    // CONSOLE REPORT
-    // ----------------------------------------------------------
-
-    console.log(
-        "--------------------------------------"
-    );
-
-    console.log(
-        "GENERATOR DATA READY"
-    );
-
-    console.log(
-        "Streams:",
-        generatorData.streams.length
-    );
-
-    console.log(
-        "Subjects:",
-        generatorData.subjects.length
-    );
-
-    console.log(
-        "Teachers:",
-        generatorData.teachers.length
-    );
-
-    console.log(
-        "Rooms:",
-        generatorData.rooms.length
-    );
-
-    console.log(
-        "Periods:",
-        generatorData.periods.length
-    );
-
-    console.log(
-        "Requirements:",
-        generatorData.requirements.length
-    );
-
-    console.log(
-        "Relationship errors:",
-        validation.errors.length
-    );
-
-    console.log(
-        "Warnings:",
-        validation.warnings.length
-    );
-
-    console.log(
-        "--------------------------------------"
-    );
-
-
-    console.table(
-        validation.errors
-    );
-
-    console.table(
-        validation.warnings
-    );
-
-
-    return {
-        data:
-            generatorData,
-
-        validation
-    };
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-let generatedTimetableEntries = [];
-
-let timetableGenerationRunning = false;
-
-
-// ============================================================
-// GET TIMETABLE DOM ELEMENTS
-// ============================================================
-
-const generateTimetableBtn =
-    document.getElementById(
-        "generateTimetableBtn"
-    );
-
-const regenerateTimetableBtn =
-    document.getElementById(
-        "regenerateTimetableBtn"
-    );
-
-const clearTimetableBtn =
-    document.getElementById(
-        "clearTimetableBtn"
-    );
-
-const printTimetableBtn =
-    document.getElementById(
-        "printTimetableBtn"
-    );
-
-const timetableStreamFilter =
-    document.getElementById(
-        "timetableStreamFilter"
-    );
-
-const timetableDayFilter =
-    document.getElementById(
-        "timetableDayFilter"
-    );
-
-const timetableViewMode =
-    document.getElementById(
-        "timetableViewMode"
-    );
-
-
-console.log(
-    "Generate button:",
-    generateTimetableBtn
-);
-
-console.log(
-    "Timetable generator DOM check:",
-    {
-
-        generate:
-            !!generateTimetableBtn,
-
-        regenerate:
-            !!regenerateTimetableBtn,
-
-        clear:
-            !!clearTimetableBtn,
-
-        print:
-            !!printTimetableBtn,
-
-        streamFilter:
-            !!timetableStreamFilter,
-
-        dayFilter:
-            !!timetableDayFilter,
-
-        viewMode:
-            !!timetableViewMode
-
-    }
-);
 
 
 // ============================================================
