@@ -928,53 +928,51 @@ function normalizeGeneratorData(data) {
 
     };
 
+// ========================================================
+// NORMALIZE PERIODS
+// ========================================================
 
-    // ========================================================
-    // NORMALIZE PERIODS
-    // ========================================================
+normalized.periods =
+    normalized.periods.map(
+        period => {
 
-    normalized.periods =
-        normalized.periods.map(
-            period => {
-
-                const periodType =
-                    String(
-                        period.period_type ||
-                        "lesson"
-                    )
-                        .trim()
-                        .toLowerCase();
+            const periodType =
+                String(
+                    period.period_type ||
+                    "lesson"
+                )
+                    .trim()
+                    .toLowerCase();
 
 
-                return {
+            return {
 
-                    ...period,
+                ...period,
 
-                    dayNumber:
-                        Number(
-                            period.day_number
-                        ) || 0,
+                dayNumber:
+                    Number(
+                        period.day_number
+                    ) || 0,
 
-                    periodNumber:
-                        Number(
-                            period.period_number
-                        ) || 0,
+                periodNumber:
+                    Number(
+                        period.period_number
+                    ) || 0,
 
-                    periodOrder:
-                        Number(
-                            period.period_order
-                        ) || 0,
+                periodOrder:
+                    Number(
+                        period.period_order
+                    ) || 0,
 
-                    isTeachingPeriod:
-                        period.is_teaching_period !== false,
+                isTeachingPeriod:
+                    period.is_teaching_period !== false,
 
-                    periodType
+                periodType
 
-                };
+            };
 
-            }
-        );
-
+        }
+    );
 
     // ========================================================
     // NORMALIZE REQUIREMENTS
@@ -1635,139 +1633,249 @@ function validateGeneratorRelationships(data) {
 
 
 // ============================================================
-// BASIC GENERATOR DATA VALIDATION
+// VALIDATE NORMALIZED PERIODS
 // ============================================================
 
-function validateTimetableGeneratorData(data) {
+function validateTimetablePeriods(data) {
 
     const errors = [];
+
+    const warnings = [];
 
 
     if (
         !data ||
-        typeof data !== "object"
+        !Array.isArray(data.periods)
     ) {
 
-        throw new Error(
-            "Invalid timetable generator data."
-        );
+        return {
+
+            valid: false,
+
+            errors: [
+                "No timetable periods are available."
+            ],
+
+            warnings
+
+        };
 
     }
 
 
-    if (
-        !data.schoolId
-    ) {
-
-        errors.push(
-            "No school has been selected."
-        );
-
-    }
+    const periodIds =
+        new Set();
 
 
-    if (
-        !Array.isArray(
-            data.requirements
-        ) ||
-        data.requirements.length === 0
-    ) {
-
-        errors.push(
-            "No timetable requirements have been configured."
-        );
-
-    }
+    const duplicateIds =
+        new Set();
 
 
-    if (
-        !Array.isArray(
-            data.periods
-        ) ||
-        data.periods.length === 0
-    ) {
+    // ========================================================
+    // VALIDATE EACH PERIOD
+    // ========================================================
 
-        errors.push(
-            "No timetable periods have been configured."
-        );
+    data.periods.forEach(
+        period => {
 
-    }
+            const periodId =
+                period.id ||
+                null;
 
 
-    if (
-        !Array.isArray(
-            data.streams
-        ) ||
-        data.streams.length === 0
-    ) {
+            // ------------------------------------------------
+            // ID
+            // ------------------------------------------------
 
-        errors.push(
-            "No streams have been configured."
-        );
+            if (!periodId) {
 
-    }
+                errors.push(
+                    "A timetable period has no ID."
+                );
 
+            }
+            else {
 
-    if (
-        !Array.isArray(
-            data.subjects
-        ) ||
-        data.subjects.length === 0
-    ) {
+                if (
+                    periodIds.has(
+                        periodId
+                    )
+                ) {
 
-        errors.push(
-            "No subjects have been configured."
-        );
+                    duplicateIds.add(
+                        periodId
+                    );
 
-    }
+                }
 
+                periodIds.add(
+                    periodId
+                );
 
-    if (
-        !Array.isArray(
-            data.teachers
-        ) ||
-        data.teachers.length === 0
-    ) {
-
-        errors.push(
-            "No teachers have been configured."
-        );
-
-    }
+            }
 
 
-    if (
-        !Array.isArray(
-            data.rooms
-        )
-    ) {
+            // ------------------------------------------------
+            // DAY
+            // ------------------------------------------------
 
-        errors.push(
-            "Room data could not be loaded."
-        );
+            if (
+                !period.dayName &&
+                (!period.dayNumber ||
+                    period.dayNumber <= 0)
+            ) {
 
-    }
+                errors.push(
+                    `Period ${periodId || "[unknown]"} has no valid day information.`
+                );
 
-
-    if (
-        errors.length > 0
-    ) {
-
-        throw new Error(
-            errors.join("\n")
-        );
-
-    }
+            }
 
 
-    console.log(
-        "Generator data validation: PASSED"
+            // ------------------------------------------------
+            // PERIOD ORDER
+            // ------------------------------------------------
+
+            if (
+                !Number.isFinite(
+                    period.periodOrder
+                ) ||
+                period.periodOrder <= 0
+            ) {
+
+                errors.push(
+                    `Period ${periodId || "[unknown]"} has an invalid period order.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // PERIOD NUMBER
+            // ------------------------------------------------
+
+            if (
+                !Number.isFinite(
+                    period.periodNumber
+                ) ||
+                period.periodNumber <= 0
+            ) {
+
+                warnings.push(
+                    `Period ${periodId || "[unknown]"} has no valid period number.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // PERIOD TYPE
+            // ------------------------------------------------
+
+            if (
+                !period.periodType
+            ) {
+
+                warnings.push(
+                    `Period ${periodId || "[unknown]"} has no period type.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // TIME RANGE
+            // ------------------------------------------------
+
+            if (
+                !period.startTime ||
+                !period.endTime
+            ) {
+
+                warnings.push(
+                    `Period ${periodId || "[unknown]"} has incomplete time information.`
+                );
+
+            }
+
+        }
     );
 
 
-    return true;
+    // ========================================================
+    // DUPLICATE IDS
+    // ========================================================
+
+    duplicateIds.forEach(
+        id => {
+
+            errors.push(
+                `Duplicate timetable period ID detected: ${id}`
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    const result = {
+
+        valid:
+            errors.length === 0,
+
+        errors,
+
+        warnings
+
+    };
+
+
+    console.log(
+        "Timetable period validation:",
+        {
+            valid:
+                result.valid,
+
+            errors:
+                result.errors.length,
+
+            warnings:
+                result.warnings.length
+        }
+    );
+
+
+    if (
+        result.errors.length
+    ) {
+
+        console.error(
+            "Timetable period validation errors:",
+            result.errors
+        );
+
+    }
+
+
+    if (
+        result.warnings.length
+    ) {
+
+        console.warn(
+            "Timetable period validation warnings:",
+            result.warnings
+        );
+
+    }
+
+
+    return result;
 
 }
+
 
 // ============================================================
 // GET TEACHING PERIODS
@@ -1994,15 +2102,42 @@ async function prepareTimetableGeneratorData() {
         );
 
 
-    validateTimetableGeneratorData(
+   validateTimetableGeneratorData(
+    normalizedData
+);
+
+
+// ========================================================
+// PERIOD VALIDATION
+// ========================================================
+
+const periodValidation =
+    validateTimetablePeriods(
         normalizedData
     );
 
 
-    const relationshipValidation =
-        validateGeneratorRelationships(
-            normalizedData
-        );
+if (
+    !periodValidation.valid
+) {
+
+    throw new Error(
+
+        "Timetable period validation failed:\n\n" +
+
+        periodValidation.errors.join(
+            "\n"
+        )
+
+    );
+
+}
+
+
+const relationshipValidation =
+    validateGeneratorRelationships(
+        normalizedData
+    );
 
 
     if (
