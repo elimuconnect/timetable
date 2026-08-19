@@ -3452,6 +3452,143 @@ function getCompatibleRooms(
 }
 
 
+
+// ============================================================
+// DAILY REQUIREMENT LESSONS
+// ============================================================
+//
+// IMPORTANT ARCHITECTURAL RULE:
+//
+// maxLessonsPerDay belongs to a REQUIREMENT.
+//
+// Example:
+//
+// Grade 9A + Mathematics
+//     maxLessonsPerDay = 2
+//
+// Grade 9A + Biology
+//     maxLessonsPerDay = 2
+//
+// Grade 9A + English
+//     maxLessonsPerDay = 2
+//
+// These must be tracked independently.
+//
+// Therefore the key is:
+//
+// requirement + day
+//
+// NOT:
+//
+// stream + day
+//
+// ============================================================
+
+
+// ============================================================
+// CREATE REQUIREMENT/DAY KEY
+// ============================================================
+
+function getDailyRequirementKey(
+    requirementId,
+    dayNumber
+) {
+
+    return (
+        `${normalizeTimetableId(requirementId)}__${dayNumber}`
+    );
+
+}
+
+
+// ============================================================
+// GET DAILY REQUIREMENT LESSON COUNT
+// ============================================================
+
+function getDailyRequirementLessonCount(
+    indexes,
+    requirementId,
+    dayNumber
+) {
+
+    if (
+        !indexes ||
+        !indexes.dailyRequirementLessons
+    ) {
+
+        return 0;
+
+    }
+
+
+    const key =
+        getDailyRequirementKey(
+            requirementId,
+            dayNumber
+        );
+
+
+    return (
+        indexes.dailyRequirementLessons.get(
+            key
+        ) || 0
+    );
+
+}
+
+
+// ============================================================
+// INCREMENT DAILY REQUIREMENT LESSON COUNT
+// ============================================================
+
+function incrementDailyRequirementLessonCount(
+    indexes,
+    requirementId,
+    dayNumber,
+    amount = 1
+) {
+
+    if (
+        !indexes ||
+        !indexes.dailyRequirementLessons
+    ) {
+
+        return;
+
+    }
+
+
+    const key =
+        getDailyRequirementKey(
+            requirementId,
+            dayNumber
+        );
+
+
+    const currentCount =
+        getDailyRequirementLessonCount(
+            indexes,
+            requirementId,
+            dayNumber
+        );
+
+
+    indexes.dailyRequirementLessons.set(
+        key,
+        currentCount + amount
+    );
+
+}
+
+
+
+
+
+// ============================================================
+// CREATE OCCUPANCY INDEXES
+// ============================================================
+
+
 // ============================================================
 // CREATE OCCUPANCY INDEXES
 // ============================================================
@@ -3462,6 +3599,9 @@ function createOccupancyIndexes() {
 
         // ----------------------------------------------------
         // STREAM / PERIOD
+        //
+        // Prevents one stream from having two lessons
+        // in the same period.
         // ----------------------------------------------------
 
         streamPeriod:
@@ -3470,6 +3610,9 @@ function createOccupancyIndexes() {
 
         // ----------------------------------------------------
         // TEACHER / PERIOD
+        //
+        // Prevents one teacher from teaching two streams
+        // in the same period.
         // ----------------------------------------------------
 
         teacherPeriod:
@@ -3478,6 +3621,9 @@ function createOccupancyIndexes() {
 
         // ----------------------------------------------------
         // ROOM / PERIOD
+        //
+        // Prevents one room from being used twice
+        // in the same period.
         // ----------------------------------------------------
 
         roomPeriod:
@@ -3485,15 +3631,27 @@ function createOccupancyIndexes() {
 
 
         // ----------------------------------------------------
-        // DAILY STREAM LESSONS
+        // REQUIREMENT / DAY
+        //
+        // Tracks daily lesson limits independently for
+        // each timetable requirement.
+        //
+        // Example:
+        //
+        // Mathematics + Grade 9A + Monday = 2
+        // Biology     + Grade 9A + Monday = 2
+        //
         // ----------------------------------------------------
 
-        dailyStreamLessons:
+        dailyRequirementLessons:
             new Map()
 
     };
 
 }
+
+
+
 
 
 // ============================================================
@@ -3738,43 +3896,73 @@ function checkSingleSlotConflict(
     // DAILY LIMIT
     // ========================================================
 
-    const maxPerDay =
-        Number(
-            task.maxLessonsPerDay
-        ) || 0;
+
+
+// ========================================================
+// REQUIREMENT DAILY LIMIT
+// ========================================================
+//
+// IMPORTANT:
+//
+// maxLessonsPerDay belongs to the requirement.
+//
+// Therefore we check:
+//
+// requirement + day
+//
+// rather than:
+//
+// stream + day
+//
+// This allows a stream to have many different subjects
+// on the same day while still respecting each subject's
+// individual daily limit.
+// ========================================================
+
+const requirementId =
+    normalizeTimetableId(
+        task.requirementId
+    );
+
+
+const maxPerDay =
+    Number(
+        task.maxLessonsPerDay
+    ) || 0;
+
+
+if (
+    requirementId &&
+    maxPerDay > 0
+) {
+
+    const currentCount =
+        getDailyRequirementLessonCount(
+            indexes,
+            requirementId,
+            period.dayNumber
+        );
 
 
     if (
-        maxPerDay > 0
+        currentCount >=
+        maxPerDay
     ) {
 
-        const currentCount =
-            getDailyStreamLessonCount(
-                indexes,
-                streamId,
-                period.day_number
-            );
+        return {
 
+            valid:
+                false,
 
-        if (
-            currentCount >=
-            maxPerDay
-        ) {
+            reason:
+                "Maximum daily lessons reached for this requirement."
 
-            return {
-
-                valid:
-                    false,
-
-                reason:
-                    "Maximum lessons per day reached for this requirement."
-
-            };
-
-        }
+        };
 
     }
 
+}
+    
 
     return {
 
@@ -3876,15 +4064,33 @@ function reserveSlot(
     // A double lesson therefore occupies 2 periods.
     // --------------------------------------------------------
 
-    incrementDailyStreamLessonCount(
+ // --------------------------------------------------------
+// REQUIREMENT DAILY COUNT
+//
+// A double lesson reserves this function twice because
+// each occupied teaching period is processed individually.
+// Therefore the requirement/day count represents actual
+// timetable periods.
+// --------------------------------------------------------
+
+const requirementId =
+    normalizeTimetableId(
+        task.requirementId
+    );
+
+
+if (
+    requirementId
+) {
+
+    incrementDailyRequirementLessonCount(
         indexes,
-        streamId,
-        period.day_number,
+        requirementId,
+        period.dayNumber,
         1
     );
 
 }
-
 
 // ============================================================
 // CREATE GENERATED ENTRY
