@@ -3957,12 +3957,16 @@ if (
             reason:
                 "Maximum daily lessons reached for this requirement."
 
-        };
+      };
+
+        }
 
     }
 
-}
-    
+
+    // ========================================================
+    // SLOT IS AVAILABLE
+    // ========================================================
 
     return {
 
