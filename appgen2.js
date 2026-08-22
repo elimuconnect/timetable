@@ -11180,6 +11180,21 @@ async function generateTimetable() {
             );
 
 
+const audit =
+    auditGeneratedTimetable(
+        generatorData,
+        result
+    );
+
+
+generatorData.generationAudit =
+    audit;
+
+
+result.audit =
+    audit;
+        
+
         // ====================================================
         // STORE GENERATION RESULT
         // ====================================================
@@ -11258,7 +11273,3245 @@ async function generateTimetable() {
 }
 
 
+// ============================================================
+// STAGE 6G — FINAL TIMETABLE CONSTRAINT AUDIT
+// ============================================================
+//
+// Independently verifies the timetable produced by Stage 6F.
+//
+// IMPORTANT:
+//
+// This stage does NOT trust the placement indexes created
+// during generation.
+//
+// It rebuilds its own audit structures from:
+//
+//     result.entries
+//     data.lessonTasks
+//     data.requirements
+//     data.lookup
+//     data.periods
+//
+// Therefore Stage 6G can detect problems even if Stage 6F
+// accidentally maintained an index incorrectly.
+//
+// Stage 6G DOES NOT:
+//
+//     - modify timetable entries
+//     - reserve slots
+//     - save to Supabase
+//
+// It only validates the generated timetable.
+//
+// ============================================================
 
+
+// ============================================================
+// CREATE EMPTY AUDIT RESULT
+// ============================================================
+
+function createTimetableAuditResult() {
+
+    return {
+
+        valid:
+            true,
+
+        errors:
+            [],
+
+        warnings:
+            [],
+
+        checks: {
+
+            requirementTotals:
+                true,
+
+            doubleLessons:
+                true,
+
+            streamConflicts:
+                true,
+
+            teacherConflicts:
+                true,
+
+            roomConflicts:
+                true,
+
+            dailyRequirementLimits:
+                true,
+
+            teacherDailyLimits:
+                true,
+
+            teacherWeeklyLimits:
+                true,
+
+            teacherConsecutiveLimits:
+                true,
+
+            roomTypes:
+                true,
+
+            duplicateEntries:
+                true,
+
+            periodReferences:
+                true
+
+        },
+
+        statistics: {
+
+            totalEntries:
+                0,
+
+            totalTasks:
+                0,
+
+            placedTasks:
+                0,
+
+            failedTasks:
+                0,
+
+            auditedPeriods:
+                0,
+
+            auditedRequirements:
+                0,
+
+            auditedTeachers:
+                0,
+
+            auditedRooms:
+                0
+
+        }
+
+    };
+
+}
+
+
+// ============================================================
+// ADD AUDIT ERROR
+// ============================================================
+
+function addTimetableAuditError(
+    audit,
+    checkName,
+    message,
+    details = {}
+) {
+
+    audit.valid =
+        false;
+
+
+    if (
+        audit.checks.hasOwnProperty(
+            checkName
+        )
+    ) {
+
+        audit.checks[checkName] =
+            false;
+
+    }
+
+
+    audit.errors.push({
+
+        check:
+            checkName,
+
+        message,
+
+        ...details
+
+    });
+
+}
+
+
+// ============================================================
+// ADD AUDIT WARNING
+// ============================================================
+
+function addTimetableAuditWarning(
+    audit,
+    checkName,
+    message,
+    details = {}
+) {
+
+    audit.warnings.push({
+
+        check:
+            checkName,
+
+        message,
+
+        ...details
+
+    });
+
+}
+
+
+// ============================================================
+// NORMALIZE GENERATED ENTRY
+// ============================================================
+
+function normalizeGeneratedTimetableEntry(
+    entry
+) {
+
+    if (
+        !entry ||
+        typeof entry !== "object"
+    ) {
+
+        return null;
+
+    }
+
+
+    return {
+
+        schoolId:
+            normalizeTimetableId(
+                entry.school_id
+            ),
+
+        periodId:
+            normalizeTimetableId(
+                entry.period_id
+            ),
+
+        streamId:
+            normalizeTimetableId(
+                entry.stream_id
+            ),
+
+        subjectId:
+            normalizeTimetableId(
+                entry.subject_id
+            ),
+
+        teacherId:
+            normalizeTimetableId(
+                entry.teacher_id
+            ),
+
+        roomId:
+            normalizeTimetableId(
+                entry.room_id
+            )
+
+    };
+
+}
+
+
+// ============================================================
+// BUILD AUDIT LOOKUPS
+// ============================================================
+
+function buildTimetableAuditLookups(
+    data
+) {
+
+    const periods =
+        new Map();
+
+
+    const streams =
+        new Map();
+
+
+    const subjects =
+        new Map();
+
+
+    const teachers =
+        new Map();
+
+
+    const rooms =
+        new Map();
+
+
+    const requirements =
+        new Map();
+
+
+    // ========================================================
+    // PERIODS
+    // ========================================================
+
+    (data.periods || [])
+        .forEach(
+            period => {
+
+                const id =
+                    normalizeTimetableId(
+                        period?.id
+                    );
+
+
+                if (
+                    id
+                ) {
+
+                    periods.set(
+                        id,
+                        period
+                    );
+
+                }
+
+            }
+        );
+
+
+    // ========================================================
+    // STREAMS
+    // ========================================================
+
+    (data.streams || [])
+        .forEach(
+            stream => {
+
+                const id =
+                    normalizeTimetableId(
+                        stream?.id
+                    );
+
+
+                if (
+                    id
+                ) {
+
+                    streams.set(
+                        id,
+                        stream
+                    );
+
+                }
+
+            }
+        );
+
+
+    // ========================================================
+    // SUBJECTS
+    // ========================================================
+
+    (data.subjects || [])
+        .forEach(
+            subject => {
+
+                const id =
+                    normalizeTimetableId(
+                        subject?.id
+                    );
+
+
+                if (
+                    id
+                ) {
+
+                    subjects.set(
+                        id,
+                        subject
+                    );
+
+                }
+
+            }
+        );
+
+
+    // ========================================================
+    // TEACHERS
+    // ========================================================
+
+    (data.teachers || [])
+        .forEach(
+            teacher => {
+
+                const id =
+                    normalizeTimetableId(
+                        teacher?.id
+                    );
+
+
+                if (
+                    id
+                ) {
+
+                    teachers.set(
+                        id,
+                        teacher
+                    );
+
+                }
+
+            }
+        );
+
+
+    // ========================================================
+    // ROOMS
+    // ========================================================
+
+    (data.rooms || [])
+        .forEach(
+            room => {
+
+                const id =
+                    normalizeTimetableId(
+                        room?.id
+                    );
+
+
+                if (
+                    id
+                ) {
+
+                    rooms.set(
+                        id,
+                        room
+                    );
+
+                }
+
+            }
+        );
+
+
+    // ========================================================
+    // REQUIREMENTS
+    // ========================================================
+
+    (data.requirements || [])
+        .forEach(
+            requirement => {
+
+                const id =
+                    normalizeTimetableId(
+                        requirement?.requirementId
+                    );
+
+
+                if (
+                    id
+                ) {
+
+                    requirements.set(
+                        id,
+                        requirement
+                    );
+
+                }
+
+            }
+        );
+
+
+    return {
+
+        periods,
+
+        streams,
+
+        subjects,
+
+        teachers,
+
+        rooms,
+
+        requirements
+
+    };
+
+}
+
+
+// ============================================================
+// VALIDATE PERIOD REFERENCES
+// ============================================================
+
+function auditGeneratedPeriodReferences(
+    entries,
+    lookups,
+    audit
+) {
+
+    const seenPeriodIds =
+        new Set();
+
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry is invalid.",
+                    {
+                        entryIndex:
+                            index
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            if (
+                !normalized.periodId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry has no period ID.",
+                    {
+                        entryIndex:
+                            index
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            if (
+                !lookups.periods.has(
+                    normalized.periodId
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references a period that does not exist.",
+                    {
+                        entryIndex:
+                            index,
+
+                        periodId:
+                            normalized.periodId
+
+                    }
+                );
+
+            }
+
+
+            seenPeriodIds.add(
+                normalized.periodId
+            );
+
+        }
+    );
+
+
+    return seenPeriodIds;
+
+}
+
+
+// ============================================================
+// AUDIT DUPLICATE GENERATED ENTRIES
+// ============================================================
+//
+// A duplicate is considered the same:
+//
+//     stream + period + subject + teacher + room
+//
+// ============================================================
+
+function auditDuplicateGeneratedEntries(
+    entries,
+    audit
+) {
+
+    const seen =
+        new Set();
+
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized
+            ) {
+
+                return;
+
+            }
+
+
+            const key =
+                [
+                    normalized.streamId,
+                    normalized.periodId,
+                    normalized.subjectId,
+                    normalized.teacherId,
+                    normalized.roomId
+                ]
+                .join(
+                    "__"
+                );
+
+
+            if (
+                seen.has(
+                    key
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "duplicateEntries",
+                    "Duplicate generated timetable entry detected.",
+                    {
+                        entryIndex:
+                            index,
+
+                        key
+
+                    }
+                );
+
+            }
+
+
+            seen.add(
+                key
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT STREAM / PERIOD CONFLICTS
+// ============================================================
+
+function auditStreamPeriodConflicts(
+    entries,
+    audit
+) {
+
+    const occupied =
+        new Map();
+
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.streamId ||
+                !normalized.periodId
+            ) {
+
+                return;
+
+            }
+
+
+            const key =
+                `${normalized.streamId}__${normalized.periodId}`;
+
+
+            if (
+                occupied.has(
+                    key
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "streamConflicts",
+                    "Stream has more than one lesson in the same period.",
+                    {
+                        streamId:
+                            normalized.streamId,
+
+                        periodId:
+                            normalized.periodId,
+
+                        firstEntryIndex:
+                            occupied.get(
+                                key
+                            ),
+
+                        secondEntryIndex:
+                            index
+
+                    }
+                );
+
+            }
+            else {
+
+                occupied.set(
+                    key,
+                    index
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT TEACHER / PERIOD CONFLICTS
+// ============================================================
+
+function auditTeacherPeriodConflicts(
+    entries,
+    audit
+) {
+
+    const occupied =
+        new Map();
+
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.teacherId ||
+                !normalized.periodId
+            ) {
+
+                return;
+
+            }
+
+
+            const key =
+                `${normalized.teacherId}__${normalized.periodId}`;
+
+
+            if (
+                occupied.has(
+                    key
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "teacherConflicts",
+                    "Teacher has more than one lesson in the same period.",
+                    {
+                        teacherId:
+                            normalized.teacherId,
+
+                        periodId:
+                            normalized.periodId,
+
+                        firstEntryIndex:
+                            occupied.get(
+                                key
+                            ),
+
+                        secondEntryIndex:
+                            index
+
+                    }
+                );
+
+            }
+            else {
+
+                occupied.set(
+                    key,
+                    index
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT ROOM / PERIOD CONFLICTS
+// ============================================================
+
+function auditRoomPeriodConflicts(
+    entries,
+    audit
+) {
+
+    const occupied =
+        new Map();
+
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.roomId ||
+                !normalized.periodId
+            ) {
+
+                return;
+
+            }
+
+
+            const key =
+                `${normalized.roomId}__${normalized.periodId}`;
+
+
+            if (
+                occupied.has(
+                    key
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "roomConflicts",
+                    "Room is assigned to more than one lesson in the same period.",
+                    {
+                        roomId:
+                            normalized.roomId,
+
+                        periodId:
+                            normalized.periodId,
+
+                        firstEntryIndex:
+                            occupied.get(
+                                key
+                            ),
+
+                        secondEntryIndex:
+                            index
+
+                    }
+                );
+
+            }
+            else {
+
+                occupied.set(
+                    key,
+                    index
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT REQUIREMENT WEEKLY TOTALS
+// ============================================================
+//
+// Each requirement contains a required number of teaching
+// periods per week.
+//
+// Double task = 2 entries.
+// Single task = 1 entry.
+//
+// Therefore the generated entries must equal:
+//
+//     requirements.lessonsPerWeek
+//
+// ============================================================
+
+function auditRequirementWeeklyTotals(
+    data,
+    entries,
+    audit
+) {
+
+    const counts =
+        new Map();
+
+
+    // ========================================================
+    // BUILD REQUIREMENT → TASK MAPPING
+    // ========================================================
+
+    const taskMap =
+        new Map();
+
+
+    (data.lessonTasks || [])
+        .forEach(
+            task => {
+
+                const requirementId =
+                    normalizeTimetableId(
+                        task?.requirementId
+                    );
+
+
+                if (
+                    !requirementId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !taskMap.has(
+                        requirementId
+                    )
+                ) {
+
+                    taskMap.set(
+                        requirementId,
+                        []
+                    );
+
+                }
+
+
+                taskMap.get(
+                    requirementId
+                ).push(
+                    task
+                );
+
+            }
+        );
+
+
+    // ========================================================
+    // COUNT GENERATED ENTRIES
+    // ========================================================
+
+    entries.forEach(
+        entry => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized
+            ) {
+
+                return;
+
+            }
+
+
+            const matchingTasks = [];
+
+
+            const subjectId =
+                normalized.subjectId;
+
+
+            const streamId =
+                normalized.streamId;
+
+
+            const teacherId =
+                normalized.teacherId;
+
+
+            // ------------------------------------------------
+            // FIND REQUIREMENT
+            // ------------------------------------------------
+            //
+            // Generated entries do not contain requirementId.
+            // We therefore identify the requirement through
+            // stream + subject + teacher.
+            //
+            // ------------------------------------------------
+
+            (data.requirements || [])
+                .forEach(
+                    requirement => {
+
+                        if (
+                            normalizeTimetableId(
+                                requirement.streamId
+                            ) !==
+                            streamId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            normalizeTimetableId(
+                                requirement.subjectId
+                            ) !==
+                            subjectId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const requirementTeacherId =
+                            normalizeTimetableId(
+                                requirement.teacherId
+                            );
+
+
+                        if (
+                            requirementTeacherId &&
+                            requirementTeacherId !==
+                            teacherId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        matchingTasks.push(
+                            requirement
+                        );
+
+                    }
+                );
+
+
+            if (
+                matchingTasks.length === 1
+            ) {
+
+                const requirementId =
+                    normalizeTimetableId(
+                        matchingTasks[0].requirementId
+                    );
+
+
+                counts.set(
+                    requirementId,
+                    (
+                        counts.get(
+                            requirementId
+                        ) || 0
+                    ) + 1
+                );
+
+            }
+            else if (
+                matchingTasks.length === 0
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "requirementTotals",
+                    "Generated entry could not be matched to a timetable requirement.",
+                    {
+                        periodId:
+                            normalized.periodId,
+
+                        streamId,
+
+                        subjectId,
+
+                        teacherId
+
+                    }
+                );
+
+            }
+            else {
+
+                addTimetableAuditError(
+                    audit,
+                    "requirementTotals",
+                    "Generated entry matches multiple timetable requirements.",
+                    {
+                        periodId:
+                            normalized.periodId,
+
+                        streamId,
+
+                        subjectId,
+
+                        teacherId,
+
+                        matchingRequirements:
+                            matchingTasks.map(
+                                requirement =>
+                                    requirement.requirementId
+                            )
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // COMPARE EXPECTED VS ACTUAL
+    // ========================================================
+
+    (data.requirements || [])
+        .forEach(
+            requirement => {
+
+                const requirementId =
+                    normalizeTimetableId(
+                        requirement.requirementId
+                    );
+
+
+                const expected =
+                    Number(
+                        requirement.lessonsPerWeek
+                    ) || 0;
+
+
+                const actual =
+                    counts.get(
+                        requirementId
+                    ) || 0;
+
+
+                if (
+                    expected !==
+                    actual
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "requirementTotals",
+                        "Weekly lesson total does not match the requirement.",
+                        {
+                            requirementId,
+
+                            expected,
+
+                            actual
+
+                        }
+                    );
+
+                }
+
+            }
+        );
+
+}
+
+
+// ============================================================
+// AUDIT DAILY REQUIREMENT LIMITS
+// ============================================================
+
+function auditDailyRequirementLimits(
+    data,
+    entries,
+    audit,
+    lookups
+) {
+
+    const counts =
+        new Map();
+
+
+    entries.forEach(
+        entry => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized
+            ) {
+
+                return;
+
+            }
+
+
+            const period =
+                lookups.periods.get(
+                    normalized.periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const matchingRequirements =
+
+                (data.requirements || [])
+                    .filter(
+                        requirement => {
+
+                            if (
+                                normalizeTimetableId(
+                                    requirement.streamId
+                                ) !==
+                                normalized.streamId
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            if (
+                                normalizeTimetableId(
+                                    requirement.subjectId
+                                ) !==
+                                normalized.subjectId
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            const requirementTeacherId =
+                                normalizeTimetableId(
+                                    requirement.teacherId
+                                );
+
+
+                            return (
+                                !requirementTeacherId ||
+                                requirementTeacherId ===
+                                normalized.teacherId
+                            );
+
+                        }
+                    );
+
+
+            if (
+                matchingRequirements.length !== 1
+            ) {
+
+                return;
+
+            }
+
+
+            const requirementId =
+                normalizeTimetableId(
+                    matchingRequirements[0].requirementId
+                );
+
+
+            const key =
+                `${requirementId}__${Number(period.dayNumber)}`;
+
+
+            counts.set(
+                key,
+                (
+                    counts.get(
+                        key
+                    ) || 0
+                ) + 1
+            );
+
+        }
+    );
+
+
+    counts.forEach(
+        (
+            count,
+            key
+        ) => {
+
+            const separatorIndex =
+                key.lastIndexOf(
+                    "__"
+                );
+
+
+            const requirementId =
+                key.substring(
+                    0,
+                    separatorIndex
+                );
+
+
+            const dayNumber =
+                Number(
+                    key.substring(
+                        separatorIndex + 2
+                    )
+                );
+
+
+            const requirement =
+                lookups.requirements.get(
+                    requirementId
+                );
+
+
+            if (
+                !requirement
+            ) {
+
+                return;
+
+            }
+
+
+            const maxPerDay =
+                Number(
+                    requirement.maxLessonsPerDay
+                ) || 0;
+
+
+            if (
+                maxPerDay > 0 &&
+                count >
+                maxPerDay
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "dailyRequirementLimits",
+                    "Requirement exceeds its maximum daily lesson count.",
+                    {
+                        requirementId,
+
+                        dayNumber,
+
+                        actual:
+                            count,
+
+                        maximum:
+                            maxPerDay
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT TEACHER DAILY LIMITS
+// ============================================================
+
+function auditTeacherDailyLimits(
+    data,
+    entries,
+    audit,
+    lookups
+) {
+
+    const counts =
+        new Map();
+
+
+    entries.forEach(
+        entry => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.teacherId
+            ) {
+
+                return;
+
+            }
+
+
+            const period =
+                lookups.periods.get(
+                    normalized.periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const key =
+                `${normalized.teacherId}__${Number(period.dayNumber)}`;
+
+
+            counts.set(
+                key,
+                (
+                    counts.get(
+                        key
+                    ) || 0
+                ) + 1
+            );
+
+        }
+    );
+
+
+    counts.forEach(
+        (
+            count,
+            key
+        ) => {
+
+            const parts =
+                key.split(
+                    "__"
+                );
+
+
+            const teacherId =
+                parts[0];
+
+
+            const dayNumber =
+                Number(
+                    parts[1]
+                );
+
+
+            const teacher =
+                lookups.teachers.get(
+                    teacherId
+                );
+
+
+            if (
+                !teacher
+            ) {
+
+                return;
+
+            }
+
+
+            const maximum =
+                Number(
+                    teacher.maxLessonsPerDay
+                ) || 0;
+
+
+            if (
+                maximum > 0 &&
+                count >
+                maximum
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "teacherDailyLimits",
+                    "Teacher exceeds maximum lessons per day.",
+                    {
+                        teacherId,
+
+                        dayNumber,
+
+                        actual:
+                            count,
+
+                        maximum
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT TEACHER WEEKLY LIMITS
+// ============================================================
+
+function auditTeacherWeeklyLimits(
+    entries,
+    audit,
+    lookups
+) {
+
+    const counts =
+        new Map();
+
+
+    entries.forEach(
+        entry => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.teacherId
+            ) {
+
+                return;
+
+            }
+
+
+            counts.set(
+                normalized.teacherId,
+                (
+                    counts.get(
+                        normalized.teacherId
+                    ) || 0
+                ) + 1
+            );
+
+        }
+    );
+
+
+    counts.forEach(
+        (
+            count,
+            teacherId
+        ) => {
+
+            const teacher =
+                lookups.teachers.get(
+                    teacherId
+                );
+
+
+            if (
+                !teacher
+            ) {
+
+                return;
+
+            }
+
+
+            const maximum =
+                Number(
+                    teacher.maxLessonsPerWeek
+                ) || 0;
+
+
+            if (
+                maximum > 0 &&
+                count >
+                maximum
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "teacherWeeklyLimits",
+                    "Teacher exceeds maximum lessons per week.",
+                    {
+                        teacherId,
+
+                        actual:
+                            count,
+
+                        maximum
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT TEACHER CONSECUTIVE LIMITS
+// ============================================================
+//
+// Groups each teacher's lessons by day and checks the longest
+// consecutive run using periodOrder.
+//
+// ============================================================
+
+function auditTeacherConsecutiveLimits(
+    entries,
+    audit,
+    lookups
+) {
+
+    const teacherDays =
+        new Map();
+
+
+    // ========================================================
+    // BUILD TEACHER/DAY PERIOD GROUPS
+    // ========================================================
+
+    entries.forEach(
+        entry => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.teacherId
+            ) {
+
+                return;
+
+            }
+
+
+            const period =
+                lookups.periods.get(
+                    normalized.periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const dayNumber =
+                Number(
+                    period.dayNumber
+                );
+
+
+            const key =
+                `${normalized.teacherId}__${dayNumber}`;
+
+
+            if (
+                !teacherDays.has(
+                    key
+                )
+            ) {
+
+                teacherDays.set(
+                    key,
+                    []
+                );
+
+            }
+
+
+            teacherDays.get(
+                key
+            ).push(
+                period
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // ANALYSE EACH TEACHER / DAY
+    // ========================================================
+
+    teacherDays.forEach(
+        (
+            periods,
+            key
+        ) => {
+
+            const separatorIndex =
+                key.lastIndexOf(
+                    "__"
+                );
+
+
+            const teacherId =
+                key.substring(
+                    0,
+                    separatorIndex
+                );
+
+
+            const dayNumber =
+                Number(
+                    key.substring(
+                        separatorIndex + 2
+                    )
+                );
+
+
+            const teacher =
+                lookups.teachers.get(
+                    teacherId
+                );
+
+
+            if (
+                !teacher
+            ) {
+
+                return;
+
+            }
+
+
+            const maximum =
+                Number(
+                    teacher.maxConsecutiveLessons
+                ) || 0;
+
+
+            if (
+                maximum <= 0
+            ) {
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // UNIQUE PERIOD ORDERS
+            // ------------------------------------------------
+
+            const orders =
+                [
+                    ...new Set(
+                        periods.map(
+                            period =>
+                                Number(
+                                    period.periodOrder
+                                )
+                        )
+                    )
+                ]
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        a - b
+                );
+
+
+            let currentRun =
+                0;
+
+
+            let longestRun =
+                0;
+
+
+            let previousOrder =
+                null;
+
+
+            orders.forEach(
+                order => {
+
+                    if (
+                        previousOrder !== null &&
+                        order ===
+                        previousOrder + 1
+                    ) {
+
+                        currentRun++;
+
+                    }
+                    else {
+
+                        currentRun = 1;
+
+                    }
+
+
+                    longestRun =
+                        Math.max(
+                            longestRun,
+                            currentRun
+                        );
+
+
+                    previousOrder =
+                        order;
+
+                }
+            );
+
+
+            if (
+                longestRun >
+                maximum
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "teacherConsecutiveLimits",
+                    "Teacher exceeds maximum consecutive lessons.",
+                    {
+                        teacherId,
+
+                        dayNumber,
+
+                        longestRun,
+
+                        maximum
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT DOUBLE LESSON STRUCTURE
+// ============================================================
+//
+// Uses the original lessonTasks and the generated entries.
+//
+// Each double task must have exactly TWO entries belonging
+// to the same requirement, same teacher/stream/subject and
+// consecutive teaching periods.
+//
+// ============================================================
+
+function auditDoubleLessonStructure(
+    data,
+    result,
+    audit,
+    lookups
+) {
+
+    const entries =
+        Array.isArray(
+            result?.entries
+        )
+            ? result.entries
+            : [];
+
+
+    const placedTasks =
+        Array.isArray(
+            result?.placedTasks
+        )
+            ? result.placedTasks
+            : [];
+
+
+    // ========================================================
+    // TASK → GENERATED ENTRIES
+    // ========================================================
+    //
+    // Stage 6F stores the entries on placedTasks, so use that
+    // authoritative relationship rather than trying to
+    // reconstruct it from UUID combinations.
+    //
+    // ========================================================
+
+    placedTasks.forEach(
+        placement => {
+
+            const task =
+                placement?.task;
+
+
+            if (
+                !task ||
+                task.taskType !== "double"
+            ) {
+
+                return;
+
+            }
+
+
+            const taskEntries =
+                Array.isArray(
+                    placement.entries
+                )
+                    ? placement.entries
+                    : [];
+
+
+            // ------------------------------------------------
+            // MUST HAVE TWO ENTRIES
+            // ------------------------------------------------
+
+            if (
+                taskEntries.length !== 2
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson does not contain exactly two generated entries.",
+                    {
+                        taskId:
+                            task.taskId,
+
+                        actualEntries:
+                            taskEntries.length
+
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            const first =
+                normalizeGeneratedTimetableEntry(
+                    taskEntries[0]
+                );
+
+
+            const second =
+                normalizeGeneratedTimetableEntry(
+                    taskEntries[1]
+                );
+
+
+            if (
+                !first ||
+                !second
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson contains an invalid generated entry.",
+                    {
+                        taskId:
+                            task.taskId
+
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            const firstPeriod =
+                lookups.periods.get(
+                    first.periodId
+                );
+
+
+            const secondPeriod =
+                lookups.periods.get(
+                    second.periodId
+                );
+
+
+            if (
+                !firstPeriod ||
+                !secondPeriod
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson references a missing period.",
+                    {
+                        taskId:
+                            task.taskId
+
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // SAME DAY
+            // ------------------------------------------------
+
+            if (
+                Number(firstPeriod.dayNumber) !==
+                Number(secondPeriod.dayNumber)
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson periods are on different days.",
+                    {
+                        taskId:
+                            task.taskId,
+
+                        firstPeriodId:
+                            first.periodId,
+
+                        secondPeriodId:
+                            second.periodId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // CONSECUTIVE
+            // ------------------------------------------------
+
+            if (
+                !arePeriodsConsecutive(
+                    firstPeriod,
+                    secondPeriod
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson periods are not consecutive.",
+                    {
+                        taskId:
+                            task.taskId,
+
+                        firstPeriodId:
+                            first.periodId,
+
+                        secondPeriodId:
+                            second.periodId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SAME ROOM
+            // ------------------------------------------------
+
+            if (
+                first.roomId !==
+                second.roomId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson changes room between its two periods.",
+                    {
+                        taskId:
+                            task.taskId,
+
+                        firstRoomId:
+                            first.roomId,
+
+                        secondRoomId:
+                            second.roomId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SAME STREAM
+            // ------------------------------------------------
+
+            if (
+                first.streamId !==
+                second.streamId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson changes stream between its two periods.",
+                    {
+                        taskId:
+                            task.taskId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SAME SUBJECT
+            // ------------------------------------------------
+
+            if (
+                first.subjectId !==
+                second.subjectId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson changes subject between its two periods.",
+                    {
+                        taskId:
+                            task.taskId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SAME TEACHER
+            // ------------------------------------------------
+
+            if (
+                first.teacherId !==
+                second.teacherId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson changes teacher between its two periods.",
+                    {
+                        taskId:
+                            task.taskId
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT ROOM TYPE REQUIREMENTS
+// ============================================================
+
+function auditRoomTypeRequirements(
+    data,
+    entries,
+    audit,
+    lookups
+) {
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized
+            ) {
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // MATCH REQUIREMENT
+            // ------------------------------------------------
+
+            const matchingRequirements =
+                (data.requirements || [])
+                    .filter(
+                        requirement => {
+
+                            if (
+                                normalizeTimetableId(
+                                    requirement.streamId
+                                ) !==
+                                normalized.streamId
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            if (
+                                normalizeTimetableId(
+                                    requirement.subjectId
+                                ) !==
+                                normalized.subjectId
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            const requirementTeacherId =
+                                normalizeTimetableId(
+                                    requirement.teacherId
+                                );
+
+
+                            return (
+                                !requirementTeacherId ||
+                                requirementTeacherId ===
+                                normalized.teacherId
+                            );
+
+                        }
+                    );
+
+
+            if (
+                matchingRequirements.length !== 1
+            ) {
+
+                return;
+
+            }
+
+
+            const requirement =
+                matchingRequirements[0];
+
+
+            // ------------------------------------------------
+            // NO ROOM REQUIRED
+            // ------------------------------------------------
+
+            if (
+                !requirement.requiresRoom
+            ) {
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM MUST EXIST
+            // ------------------------------------------------
+
+            if (
+                !normalized.roomId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "roomTypes",
+                    "Requirement requires a room but generated entry has no room.",
+                    {
+                        entryIndex:
+                            index,
+
+                        requirementId:
+                            requirement.requirementId
+
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            const room =
+                lookups.rooms.get(
+                    normalized.roomId
+                );
+
+
+            if (
+                !room
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "roomTypes",
+                    "Generated entry references a room that does not exist.",
+                    {
+                        entryIndex:
+                            index,
+
+                        roomId:
+                            normalized.roomId
+
+                    }
+                );
+
+
+                return;
+
+            }
+
+
+            const expectedType =
+                normalizeRoomType(
+                    requirement.roomType
+                );
+
+
+            const actualType =
+                normalizeRoomType(
+                    getTimetableRoomType(
+                        room
+                    )
+                );
+
+
+            if (
+                expectedType &&
+                expectedType !==
+                actualType
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "roomTypes",
+                    "Generated room does not match the requirement room type.",
+                    {
+                        entryIndex:
+                            index,
+
+                        requirementId:
+                            requirement.requirementId,
+
+                        expectedType,
+
+                        actualType,
+
+                        roomId:
+                            normalized.roomId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM AVAILABILITY FLAG
+            // ------------------------------------------------
+
+            if (
+                room.available === false
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "roomTypes",
+                    "Generated timetable uses a room marked unavailable.",
+                    {
+                        entryIndex:
+                            index,
+
+                        roomId:
+                            normalized.roomId
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// AUDIT BASIC ENTITY REFERENCES
+// ============================================================
+
+function auditGeneratedEntityReferences(
+    entries,
+    audit,
+    lookups
+) {
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized
+            ) {
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // STREAM
+            // ------------------------------------------------
+
+            if (
+                !normalized.streamId ||
+                !lookups.streams.has(
+                    normalized.streamId
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references an invalid stream.",
+                    {
+                        entryIndex:
+                            index,
+
+                        streamId:
+                            normalized.streamId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SUBJECT
+            // ------------------------------------------------
+
+            if (
+                !normalized.subjectId ||
+                !lookups.subjects.has(
+                    normalized.subjectId
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references an invalid subject.",
+                    {
+                        entryIndex:
+                            index,
+
+                        subjectId:
+                            normalized.subjectId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // TEACHER
+            // ------------------------------------------------
+
+            if (
+                normalized.teacherId &&
+                !lookups.teachers.has(
+                    normalized.teacherId
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references an invalid teacher.",
+                    {
+                        entryIndex:
+                            index,
+
+                        teacherId:
+                            normalized.teacherId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM
+            // ------------------------------------------------
+
+            if (
+                normalized.roomId &&
+                !lookups.rooms.has(
+                    normalized.roomId
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references an invalid room.",
+                    {
+                        entryIndex:
+                            index,
+
+                        roomId:
+                            normalized.roomId
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// BUILD HUMAN-READABLE AUDIT TABLE
+// ============================================================
+
+function buildTimetableAuditEntryTable(
+    result,
+    lookups
+) {
+
+    const rows = [];
+
+
+    (result?.placedTasks || [])
+        .forEach(
+            placement => {
+
+                const task =
+                    placement?.task;
+
+
+                const entries =
+                    Array.isArray(
+                        placement?.entries
+                    )
+                        ? placement.entries
+                        : [];
+
+
+                entries.forEach(
+                    entry => {
+
+                        const normalized =
+                            normalizeGeneratedTimetableEntry(
+                                entry
+                            );
+
+
+                        if (
+                            !normalized
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const period =
+                            lookups.periods.get(
+                                normalized.periodId
+                            );
+
+
+                        const stream =
+                            lookups.streams.get(
+                                normalized.streamId
+                            );
+
+
+                        const subject =
+                            lookups.subjects.get(
+                                normalized.subjectId
+                            );
+
+
+                        const teacher =
+                            normalized.teacherId
+                                ? lookups.teachers.get(
+                                    normalized.teacherId
+                                )
+                                : null;
+
+
+                        const room =
+                            normalized.roomId
+                                ? lookups.rooms.get(
+                                    normalized.roomId
+                                )
+                                : null;
+
+
+                        rows.push({
+
+                            taskId:
+                                task?.taskId ||
+                                null,
+
+                            type:
+                                task?.taskType ||
+                                null,
+
+                            day:
+                                period?.dayName ||
+                                period?.dayNumber ||
+                                null,
+
+                            period:
+                                period?.periodNumber ||
+                                null,
+
+                            periodOrder:
+                                period?.periodOrder ||
+                                null,
+
+                            stream:
+                                getTimetableStreamName(
+                                    stream
+                                ) ||
+                                normalized.streamId,
+
+                            subject:
+                                getTimetableSubjectName(
+                                    subject
+                                ) ||
+                                normalized.subjectId,
+
+                            teacher:
+                                teacher
+                                    ? getTimetableTeacherName(
+                                        teacher
+                                    )
+                                    : "Unassigned",
+
+                            room:
+                                room?.name ||
+                                room?.room_name ||
+                                normalized.roomId ||
+                                "None"
+
+                        });
+
+                    }
+                );
+
+            }
+        );
+
+
+    return rows;
+
+}
+
+
+// ============================================================
+// RUN COMPLETE STAGE 6G AUDIT
+// ============================================================
+
+function auditGeneratedTimetable(
+    data,
+    result
+) {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6G — FINAL TIMETABLE CONSTRAINT AUDIT"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    // ========================================================
+    // BASIC INPUT VALIDATION
+    // ========================================================
+
+    if (
+        !data ||
+        !result
+    ) {
+
+        throw new Error(
+            "Cannot audit timetable: data or generation result is missing."
+        );
+
+    }
+
+
+    const audit =
+        createTimetableAuditResult();
+
+
+    const entries =
+        Array.isArray(
+            result.entries
+        )
+            ? result.entries
+            : [];
+
+
+    audit.statistics.totalEntries =
+        entries.length;
+
+
+    audit.statistics.totalTasks =
+        Array.isArray(
+            data.lessonTasks
+        )
+            ? data.lessonTasks.length
+            : 0;
+
+
+    audit.statistics.placedTasks =
+        result.statistics?.placedTasks ||
+        0;
+
+
+    audit.statistics.failedTasks =
+        result.statistics?.failedTasks ||
+        0;
+
+
+    const lookups =
+        buildTimetableAuditLookups(
+            data
+        );
+
+
+    audit.statistics.auditedPeriods =
+        lookups.periods.size;
+
+
+    audit.statistics.auditedRequirements =
+        lookups.requirements.size;
+
+
+    audit.statistics.auditedTeachers =
+        lookups.teachers.size;
+
+
+    audit.statistics.auditedRooms =
+        lookups.rooms.size;
+
+
+    // ========================================================
+    // 1. PERIOD REFERENCES
+    // ========================================================
+
+    auditGeneratedPeriodReferences(
+        entries,
+        lookups,
+        audit
+    );
+
+
+    auditGeneratedEntityReferences(
+        entries,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // 2. DUPLICATE ENTRIES
+    // ========================================================
+
+    auditDuplicateGeneratedEntries(
+        entries,
+        audit
+    );
+
+
+    // ========================================================
+    // 3. STREAM CONFLICTS
+    // ========================================================
+
+    auditStreamPeriodConflicts(
+        entries,
+        audit
+    );
+
+
+    // ========================================================
+    // 4. TEACHER CONFLICTS
+    // ========================================================
+
+    auditTeacherPeriodConflicts(
+        entries,
+        audit
+    );
+
+
+    // ========================================================
+    // 5. ROOM CONFLICTS
+    // ========================================================
+
+    auditRoomPeriodConflicts(
+        entries,
+        audit
+    );
+
+
+    // ========================================================
+    // 6. REQUIREMENT WEEKLY TOTALS
+    // ========================================================
+
+    auditRequirementWeeklyTotals(
+        data,
+        entries,
+        audit
+    );
+
+
+    // ========================================================
+    // 7. DAILY REQUIREMENT LIMITS
+    // ========================================================
+
+    auditDailyRequirementLimits(
+        data,
+        entries,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // 8. TEACHER DAILY LIMITS
+    // ========================================================
+
+    auditTeacherDailyLimits(
+        data,
+        entries,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // 9. TEACHER WEEKLY LIMITS
+    // ========================================================
+
+    auditTeacherWeeklyLimits(
+        entries,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // 10. TEACHER CONSECUTIVE LIMITS
+    // ========================================================
+
+    auditTeacherConsecutiveLimits(
+        entries,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // 11. DOUBLE LESSON STRUCTURE
+    // ========================================================
+
+    auditDoubleLessonStructure(
+        data,
+        result,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // 12. ROOM TYPE REQUIREMENTS
+    // ========================================================
+
+    auditRoomTypeRequirements(
+        data,
+        entries,
+        audit,
+        lookups
+    );
+
+
+    // ========================================================
+    // BUILD HUMAN-READABLE TABLE
+    // ========================================================
+
+    const entryTable =
+        buildTimetableAuditEntryTable(
+            result,
+            lookups
+        );
+
+
+    // ========================================================
+    // SUMMARY
+    // ========================================================
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6G — AUDIT SUMMARY"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.log(
+        "Total generated entries:",
+        audit.statistics.totalEntries
+    );
+
+
+    console.log(
+        "Total tasks:",
+        audit.statistics.totalTasks
+    );
+
+
+    console.log(
+        "Placed tasks:",
+        audit.statistics.placedTasks
+    );
+
+
+    console.log(
+        "Failed tasks:",
+        audit.statistics.failedTasks
+    );
+
+
+    console.log(
+        "Errors:",
+        audit.errors.length
+    );
+
+
+    console.log(
+        "Warnings:",
+        audit.warnings.length
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+
+    // ========================================================
+    // CHECK STATUS
+    // ========================================================
+
+    console.table({
+
+        "Requirement weekly totals":
+            audit.checks.requirementTotals,
+
+        "Double lessons":
+            audit.checks.doubleLessons,
+
+        "Stream conflicts":
+            audit.checks.streamConflicts,
+
+        "Teacher conflicts":
+            audit.checks.teacherConflicts,
+
+        "Room conflicts":
+            audit.checks.roomConflicts,
+
+        "Daily requirement limits":
+            audit.checks.dailyRequirementLimits,
+
+        "Teacher daily limits":
+            audit.checks.teacherDailyLimits,
+
+        "Teacher weekly limits":
+            audit.checks.teacherWeeklyLimits,
+
+        "Teacher consecutive limits":
+            audit.checks.teacherConsecutiveLimits,
+
+        "Room types":
+            audit.checks.roomTypes,
+
+        "Duplicate entries":
+            audit.checks.duplicateEntries,
+
+        "Period references":
+            audit.checks.periodReferences
+
+    });
+
+
+    // ========================================================
+    // HUMAN-READABLE GENERATED TABLE
+    // ========================================================
+
+    if (
+        entryTable.length > 0
+    ) {
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "GENERATED TIMETABLE AUDIT TABLE"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            entryTable
+        );
+
+    }
+
+
+    // ========================================================
+    // ERROR TABLE
+    // ========================================================
+
+    if (
+        audit.errors.length > 0
+    ) {
+
+        console.log(
+            "======================================"
+        );
+
+        console.error(
+            "TIMETABLE AUDIT ERRORS"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            audit.errors
+        );
+
+    }
+
+
+    // ========================================================
+    // WARNING TABLE
+    // ========================================================
+
+    if (
+        audit.warnings.length > 0
+    ) {
+
+        console.log(
+            "======================================"
+        );
+
+        console.warn(
+            "TIMETABLE AUDIT WARNINGS"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            audit.warnings
+        );
+
+    }
+
+
+    // ========================================================
+    // FINAL STATUS
+    // ========================================================
+
+    if (
+        audit.valid
+    ) {
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "✅ TIMETABLE AUDIT PASSED"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+    }
+    else {
+
+        console.error(
+            "======================================"
+        );
+
+        console.error(
+            "❌ TIMETABLE AUDIT FAILED"
+        );
+
+        console.error(
+            "======================================"
+        );
+
+    }
+
+
+    return audit;
+
+}
 
 
 
