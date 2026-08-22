@@ -3940,20 +3940,18 @@ function incrementDailyRequirementLessonCount(
 // CREATE OCCUPANCY INDEXES
 // ============================================================
 
-
 // ============================================================
 // CREATE OCCUPANCY INDEXES
 // ============================================================
 
-function createOccupancyIndexes() {
+function createOccupancyIndexes(
+    data = null
+) {
 
-    return {
+    const indexes = {
 
         // ----------------------------------------------------
         // STREAM / PERIOD
-        //
-        // Prevents one stream from having two lessons
-        // in the same period.
         // ----------------------------------------------------
 
         streamPeriod:
@@ -3962,9 +3960,6 @@ function createOccupancyIndexes() {
 
         // ----------------------------------------------------
         // TEACHER / PERIOD
-        //
-        // Prevents one teacher from teaching two streams
-        // in the same period.
         // ----------------------------------------------------
 
         teacherPeriod:
@@ -3973,9 +3968,6 @@ function createOccupancyIndexes() {
 
         // ----------------------------------------------------
         // ROOM / PERIOD
-        //
-        // Prevents one room from being used twice
-        // in the same period.
         // ----------------------------------------------------
 
         roomPeriod:
@@ -3984,21 +3976,105 @@ function createOccupancyIndexes() {
 
         // ----------------------------------------------------
         // REQUIREMENT / DAY
-        //
-        // Tracks daily lesson limits independently for
-        // each timetable requirement.
-        //
-        // Example:
-        //
-        // Mathematics + Grade 9A + Monday = 2
-        // Biology     + Grade 9A + Monday = 2
-        //
         // ----------------------------------------------------
 
         dailyRequirementLessons:
+            new Map(),
+
+
+        // ----------------------------------------------------
+        // NORMALIZED PERIODS
+        // ----------------------------------------------------
+        //
+        // Used by teacher consecutive-lesson validation.
+        //
+        // ----------------------------------------------------
+
+        periods:
+            Array.isArray(
+                data?.periods
+            )
+                ? data.periods
+                : [],
+
+
+        // ----------------------------------------------------
+        // TEACHER WORKLOAD LIMITS
+        // ----------------------------------------------------
+        //
+        // Stores:
+        //
+        //     maxLessonsPerDay
+        //     maxLessonsPerWeek
+        //     maxConsecutiveLessons
+        //
+        // These are used by hard-placement validation.
+        //
+        // ----------------------------------------------------
+
+        teacherLimits:
             new Map()
 
     };
+
+
+    // ========================================================
+    // BUILD TEACHER LIMIT MAP
+    // ========================================================
+
+    if (
+        Array.isArray(
+            data?.teachers
+        )
+    ) {
+
+        data.teachers.forEach(
+            teacher => {
+
+                const teacherId =
+                    normalizeTimetableId(
+                        teacher?.id
+                    );
+
+
+                if (
+                    !teacherId
+                ) {
+
+                    return;
+
+                }
+
+
+                indexes.teacherLimits.set(
+                    teacherId,
+                    {
+
+                        maxLessonsPerDay:
+                            Number(
+                                teacher.maxLessonsPerDay
+                            ) || 0,
+
+                        maxLessonsPerWeek:
+                            Number(
+                                teacher.maxLessonsPerWeek
+                            ) || 0,
+
+                        maxConsecutiveLessons:
+                            Number(
+                                teacher.maxConsecutiveLessons
+                            ) || 0
+
+                    }
+                );
+
+            }
+        );
+
+    }
+
+
+    return indexes;
 
 }
 
@@ -4010,7 +4086,554 @@ function createOccupancyIndexes() {
 
 
 
+// ============================================================
+// GET TEACHER MAX CONSECUTIVE LESSONS
+// ============================================================
 
+function getTeacherMaxConsecutiveLessons(
+    indexes,
+    teacherId
+) {
+
+    if (
+        !indexes ||
+        !indexes.teacherLimits ||
+        !teacherId
+    ) {
+
+        return 0;
+
+    }
+
+
+    const normalizedTeacherId =
+        normalizeTimetableId(
+            teacherId
+        );
+
+
+    const limits =
+        indexes.teacherLimits.get(
+            normalizedTeacherId
+        );
+
+
+    return Number(
+        limits?.maxConsecutiveLessons
+    ) || 0;
+
+}
+
+
+// ============================================================
+// GET PERIOD BY ID FROM OCCUPANCY INDEXES
+// ============================================================
+
+function getIndexedPeriod(
+    indexes,
+    periodId
+) {
+
+    if (
+        !indexes ||
+        !Array.isArray(indexes.periods) ||
+        !periodId
+    ) {
+
+        return null;
+
+    }
+
+
+    const normalizedPeriodId =
+        normalizeTimetableId(
+            periodId
+        );
+
+
+    return (
+        indexes.periods.find(
+            period =>
+                normalizeTimetableId(
+                    period?.id
+                ) ===
+                normalizedPeriodId
+        ) ||
+        null
+    );
+
+}
+
+
+// ============================================================
+// GET TEACHER'S CURRENT PERIODS
+// ============================================================
+
+function getTeacherOccupiedPeriods(
+    indexes,
+    teacherId
+) {
+
+    if (
+        !indexes ||
+        !indexes.teacherPeriod ||
+        !teacherId
+    ) {
+
+        return [];
+
+    }
+
+
+    const normalizedTeacherId =
+        normalizeTimetableId(
+            teacherId
+        );
+
+
+    const prefix =
+        `${normalizedTeacherId}__`;
+
+
+    const periods = [];
+
+
+    indexes.teacherPeriod.forEach(
+        key => {
+
+            if (
+                !key.startsWith(
+                    prefix
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            const periodId =
+                key.substring(
+                    prefix.length
+                );
+
+
+            const period =
+                getIndexedPeriod(
+                    indexes,
+                    periodId
+                );
+
+
+            if (
+                period
+            ) {
+
+                periods.push(
+                    period
+                );
+
+            }
+
+        }
+    );
+
+
+    return periods;
+
+}
+
+
+// ============================================================
+// CALCULATE LONGEST CONSECUTIVE PERIOD RUN
+// ============================================================
+//
+// Returns the longest sequence of consecutive teaching
+// periods for the supplied periods.
+//
+// Consecutive means:
+//
+//     same day
+//     AND
+//     next periodOrder = previous periodOrder + 1
+//
+// This intentionally uses the SAME definition as:
+//
+//     arePeriodsConsecutive()
+//
+// ============================================================
+
+function calculateLongestConsecutivePeriodRun(
+    periods
+) {
+
+    if (
+        !Array.isArray(periods) ||
+        periods.length === 0
+    ) {
+
+        return 0;
+
+    }
+
+
+    const dayGroups =
+        new Map();
+
+
+    // ========================================================
+    // GROUP BY DAY
+    // ========================================================
+
+    periods.forEach(
+        period => {
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const dayNumber =
+                Number(
+                    period.dayNumber
+                );
+
+
+            const periodOrder =
+                Number(
+                    period.periodOrder
+                );
+
+
+            if (
+                !Number.isFinite(dayNumber) ||
+                !Number.isFinite(periodOrder)
+            ) {
+
+                return;
+
+            }
+
+
+            if (
+                !dayGroups.has(
+                    dayNumber
+                )
+            ) {
+
+                dayGroups.set(
+                    dayNumber,
+                    []
+                );
+
+            }
+
+
+            dayGroups.get(
+                dayNumber
+            ).push(
+                periodOrder
+            );
+
+        }
+    );
+
+
+    let longestRun =
+        0;
+
+
+    // ========================================================
+    // ANALYSE EACH DAY
+    // ========================================================
+
+    dayGroups.forEach(
+        orders => {
+
+            // ------------------------------------------------
+            // REMOVE DUPLICATES
+            // ------------------------------------------------
+
+            const uniqueOrders =
+                [
+                    ...new Set(
+                        orders
+                    )
+                ]
+                .sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        a - b
+                );
+
+
+            if (
+                uniqueOrders.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            let currentRun =
+                1;
+
+
+            let dayLongestRun =
+                1;
+
+
+            // ------------------------------------------------
+            // FIND LONGEST CONSECUTIVE RUN
+            // ------------------------------------------------
+
+            for (
+                let i = 1;
+                i < uniqueOrders.length;
+                i++
+            ) {
+
+                if (
+                    uniqueOrders[i] ===
+                    uniqueOrders[i - 1] + 1
+                ) {
+
+                    currentRun++;
+
+                }
+                else {
+
+                    currentRun = 1;
+
+                }
+
+
+                dayLongestRun =
+                    Math.max(
+                        dayLongestRun,
+                        currentRun
+                    );
+
+            }
+
+
+            longestRun =
+                Math.max(
+                    longestRun,
+                    dayLongestRun
+                );
+
+        }
+    );
+
+
+    return longestRun;
+
+}
+
+
+// ============================================================
+// CHECK TEACHER CONSECUTIVE LIMIT
+// ============================================================
+//
+// Returns:
+//
+//     true
+//         if placing the candidate period(s) WOULD exceed
+//         the teacher's maximum consecutive lesson limit.
+//
+//     false
+//         if the limit would not be exceeded.
+//
+// ============================================================
+
+function wouldExceedTeacherConsecutiveLimit(
+    task,
+    candidatePeriods,
+    indexes
+) {
+
+    if (
+        !task ||
+        !Array.isArray(candidatePeriods) ||
+        candidatePeriods.length === 0 ||
+        !indexes
+    ) {
+
+        return false;
+
+    }
+
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId
+        );
+
+
+    // --------------------------------------------------------
+    // No teacher = no teacher consecutive constraint.
+    // --------------------------------------------------------
+
+    if (
+        !teacherId
+    ) {
+
+        return false;
+
+    }
+
+
+    const maximum =
+        getTeacherMaxConsecutiveLessons(
+            indexes,
+            teacherId
+        );
+
+
+    // --------------------------------------------------------
+    // No configured limit = no hard constraint.
+    // --------------------------------------------------------
+
+    if (
+        maximum <= 0
+    ) {
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // CURRENT TEACHER PERIODS
+    // ========================================================
+
+    const occupiedPeriods =
+        getTeacherOccupiedPeriods(
+            indexes,
+            teacherId
+        );
+
+
+    // ========================================================
+    // PROJECTED TEACHER PERIODS
+    // ========================================================
+    //
+    // Add the candidate period(s) to the currently occupied
+    // periods.
+    //
+    // No duplicate period IDs are added.
+    //
+    // ========================================================
+
+    const projectedPeriodMap =
+        new Map();
+
+
+    occupiedPeriods.forEach(
+        period => {
+
+            projectedPeriodMap.set(
+                normalizeTimetableId(
+                    period.id
+                ),
+                period
+            );
+
+        }
+    );
+
+
+    candidatePeriods.forEach(
+        period => {
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            projectedPeriodMap.set(
+                normalizeTimetableId(
+                    period.id
+                ),
+                period
+            );
+
+        }
+    );
+
+
+    const projectedPeriods =
+        [
+            ...projectedPeriodMap.values()
+        ];
+
+
+    // ========================================================
+    // CALCULATE PROJECTED LONGEST RUN
+    // ========================================================
+
+    const longestRun =
+        calculateLongestConsecutivePeriodRun(
+            projectedPeriods
+        );
+
+
+    return (
+        longestRun >
+        maximum
+    );
+
+}
+
+
+// ============================================================
+// GET TEACHER CONSECUTIVE CONFLICT REASON
+// ============================================================
+
+function getTeacherConsecutiveConflictReason(
+    task,
+    indexes
+) {
+
+    const maximum =
+        getTeacherMaxConsecutiveLessons(
+            indexes,
+            task?.teacherId
+        );
+
+
+    if (
+        maximum <= 0
+    ) {
+
+        return "";
+    }
+
+
+    return (
+
+        `Teacher would exceed the maximum of ` +
+        `${maximum} consecutive lessons.`
+
+    );
+
+}
+
+// ============================================================
+// CHECK SINGLE SLOT CONFLICT
+// ============================================================
 
 // ============================================================
 // CHECK SINGLE SLOT CONFLICT
@@ -4121,6 +4744,46 @@ function checkSingleSlotConflict(
 
 
     // ========================================================
+    // TEACHER CONSECUTIVE LESSON LIMIT
+    // ========================================================
+
+    if (
+        teacherId
+    ) {
+
+        const wouldExceedConsecutive =
+            wouldExceedTeacherConsecutiveLimit(
+                task,
+                [
+                    period
+                ],
+                indexes
+            );
+
+
+        if (
+            wouldExceedConsecutive
+        ) {
+
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    getTeacherConsecutiveConflictReason(
+                        task,
+                        indexes
+                    )
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
     // ROOM
     // ========================================================
 
@@ -4155,71 +4818,48 @@ function checkSingleSlotConflict(
 
 
     // ========================================================
-    // DAILY LIMIT
+    // REQUIREMENT DAILY LIMIT
     // ========================================================
 
-
-
-// ========================================================
-// REQUIREMENT DAILY LIMIT
-// ========================================================
-//
-// IMPORTANT:
-//
-// maxLessonsPerDay belongs to the requirement.
-//
-// Therefore we check:
-//
-// requirement + day
-//
-// rather than:
-//
-// stream + day
-//
-// This allows a stream to have many different subjects
-// on the same day while still respecting each subject's
-// individual daily limit.
-// ========================================================
-
-const requirementId =
-    normalizeTimetableId(
-        task.requirementId
-    );
-
-
-const maxPerDay =
-    Number(
-        task.maxLessonsPerDay
-    ) || 0;
-
-
-if (
-    requirementId &&
-    maxPerDay > 0
-) {
-
-    const currentCount =
-        getDailyRequirementLessonCount(
-            indexes,
-            requirementId,
-            period.dayNumber
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
         );
 
 
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 0;
+
+
     if (
-        currentCount >=
-        maxPerDay
+        requirementId &&
+        maxPerDay > 0
     ) {
 
-        return {
+        const currentCount =
+            getDailyRequirementLessonCount(
+                indexes,
+                requirementId,
+                period.dayNumber
+            );
 
-            valid:
-                false,
 
-            reason:
-                "Maximum daily lessons reached for this requirement."
+        if (
+            currentCount >=
+            maxPerDay
+        ) {
 
-      };
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    "Maximum daily lessons reached for this requirement."
+
+            };
 
         }
 
@@ -4241,6 +4881,7 @@ if (
     };
 
 }
+
 
 // ============================================================
 // RESERVE SLOT
@@ -4636,6 +5277,23 @@ function getConsecutiveTeachingPeriodPairs(
 //
 // ============================================================
 
+// ============================================================
+// CHECK DOUBLE LESSON CONFLICT
+// ============================================================
+//
+// Checks BOTH periods of a double lesson.
+//
+// A double lesson is valid only if:
+//
+// - the periods are consecutive
+// - the stream is free in both periods
+// - the teacher is free in both periods
+// - the teacher consecutive limit is respected
+// - the room is free in both periods
+// - the requirement daily limit is respected
+//
+// ============================================================
+
 function checkDoubleLessonConflict(
     task,
     firstPeriod,
@@ -4787,10 +5445,10 @@ function checkDoubleLessonConflict(
     // CHECK SECOND PERIOD
     // ========================================================
     //
-    // We must check stream, teacher and room conflicts.
+    // The first period has already passed
+    // checkSingleSlotConflict().
     //
-    // We deliberately handle the daily requirement limit
-    // above because this double lesson occupies TWO periods.
+    // The second period must now be checked independently.
     //
     // ========================================================
 
@@ -4805,6 +5463,10 @@ function checkDoubleLessonConflict(
             secondPeriod.id
         );
 
+
+    // ========================================================
+    // STREAM
+    // ========================================================
 
     const streamKey =
         `${streamId}__${secondPeriodId}`;
@@ -4860,6 +5522,56 @@ function checkDoubleLessonConflict(
 
                 reason:
                     "Teacher is already occupied in the second period."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // TEACHER CONSECUTIVE LESSON LIMIT
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // A double lesson occupies TWO consecutive periods.
+    //
+    // Therefore we must evaluate BOTH candidate periods
+    // together against the teacher's existing timetable.
+    //
+    // ========================================================
+
+    if (
+        teacherId
+    ) {
+
+        const wouldExceedConsecutive =
+            wouldExceedTeacherConsecutiveLimit(
+                task,
+                [
+                    firstPeriod,
+                    secondPeriod
+                ],
+                indexes
+            );
+
+
+        if (
+            wouldExceedConsecutive
+        ) {
+
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    getTeacherConsecutiveConflictReason(
+                        task,
+                        indexes
+                    )
 
             };
 
@@ -10505,9 +11217,10 @@ function generateSmartTimetable(
     // CREATE FRESH OCCUPANCY INDEXES
     // ========================================================
 
-    const indexes =
-        createOccupancyIndexes();
-
+   const indexes =
+    createOccupancyIndexes(
+        data
+    );
 
     // ========================================================
     // CREATE RESULT
