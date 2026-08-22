@@ -2134,6 +2134,309 @@ function logTimetableGeneratorSummary(data) {
 
 
 // ============================================================
+// VALIDATE TIMETABLE GENERATOR DATA
+// ============================================================
+//
+// Performs basic structural validation of normalized
+// generator data.
+//
+// This function is intentionally separate from:
+//
+//     validateTimetablePeriods()
+//     validateGeneratorRelationships()
+//     validateLessonTasks()
+//
+// Those functions perform deeper validation.
+//
+// This function checks that the main generator data
+// collections exist and contain sensible values.
+//
+// ============================================================
+
+function validateTimetableGeneratorData(
+    data
+) {
+
+    const errors = [];
+
+
+    const warnings = [];
+
+
+    // ========================================================
+    // BASIC OBJECT VALIDATION
+    // ========================================================
+
+    if (
+        !data ||
+        typeof data !== "object"
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            errors:
+                [
+                    "Generator data is missing or invalid."
+                ],
+
+            warnings
+
+        };
+
+    }
+
+
+    // ========================================================
+    // SCHOOL
+    // ========================================================
+
+    if (
+        !data.schoolId
+    ) {
+
+        errors.push(
+            "No school ID is available for timetable generation."
+        );
+
+    }
+
+
+    // ========================================================
+    // COLLECTION VALIDATION
+    // ========================================================
+
+    const collections = [
+
+        {
+            name:
+                "streams",
+
+            value:
+                data.streams
+        },
+
+        {
+            name:
+                "subjects",
+
+            value:
+                data.subjects
+        },
+
+        {
+            name:
+                "teachers",
+
+            value:
+                data.teachers
+        },
+
+        {
+            name:
+                "rooms",
+
+            value:
+                data.rooms
+        },
+
+        {
+            name:
+                "periods",
+
+            value:
+                data.periods
+        },
+
+        {
+            name:
+                "requirements",
+
+            value:
+                data.requirements
+        }
+
+    ];
+
+
+    collections.forEach(
+        collection => {
+
+            if (
+                !Array.isArray(
+                    collection.value
+                )
+            ) {
+
+                errors.push(
+
+                    `${collection.name} must be an array.`
+
+                );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // EMPTY COLLECTION WARNINGS
+    // ========================================================
+    //
+    // These are warnings here because some data may
+    // legitimately be empty during setup.
+    //
+    // Deeper validation determines whether generation
+    // can actually proceed.
+    //
+    // ========================================================
+
+    collections.forEach(
+        collection => {
+
+            if (
+                Array.isArray(
+                    collection.value
+                ) &&
+                collection.value.length === 0
+            ) {
+
+                warnings.push(
+
+                    `${collection.name} is empty.`
+
+                );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // REQUIREMENT COUNT
+    // ========================================================
+
+    if (
+        Array.isArray(data.requirements) &&
+        data.requirements.length === 0
+    ) {
+
+        errors.push(
+            "No timetable requirements are available."
+        );
+
+    }
+
+
+    // ========================================================
+    // PERIOD COUNT
+    // ========================================================
+
+    if (
+        Array.isArray(data.periods)
+    ) {
+
+        const teachingPeriods =
+            data.periods.filter(
+                period =>
+                    period &&
+                    period.isTeachingPeriod !== false &&
+                    period.periodType !== "break" &&
+                    period.periodType !== "lunch"
+            );
+
+
+        if (
+            teachingPeriods.length === 0
+        ) {
+
+            errors.push(
+                "No teaching periods are available for timetable generation."
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    const result = {
+
+        valid:
+            errors.length === 0,
+
+        errors,
+
+        warnings
+
+    };
+
+
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
+    console.log(
+        "Timetable generator basic validation:",
+        {
+
+            valid:
+                result.valid,
+
+            errors:
+                result.errors.length,
+
+            warnings:
+                result.warnings.length
+
+        }
+    );
+
+
+    if (
+        errors.length > 0
+    ) {
+
+        console.error(
+            "Timetable generator basic validation errors:",
+            errors
+        );
+
+    }
+
+
+    if (
+        warnings.length > 0
+    ) {
+
+        console.warn(
+            "Timetable generator basic validation warnings:",
+            warnings
+        );
+
+    }
+
+
+    // ========================================================
+    // RETURN
+    // ========================================================
+
+    return result;
+
+}
+
+
+
+
+
+// ============================================================
 // INITIAL DATA PREPARATION HELPER
 // ============================================================
 // This gives the later generator stages ONE clean pipeline:
