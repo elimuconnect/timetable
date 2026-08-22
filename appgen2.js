@@ -688,7 +688,6 @@ async function loadTimetableGeneratorData() {
 
 }
 
-
 // ============================================================
 // BUILD LOOKUP MAPS
 // ============================================================
@@ -710,6 +709,9 @@ function buildTimetableLookupMaps(data) {
             new Map(),
 
         periods:
+            new Map(),
+
+        requirements:
             new Map()
 
     };
@@ -826,6 +828,7 @@ function buildTimetableLookupMaps(data) {
                     lookup.periods.set(
                         item.id,
                         item
+
                     );
 
                 }
@@ -833,6 +836,50 @@ function buildTimetableLookupMaps(data) {
             }
         );
 
+
+    // --------------------------------------------------------
+    // REQUIREMENTS
+    // --------------------------------------------------------
+    //
+    // Requirements are already normalized before this
+    // function is called.
+    //
+    // Therefore the normalized requirement ID is:
+    //
+    //     requirement.requirementId
+    //
+    // NOT:
+    //
+    //     requirement.id
+    //
+    // --------------------------------------------------------
+
+    (data.requirements || [])
+        .forEach(
+            requirement => {
+
+                const requirementId =
+                    requirement?.requirementId;
+
+
+                if (
+                    requirementId
+                ) {
+
+                    lookup.requirements.set(
+                        requirementId,
+                        requirement
+                    );
+
+                }
+
+            }
+        );
+
+
+    // --------------------------------------------------------
+    // DEBUG
+    // --------------------------------------------------------
 
     console.log(
         "Timetable lookup maps built:",
@@ -851,7 +898,10 @@ function buildTimetableLookupMaps(data) {
                 lookup.rooms.size,
 
             periods:
-                lookup.periods.size
+                lookup.periods.size,
+
+            requirements:
+                lookup.requirements.size
 
         }
     );
@@ -860,7 +910,6 @@ function buildTimetableLookupMaps(data) {
     return lookup;
 
 }
-
 
 // ============================================================
 // NORMALIZE GENERATOR DATA
@@ -3654,100 +3703,10 @@ function createOccupancyIndexes() {
 
 
 
-// ============================================================
-// DAILY STREAM KEY
-// ============================================================
-
-function getDailyStreamKey(
-    streamId,
-    dayNumber
-) {
-
-    return (
-        `${normalizeTimetableId(streamId)}__${dayNumber}`
-    );
-
-}
 
 
-// ============================================================
-// GET DAILY LESSON COUNT
-// ============================================================
-
-function getDailyStreamLessonCount(
-    indexes,
-    streamId,
-    dayNumber
-) {
-
-    if (
-        !indexes ||
-        !indexes.dailyStreamLessons
-    ) {
-
-        return 0;
-
-    }
 
 
-    const key =
-        getDailyStreamKey(
-            streamId,
-            dayNumber
-        );
-
-
-    return (
-        indexes.dailyStreamLessons.get(
-            key
-        ) || 0
-    );
-
-}
-
-
-// ============================================================
-// INCREMENT DAILY LESSON COUNT
-// ============================================================
-
-function incrementDailyStreamLessonCount(
-    indexes,
-    streamId,
-    dayNumber,
-    amount = 1
-) {
-
-    if (
-        !indexes ||
-        !indexes.dailyStreamLessons
-    ) {
-
-        return;
-
-    }
-
-
-    const key =
-        getDailyStreamKey(
-            streamId,
-            dayNumber
-        );
-
-
-    const current =
-        getDailyStreamLessonCount(
-            indexes,
-            streamId,
-            dayNumber
-        );
-
-
-    indexes.dailyStreamLessons.set(
-        key,
-        current + amount
-    );
-
-}
 
 
 // ============================================================
@@ -3980,9 +3939,28 @@ if (
 
 }
 
-
 // ============================================================
 // RESERVE SLOT
+// ============================================================
+// Reserves ONE timetable period for a lesson task.
+//
+// IMPORTANT:
+// - A single lesson calls this once.
+// - A double lesson must call this twice,
+//   once for each consecutive period.
+//
+// Daily limits are tracked by:
+//     requirement + day
+//
+// NOT:
+//     stream + day
+//
+// Therefore:
+//
+// Grade 9A Mathematics Monday = 2
+// Grade 9A Biology Monday     = 2
+//
+// can coexist correctly.
 // ============================================================
 
 function reserveSlot(
@@ -3992,16 +3970,28 @@ function reserveSlot(
     indexes
 ) {
 
+    // ========================================================
+    // BASIC SAFETY
+    // ========================================================
+
     if (
         !task ||
         !period ||
         !indexes
     ) {
 
-        return;
+        console.warn(
+            "reserveSlot: Missing task, period or indexes."
+        );
+
+        return false;
 
     }
 
+
+    // ========================================================
+    // NORMALIZED IDs
+    // ========================================================
 
     const streamId =
         normalizeTimetableId(
@@ -4015,18 +4005,30 @@ function reserveSlot(
         );
 
 
-    // --------------------------------------------------------
-    // STREAM
-    // --------------------------------------------------------
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
+        );
+
+
+    // ========================================================
+    // STREAM / PERIOD
+    // ========================================================
+    // Prevents the same stream from having two lessons
+    // in the same period.
+    // ========================================================
 
     indexes.streamPeriod.add(
         `${streamId}__${periodId}`
     );
 
 
-    // --------------------------------------------------------
-    // TEACHER
-    // --------------------------------------------------------
+    // ========================================================
+    // TEACHER / PERIOD
+    // ========================================================
+    // Prevents the same teacher from teaching two streams
+    // in the same period.
+    // ========================================================
 
     const teacherId =
         normalizeTimetableId(
@@ -4045,56 +4047,103 @@ function reserveSlot(
     }
 
 
-    // --------------------------------------------------------
-    // ROOM
-    // --------------------------------------------------------
+    // ========================================================
+    // ROOM / PERIOD
+    // ========================================================
+    // Prevents the same room from being used by two lessons
+    // in the same period.
+    // ========================================================
 
     if (
         room &&
         room.id
     ) {
 
+        const roomId =
+            normalizeTimetableId(
+                room.id
+            );
+
+
         indexes.roomPeriod.add(
-            `${normalizeTimetableId(room.id)}__${periodId}`
+            `${roomId}__${periodId}`
         );
 
     }
 
 
-    // --------------------------------------------------------
-    // DAILY COUNT
+    // ========================================================
+    // REQUIREMENT / DAY
+    // ========================================================
+    // maxLessonsPerDay belongs to the requirement.
     //
-    // This counts a TIMETABLE PERIOD.
-    // A double lesson therefore occupies 2 periods.
-    // --------------------------------------------------------
+    // Example:
+    //
+    // Mathematics requirement:
+    //     Monday = 2
+    //
+    // Biology requirement:
+    //     Monday = 2
+    //
+    // These are tracked independently.
+    //
+    // IMPORTANT:
+    // This function reserves ONE physical timetable period.
+    // Therefore a double lesson must call reserveSlot()
+    // twice, once for each period.
+    // ========================================================
 
- // --------------------------------------------------------
-// REQUIREMENT DAILY COUNT
-//
-// A double lesson reserves this function twice because
-// each occupied teaching period is processed individually.
-// Therefore the requirement/day count represents actual
-// timetable periods.
-// --------------------------------------------------------
+    if (
+        requirementId
+    ) {
 
-const requirementId =
-    normalizeTimetableId(
-        task.requirementId
-    );
+        const dayNumber =
+            Number(
+                period.dayNumber
+            );
 
 
-if (
-    requirementId
-) {
+        if (
+            Number.isFinite(
+                dayNumber
+            )
+        ) {
 
-    incrementDailyRequirementLessonCount(
-        indexes,
-        requirementId,
-        period.dayNumber,
-        1
-    );
+            incrementDailyRequirementLessonCount(
+                indexes,
+                requirementId,
+                dayNumber,
+                1
+            );
 
-}
+        }
+        else {
+
+            console.warn(
+                "reserveSlot: Period has no valid day number.",
+                {
+                    taskId:
+                        task.taskId,
+
+                    periodId:
+                        periodId,
+
+                    dayNumber:
+                        period.dayNumber
+                }
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // SUCCESS
+    // ========================================================
+
+    return true;
+
 }
 // ============================================================
 // CREATE GENERATED ENTRY
@@ -4143,643 +4192,1004 @@ function createGeneratedEntry(
 }
 
 
+
 // ============================================================
-// PART 4 — FIND VALID SINGLE & DOUBLE LESSON SLOTS
+// STAGE 4 — DOUBLE LESSON PLACEMENT
 // ============================================================
-// ============================================================
-// PATCH & ENHANCEMENT — SLOT AVAILABILITY & OCCUPANCY ENGINE
+//
+// Finds valid pairs of consecutive teaching periods.
+//
+// A double lesson requires:
+//
+//     PERIOD 1
+//     PERIOD 2
+//
+// Both must:
+//
+// - belong to the same day
+// - be teaching periods
+// - be consecutive according to periodOrder
+//
 // ============================================================
 
-/**
- * Enhanced Single Lesson Slot Finder with Fallback & Diagnostic Logging
- */
-function findSingleLessonSlot(
-    task,
-    periods,
-    rooms,
-    indexes
+
+// ============================================================
+// GET CONSECUTIVE TEACHING PERIOD PAIRS
+// ============================================================
+
+function getConsecutiveTeachingPeriodPairs(
+    periods
 ) {
-    const orderedPeriods = sortTimetablePeriods(periods);
-    const shuffledPeriods = shuffleArray(orderedPeriods);
 
-    let attempts = 0;
-    let streamConflicts = 0;
-    let teacherConflicts = 0;
-    let roomConflicts = 0;
-    let dailyLimitConflicts = 0;
+    if (
+        !Array.isArray(periods)
+    ) {
 
-    // --------------------------------------------------------
-    // PASS 1: Try standard shuffled check across all periods
-    // --------------------------------------------------------
-    for (const period of shuffledPeriods) {
-        if (!period) continue;
+        return [];
 
-        const compatibleRooms = getCompatibleRooms(task, rooms);
-        if (compatibleRooms.length === 0) continue;
-
-        for (const room of compatibleRooms) {
-            attempts++;
-            const check = checkSingleSlotConflict(task, period, room, indexes);
-
-            if (!check.valid) {
-                if (check.reason.includes("Stream already")) streamConflicts++;
-                else if (check.reason.includes("Teacher is already")) teacherConflicts++;
-                else if (check.reason.includes("Room is already")) roomConflicts++;
-                else if (check.reason.includes("Maximum lessons")) dailyLimitConflicts++;
-                continue;
-            }
-
-            return { period, room };
-        }
     }
-
-    // --------------------------------------------------------
-    // PASS 2: RELAXATION FALLBACK (Daily Limit Override)
-    // If placement fails strictly due to maxLessonsPerDay constraints,
-    // retry ignoring the daily threshold to prevent unplaced orphan tasks.
-    // --------------------------------------------------------
-    if (dailyLimitConflicts > 0 && streamConflicts === 0 && teacherConflicts === 0) {
-        console.warn("⚠️ Relaxing maxLessonsPerDay constraint for task to prevent deadlock:", {
-            taskId: task.taskId,
-            streamId: task.streamId,
-            subjectId: task.subjectId
-        });
-
-        for (const period of shuffledPeriods) {
-            if (!period) continue;
-            const compatibleRooms = getCompatibleRooms(task, rooms);
-            if (compatibleRooms.length === 0) continue;
-
-            for (const room of compatibleRooms) {
-                const streamId = normalizeTimetableId(task.streamId);
-                const periodId = normalizeTimetableId(period.id);
-                const teacherId = normalizeTimetableId(task.teacherId);
-
-                // Check hard constraints only (Stream, Teacher, Room)
-                const streamKey = `${streamId}__${periodId}`;
-                const teacherKey = teacherId ? `${teacherId}__${periodId}` : null;
-                const roomKey = room && room.id ? `${normalizeTimetableId(room.id)}__${periodId}` : null;
-
-                const isStreamBusy = indexes.streamPeriod.has(streamKey);
-                const isTeacherBusy = teacherKey ? indexes.teacherPeriod.has(teacherKey) : false;
-                const isRoomBusy = roomKey ? indexes.roomPeriod.has(roomKey) : false;
-
-                if (!isStreamBusy && !isTeacherBusy && !isRoomBusy) {
-                    console.log("✅ SINGLE SLOT FOUND (VIA CONSTRAINT RELAXATION)", {
-                        taskId: task.taskId,
-                        periodId: period.id
-                    });
-                    return { period, room };
-                }
-            }
-        }
-    }
-
-    console.error("❌ FAILED TO FIND SINGLE LESSON SLOT", {
-        taskId: task.taskId,
-        streamId: task.streamId,
-        subjectId: task.subjectId,
-        teacherId: task.teacherId,
-        attempts,
-        streamConflicts,
-        teacherConflicts,
-        roomConflicts,
-        dailyLimitConflicts
-    });
-
-    return null;
-}
-
-
-/**
- * Enhanced Double Lesson Slot Finder with Fallback & Diagnostic Logging
- */
-function findDoubleLessonSlot(
-    task,
-    periods,
-    rooms,
-    indexes
-) {
-    const orderedPeriods = sortTimetablePeriods(periods);
-    const periodsByDay = groupPeriodsByDay(orderedPeriods);
-    const dayKeys = Object.keys(periodsByDay || {});
-    const days = shuffleArray(dayKeys);
-
-    let consecutivePairs = 0;
-    let streamConflicts = 0;
-    let teacherConflicts = 0;
-    let roomConflicts = 0;
-    let dailyLimitConflicts = 0;
-
-    // --------------------------------------------------------
-    // PASS 1: Standard Consecutive Pair Check with Daily Limits
-    // --------------------------------------------------------
-    for (const day of days) {
-        const dayPeriods = sortTimetablePeriods(periodsByDay[day]);
-        if (dayPeriods.length < 2) continue;
-
-        for (let i = 0; i < dayPeriods.length - 1; i++) {
-            const firstPeriod = dayPeriods[i];
-            const secondPeriod = dayPeriods[i + 1];
-
-            if (!arePeriodsConsecutive(firstPeriod, secondPeriod)) continue;
-            consecutivePairs++;
-
-            const maxPerDay = Number(task.maxLessonsPerDay) || 0;
-            const currentCount = getDailyStreamLessonCount(indexes, task.streamId, firstPeriod.day_number);
-
-            if (maxPerDay > 0 && currentCount >= maxPerDay) {
-                dailyLimitConflicts++;
-                continue;
-            }
-
-            const compatibleRooms = getCompatibleRooms(task, rooms);
-            if (compatibleRooms.length === 0) continue;
-
-            for (const room of compatibleRooms) {
-                const firstCheck = checkSingleSlotConflict(task, firstPeriod, room, indexes);
-                if (!firstCheck.valid) {
-                    if (firstCheck.reason.includes("Stream already")) streamConflicts++;
-                    else if (firstCheck.reason.includes("Teacher is already")) teacherConflicts++;
-                    else if (firstCheck.reason.includes("Room is already")) roomConflicts++;
-                    else if (firstCheck.reason.includes("Maximum lessons")) dailyLimitConflicts++;
-                    continue;
-                }
-
-                const secondCheck = checkSingleSlotConflict(task, secondPeriod, room, indexes);
-                if (!secondCheck.valid) {
-                    if (secondCheck.reason.includes("Stream already")) streamConflicts++;
-                    else if (secondCheck.reason.includes("Teacher is already")) teacherConflicts++;
-                    else if (secondCheck.reason.includes("Room is already")) roomConflicts++;
-                    else if (secondCheck.reason.includes("Maximum lessons")) dailyLimitConflicts++;
-                    continue;
-                }
-
-                return { firstPeriod, secondPeriod, room };
-            }
-        }
-    }
-
-    // --------------------------------------------------------
-    // PASS 2: RELAXATION FALLBACK (Double Lesson Daily Limit Override)
-    // --------------------------------------------------------
-    if (dailyLimitConflicts > 0 && streamConflicts === 0 && teacherConflicts === 0) {
-        console.warn("⚠️ Relaxing maxLessonsPerDay for double lesson task to prevent unplaced queue overflow:", {
-            taskId: task.taskId,
-            streamId: task.streamId
-        });
-
-        for (const day of days) {
-            const dayPeriods = sortTimetablePeriods(periodsByDay[day]);
-            if (dayPeriods.length < 2) continue;
-
-            for (let i = 0; i < dayPeriods.length - 1; i++) {
-                const firstPeriod = dayPeriods[i];
-                const secondPeriod = dayPeriods[i + 1];
-
-                if (!arePeriodsConsecutive(firstPeriod, secondPeriod)) continue;
-
-                const compatibleRooms = getCompatibleRooms(task, rooms);
-                if (compatibleRooms.length === 0) continue;
-
-                for (const room of compatibleRooms) {
-                    const streamId = normalizeTimetableId(task.streamId);
-                    const teacherId = normalizeTimetableId(task.teacherId);
-                    const roomId = room && room.id ? normalizeTimetableId(room.id) : null;
-
-                    const p1Id = normalizeTimetableId(firstPeriod.id);
-                    const p2Id = normalizeTimetableId(secondPeriod.id);
-
-                    const isBusy = (pId) => 
-                        indexes.streamPeriod.has(`${streamId}__${pId}`) ||
-                        (teacherId && indexes.teacherPeriod.has(`${teacherId}__${pId}`)) ||
-                        (roomId && indexes.roomPeriod.has(`${roomId}__${pId}`));
-
-                    if (!isBusy(p1Id) && !isBusy(p2Id)) {
-                        console.log("✅ DOUBLE SLOT FOUND (VIA CONSTRAINT RELAXATION)", {
-                            taskId: task.taskId,
-                            day: firstPeriod.day_name
-                        });
-                        return { firstPeriod, secondPeriod, room };
-                    }
-                }
-            }
-        }
-    }
-
-    console.error("❌ FAILED TO FIND DOUBLE LESSON SLOT", {
-        taskId: task.taskId,
-        streamId: task.streamId,
-        subjectId: task.subjectId,
-        teacherId: task.teacherId,
-        consecutivePairs,
-        streamConflicts,
-        teacherConflicts,
-        roomConflicts,
-        dailyLimitConflicts
-    });
-
-    return null;
-}
-
-
-
-// ============================================================
-// END PART 3 + PART 4
-// ============================================================
-
-
-
-// ============================================================
-// PART 5 — GENERATE TIMETABLE
-// ============================================================
-
-
-// ============================================================
-// PATCH & ENHANCEMENT — TIMETABLE GENERATION STATE & INITIALIZER FIX
-// ============================================================
-
-/**
- * Ensures initialization checks and state flags are properly validated 
- * before running generation loops, preventing zero-entry silent failures.
- */
-function initializeAndVerifyGenerator(tasks, periods, rooms) {
-    console.log("🛠️ Verifying timetable generation preconditions...");
-
-    if (!Array.isArray(tasks) || tasks.length === 0) {
-        console.error("❌ Generator aborted: No tasks provided for scheduling.");
-        return false;
-    }
-
-    if (!Array.isArray(periods) || periods.length === 0) {
-        console.error("❌ Generator aborted: No periods defined in timetable structure.");
-        return false;
-    }
-
-    if (!Array.isArray(rooms)) {
-        console.warn("⚠️ Rooms parameter is not an array. Defaulting to empty collection.");
-    }
-
-    console.log("✅ Preconditions verified successfully.", {
-        taskCount: tasks.length,
-        periodCount: periods.length,
-        roomCount: Array.isArray(rooms) ? rooms.length : 0
-    });
-
-    return true;
-}
-
-
-
-
-
-async function generateTimetable() {
-
-    console.log(
-        "======================================"
-    );
-
-    console.log(
-        "🚀 GENERATE TIMETABLE FUNCTION STARTED"
-    );
-
-    console.log(
-        "School ID:",
-        timetableState.schoolId
-    );
-
-    console.log(
-        "Generation running:",
-        timetableGenerationRunning
-    );
-
-    console.log(
-        "======================================"
-    );
-
-    console.log(
-        "======================================"
-    );
-
-    console.log(
-        "🚀 GENERATE TIMETABLE FUNCTION STARTED"
-    );
-
-    console.log(
-        "School ID:",
-        timetableState.schoolId
-    );
-
-    console.log(
-        "Generation running:",
-        timetableGenerationRunning
-    );
-
-    console.log(
-        "======================================"
-    );
 
 
     // ========================================================
-    // PREVENT DOUBLE GENERATION
+    // ONLY TEACHING PERIODS
     // ========================================================
 
-    if (timetableGenerationRunning) {
-
-        console.warn(
-            "TIMETABLE GENERATION ALREADY RUNNING"
+    const teachingPeriods =
+        getTeachingPeriods(
+            periods
         );
 
-        return;
+
+    if (
+        teachingPeriods.length < 2
+    ) {
+
+        return [];
 
     }
 
 
     // ========================================================
-    // CHECK SCHOOL
+    // SORT PERIODS
     // ========================================================
 
-    if (!timetableState.schoolId) {
+    const sortedPeriods =
+        sortTimetablePeriods(
+            teachingPeriods
+        );
 
-        const message =
-            "Please select a school first.";
 
-        console.error(message);
+    const pairs = [];
+
+
+    // ========================================================
+    // FIND CONSECUTIVE PAIRS
+    // ========================================================
+
+    for (
+        let i = 0;
+        i < sortedPeriods.length - 1;
+        i++
+    ) {
+
+        const firstPeriod =
+            sortedPeriods[i];
+
+
+        const secondPeriod =
+            sortedPeriods[i + 1];
+
+
+        // ----------------------------------------------------
+        // MUST BE CONSECUTIVE
+        // ----------------------------------------------------
 
         if (
-            typeof setTimetableGenerationStatus ===
-            "function"
-        ) {
-
-            setTimetableGenerationStatus(
-                message,
-                "error"
-            );
-
-        }
-
-        return;
-
-    }
-
-
-    // ========================================================
-    // START GENERATION
-    // ========================================================
-
-    timetableGenerationRunning = true;
-
-
-    try {
-
-        // ====================================================
-        // STEP 1 — SHOW STATUS
-        // ====================================================
-
-        if (
-            typeof setTimetableGenerationStatus ===
-            "function"
-        ) {
-
-            setTimetableGenerationStatus(
-                "Loading timetable generator data...",
-                "info"
-            );
-
-        }
-
-
-        console.log(
-            "STEP 1: Loading generator data..."
-        );
-
-
-        // ====================================================
-        // STEP 2 — LOAD DATA
-        // ====================================================
-
-        const data =
-            await loadTimetableGeneratorData();
-
-
-        console.log(
-            "STEP 2: Generator data loaded."
-        );
-
-
-        console.log(
-            "Requirements:",
-            data.requirements.length
-        );
-
-        console.log(
-            "Periods:",
-            data.periods.length
-        );
-
-        console.log(
-            "Streams:",
-            data.streams.length
-        );
-
-        console.log(
-            "Subjects:",
-            data.subjects.length
-        );
-
-        console.log(
-            "Teachers:",
-            data.teachers.length
-        );
-
-        console.log(
-            "Rooms:",
-            data.rooms.length
-        );
-
-
-        // ====================================================
-        // STEP 3 — VALIDATE DATA
-        // ====================================================
-
-        validateTimetableGeneratorData(
-            data
-        );
-
-
-        console.log(
-            "STEP 3: Generator data validated."
-        );
-
-
-        // ====================================================
-        // STEP 4 — BUILD LOOKUPS
-        // ====================================================
-
-        const lookup =
-            buildTimetableLookupMaps(
-                data
-            );
-
-
-        console.log(
-            "STEP 4: Lookup maps created."
-        );
-
-
-        // ====================================================
-        // STEP 5 — GET TEACHING PERIODS
-        // ====================================================
-
-        const teachingPeriods =
-            getTeachingPeriods(
-                data.periods
-            );
-
-
-        console.log(
-            "STEP 5: Teaching periods:",
-            teachingPeriods.length
-        );
-
-
-        if (
-            teachingPeriods.length === 0
-        ) {
-
-            throw new Error(
-                "No teaching periods are available."
-            );
-
-        }
-
-
-        // ====================================================
-        // SHOW PERIOD INFORMATION
-        // ====================================================
-
-        console.table(
-
-            teachingPeriods.map(
-                period => ({
-
-                    id:
-                        period.id,
-
-                    day:
-                        period.day_name,
-
-                    dayNumber:
-                        period.day_number,
-
-                    order:
-                        period.period_order,
-
-                    number:
-                        period.period_number,
-
-                    start:
-                        period.start_time,
-
-                    end:
-                        period.end_time,
-
-                    teaching:
-                        period.is_teaching_period,
-
-                    type:
-                        period.period_type
-
-                })
+            !arePeriodsConsecutive(
+                firstPeriod,
+                secondPeriod
             )
+        ) {
 
+            continue;
+
+        }
+
+
+        pairs.push({
+
+            first:
+                firstPeriod,
+
+            second:
+                secondPeriod
+
+        });
+
+    }
+
+
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
+    console.log(
+        "Consecutive teaching period pairs:",
+        pairs.length
+    );
+
+
+    return pairs;
+
+}
+
+// ============================================================
+// CHECK DOUBLE LESSON CONFLICT
+// ============================================================
+//
+// Checks BOTH periods of a double lesson.
+//
+// A double lesson is valid only if both periods are free.
+//
+// ============================================================
+
+function checkDoubleLessonConflict(
+    task,
+    firstPeriod,
+    secondPeriod,
+    room,
+    indexes
+) {
+
+    if (
+        !task ||
+        !firstPeriod ||
+        !secondPeriod ||
+        !indexes
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "Invalid double lesson placement data."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // VERIFY CONSECUTIVE PERIODS
+    // ========================================================
+
+    if (
+        !arePeriodsConsecutive(
+            firstPeriod,
+            secondPeriod
+        )
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "The two periods are not consecutive."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // CHECK FIRST PERIOD
+    // ========================================================
+
+    const firstCheck =
+        checkSingleSlotConflict(
+            task,
+            firstPeriod,
+            room,
+            indexes
         );
 
 
-        // ====================================================
-        // STEP 6 — CREATE LESSON TASKS
-        // ====================================================
+    if (
+        !firstCheck.valid
+    ) {
 
-        let tasks =
-            createLessonTasks(
-                data.requirements,
-                lookup
+        return {
+
+            valid:
+                false,
+
+            reason:
+                `First period unavailable: ${firstCheck.reason}`
+
+        };
+
+    }
+
+
+    // ========================================================
+    // IMPORTANT DAILY LIMIT CHECK
+    // ========================================================
+    //
+    // A double lesson occupies TWO periods.
+    //
+    // Therefore checking the second period against the
+    // original occupancy index is not enough.
+    //
+    // We calculate the requirement's daily usage before
+    // this double lesson.
+    //
+    // ========================================================
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
+        );
+
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 0;
+
+
+    if (
+        requirementId &&
+        maxPerDay > 0
+    ) {
+
+        const dayNumber =
+            Number(
+                firstPeriod.dayNumber
             );
 
 
-        console.log(
-            "STEP 6: Lesson tasks created:",
-            tasks.length
-        );
+        const currentCount =
+            getDailyRequirementLessonCount(
+                indexes,
+                requirementId,
+                dayNumber
+            );
 
 
         if (
-            tasks.length === 0
+            currentCount + 2 >
+            maxPerDay
         ) {
 
-            throw new Error(
-                "No lesson tasks could be created from the timetable requirements."
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    "Double lesson would exceed the requirement daily limit."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // CHECK SECOND PERIOD
+    // ========================================================
+    //
+    // We must check stream, teacher and room conflicts.
+    //
+    // We deliberately handle the daily requirement limit
+    // above because this double lesson occupies TWO periods.
+    //
+    // ========================================================
+
+    const streamId =
+        normalizeTimetableId(
+            task.streamId
+        );
+
+
+    const secondPeriodId =
+        normalizeTimetableId(
+            secondPeriod.id
+        );
+
+
+    const streamKey =
+        `${streamId}__${secondPeriodId}`;
+
+
+    if (
+        indexes.streamPeriod.has(
+            streamKey
+        )
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "Stream is already occupied in the second period."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // TEACHER
+    // ========================================================
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId
+        );
+
+
+    if (
+        teacherId
+    ) {
+
+        const teacherKey =
+            `${teacherId}__${secondPeriodId}`;
+
+
+        if (
+            indexes.teacherPeriod.has(
+                teacherKey
+            )
+        ) {
+
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    "Teacher is already occupied in the second period."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // ROOM
+    // ========================================================
+
+    if (
+        room &&
+        room.id
+    ) {
+
+        const roomKey =
+            `${normalizeTimetableId(room.id)}__${secondPeriodId}`;
+
+
+        if (
+            indexes.roomPeriod.has(
+                roomKey
+            )
+        ) {
+
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    "Room is already occupied in the second period."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // VALID
+    // ========================================================
+
+    return {
+
+        valid:
+            true,
+
+        reason:
+            ""
+
+    };
+
+}
+
+// ============================================================
+// PLACE ONE DOUBLE LESSON
+// ============================================================
+
+function placeDoubleLesson(
+    task,
+    periods,
+    rooms,
+    indexes
+) {
+
+    if (
+        !task ||
+        task.taskType !== "double"
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Invalid double lesson task."
+
+        };
+
+    }
+
+
+    const pairs =
+        getConsecutiveTeachingPeriodPairs(
+            periods
+        );
+
+
+    if (
+        pairs.length === 0
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "No consecutive teaching period pairs are available."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // SHUFFLE CANDIDATES
+    // ========================================================
+
+    const candidatePairs =
+        shuffleArray(
+            pairs
+        );
+
+
+    // ========================================================
+    // TRY EACH PERIOD PAIR
+    // ========================================================
+
+    for (
+        const pair of candidatePairs
+    ) {
+
+        const compatibleRooms =
+            getCompatibleRooms(
+                task,
+                rooms
             );
+
+
+        if (
+            compatibleRooms.length === 0
+        ) {
+
+            continue;
 
         }
 
 
         // ====================================================
-        // STEP 7 — SHUFFLE TASKS
+        // TRY EACH ROOM
         // ====================================================
 
-        tasks =
-            shuffleArray(
-                tasks
+        for (
+            const room of compatibleRooms
+        ) {
+
+            const conflict =
+                checkDoubleLessonConflict(
+                    task,
+                    pair.first,
+                    pair.second,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                !conflict.valid
+            ) {
+
+                continue;
+
+            }
+
+
+            // ==================================================
+            // RESERVE BOTH PERIODS
+            // ==================================================
+
+            reserveSlot(
+                task,
+                pair.first,
+                room,
+                indexes
             );
 
 
-        // ====================================================
-        // DOUBLE LESSONS FIRST
-        // ====================================================
+            reserveSlot(
+                task,
+                pair.second,
+                room,
+                indexes
+            );
 
-        tasks.sort(
-            (
-                a,
-                b
-            ) => {
 
-                if (
-                    a.isDouble !==
-                    b.isDouble
-                ) {
+            // ==================================================
+            // CREATE BOTH ENTRIES
+            // ==================================================
 
-                    return a.isDouble
-                        ? -1
-                        : 1;
+            const firstEntry =
+                createGeneratedEntry(
+                    task,
+                    pair.first,
+                    room
+                );
 
+
+            const secondEntry =
+                createGeneratedEntry(
+                    task,
+                    pair.second,
+                    room
+                );
+
+
+            // ==================================================
+            // MARK TASK AS PLACED
+            // ==================================================
+
+            task.placed =
+                true;
+
+
+            task.periodIds =
+                [
+                    pair.first.id,
+                    pair.second.id
+                ];
+
+
+            task.roomId =
+                room?.id ||
+                null;
+
+
+            // ==================================================
+            // SUCCESS
+            // ==================================================
+
+            console.log(
+                "DOUBLE LESSON PLACED:",
+                {
+                    taskId:
+                        task.taskId,
+
+                    firstPeriod:
+                        pair.first.id,
+
+                    secondPeriod:
+                        pair.second.id,
+
+                    roomId:
+                        room?.id ||
+                        null
                 }
+            );
 
-                return 0;
+
+            return {
+
+                placed:
+                    true,
+
+                entries:
+                    [
+                        firstEntry,
+                        secondEntry
+                    ],
+
+                reason:
+                    ""
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // FAILED
+    // ========================================================
+
+    console.warn(
+        "DOUBLE LESSON COULD NOT BE PLACED:",
+        {
+            taskId:
+                task.taskId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId
+        }
+    );
+
+
+    return {
+
+        placed:
+            false,
+
+        entries:
+            [],
+
+        reason:
+            "No valid consecutive period pair was found."
+
+    };
+
+}
+
+
+
+
+// ============================================================
+// STAGE 5 — SINGLE LESSON PLACEMENT
+// ============================================================
+//
+// Places ONE normal lesson into ONE teaching period.
+//
+// A single lesson requires:
+//
+// - one valid teaching period
+// - one compatible room (when required)
+// - no stream conflict
+// - no teacher conflict
+// - no room conflict
+// - no daily requirement-limit violation
+//
+// The function uses the existing:
+//
+//     checkSingleSlotConflict()
+//     getTeachingPeriods()
+//     getCompatibleRooms()
+//     shuffleArray()
+//     reserveSlot()
+//     createGeneratedEntry()
+//
+// ============================================================
+
+
+// ============================================================
+// PLACE ONE SINGLE LESSON
+// ============================================================
+
+function placeSingleLesson(
+    task,
+    periods,
+    rooms,
+    indexes
+) {
+
+    // ========================================================
+    // VALIDATE INPUT
+    // ========================================================
+
+    if (
+        !task ||
+        !Array.isArray(periods) ||
+        !Array.isArray(rooms) ||
+        !indexes
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Invalid single lesson placement data."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // TASK TYPE
+    // ========================================================
+    //
+    // This function is ONLY for normal single lessons.
+    //
+    // Double lessons must go through:
+    //
+    //     placeDoubleLesson()
+    //
+    // ========================================================
+
+    if (
+        task.taskType &&
+        task.taskType !== "single"
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Task is not a single lesson."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // GET TEACHING PERIODS
+    // ========================================================
+
+    const teachingPeriods =
+        getTeachingPeriods(
+            periods
+        );
+
+
+    if (
+        teachingPeriods.length === 0
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "No teaching periods are available."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // GET COMPATIBLE ROOMS
+    // ========================================================
+    //
+    // We calculate compatible rooms once rather than
+    // repeatedly for every period.
+    //
+    // ========================================================
+
+    const compatibleRooms =
+        getCompatibleRooms(
+            task,
+            rooms
+        );
+
+
+    // ========================================================
+    // ROOM REQUIREMENT
+    // ========================================================
+    //
+    // If the task requires a room but no compatible room
+    // exists, placement is impossible.
+    //
+    // ========================================================
+
+    const requiresRoom =
+        Boolean(
+            task.requiresRoom
+        );
+
+
+    if (
+        requiresRoom &&
+        compatibleRooms.length === 0
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "No compatible room is available for this lesson."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // CANDIDATE PERIODS
+    // ========================================================
+    //
+    // Shuffle periods so the generator does not always
+    // produce the same timetable.
+    //
+    // ========================================================
+
+    const candidatePeriods =
+        shuffleArray(
+            teachingPeriods
+        );
+
+
+    // ========================================================
+    // TRY EACH PERIOD
+    // ========================================================
+
+    for (
+        const period of candidatePeriods
+    ) {
+
+
+        // ====================================================
+        // ROOM OPTIONS
+        // ====================================================
+        //
+        // If a room is not required, we still try a null room.
+        //
+        // If a room IS required, we try every compatible room.
+        //
+        // ====================================================
+
+        const candidateRooms =
+            requiresRoom
+                ? shuffleArray(
+                    compatibleRooms
+                )
+                : [null];
+
+
+        // ====================================================
+        // TRY EACH ROOM
+        // ====================================================
+
+        for (
+            const room of candidateRooms
+        ) {
+
+
+            // ==================================================
+            // CHECK CONFLICTS
+            // ==================================================
+
+            const conflict =
+                checkSingleSlotConflict(
+                    task,
+                    period,
+                    room,
+                    indexes
+                );
+
+
+            // ==================================================
+            // SLOT NOT VALID
+            // ==================================================
+
+            if (
+                !conflict ||
+                !conflict.valid
+            ) {
+
+                continue;
 
             }
-        );
 
 
-        console.log(
-            "STEP 7: Tasks ordered."
-        );
+            // ==================================================
+            // RESERVE SLOT
+            // ==================================================
+            //
+            // IMPORTANT:
+            //
+            // The slot is reserved ONLY after all validation
+            // has passed.
+            //
+            // ==================================================
+
+            reserveSlot(
+                task,
+                period,
+                room,
+                indexes
+            );
 
 
-        console.log(
-            "Total tasks:",
-            tasks.length
-        );
+            // ==================================================
+            // CREATE GENERATED ENTRY
+            // ==================================================
+
+            const entry =
+                createGeneratedEntry(
+                    task,
+                    period,
+                    room
+                );
 
 
-        // ====================================================
-        // TASK SUMMARY
-        // ====================================================
+            // ==================================================
+            // MARK TASK AS PLACED
+            // ==================================================
 
-        console.table(
+            task.placed =
+                true;
 
-            tasks.map(
-                task => ({
+
+            task.periodIds =
+                [
+                    period.id
+                ];
+
+
+            task.roomId =
+                room?.id ||
+                null;
+
+
+            // ==================================================
+            // DEBUG
+            // ==================================================
+
+            console.log(
+                "SINGLE LESSON PLACED:",
+                {
 
                     taskId:
                         task.taskId,
@@ -4793,800 +5203,3062 @@ async function generateTimetable() {
                     teacherId:
                         task.teacherId,
 
-                    double:
-                        task.isDouble,
+                    periodId:
+                        period.id,
 
-                    periods:
-                        task.lessonsRequired
+                    roomId:
+                        room?.id ||
+                        null
 
-                })
-            )
-
-        );
-
-
-        // ====================================================
-        // STEP 8 — CREATE OCCUPANCY INDEXES
-        // ====================================================
-
-        const indexes =
-            createOccupancyIndexes();
-
-
-        console.log(
-            "STEP 8: Occupancy indexes created."
-        );
-
-
-        // ====================================================
-        // STEP 9 — GENERATE ENTRIES
-        // ====================================================
-
-        const entries = [];
-
-        const conflicts = [];
-
-
-        console.log(
-            "STEP 9: Starting lesson placement..."
-        );
-
-
-        // ====================================================
-        // PLACE EACH TASK
-        // ====================================================
-
-        for (
-            let i = 0;
-            i < tasks.length;
-            i++
-        ) {
-
-            const task =
-                tasks[i];
-
-
-            console.log(
-                `PLACING TASK ${i + 1}/${tasks.length}`,
-                task.taskId
+                }
             );
 
 
-            // =================================================
-            // DOUBLE LESSON
-            // =================================================
+            // ==================================================
+            // SUCCESS
+            // ==================================================
 
-            if (
-                task.isDouble
-            ) {
+            return {
 
-                const slot =
-                    findDoubleLessonSlot(
-                        task,
-                        teachingPeriods,
-                        data.rooms,
-                        indexes
-                    );
+                placed:
+                    true,
 
+                entries:
+                    [
+                        entry
+                    ],
 
-                // ------------------------------------------------
-                // DOUBLE LESSON FAILED
-                // ------------------------------------------------
+                reason:
+                    ""
 
-                if (
-                    !slot
-                ) {
-
-                    console.warn(
-                        "DOUBLE LESSON COULD NOT BE PLACED:",
-                        task.taskId
-                    );
-
-
-                    conflicts.push({
-
-                        taskId:
-                            task.taskId,
-
-                        requirementId:
-                            task.requirementId,
-
-                        streamId:
-                            task.streamId,
-
-                        subjectId:
-                            task.subjectId,
-
-                        teacherId:
-                            task.teacherId,
-
-                        reason:
-                            "No two consecutive free periods were available."
-
-                    });
-
-
-                }
-
-
-                // ------------------------------------------------
-                // DOUBLE LESSON FOUND
-                // ------------------------------------------------
-
-                else {
-
-                    // ---------------------------------------------
-                    // RESERVE FIRST PERIOD
-                    // ---------------------------------------------
-
-                    reserveSlot(
-                        task,
-                        slot.firstPeriod,
-                        slot.room,
-                        indexes
-                    );
-
-
-                    // ---------------------------------------------
-                    // RESERVE SECOND PERIOD
-                    // ---------------------------------------------
-
-                    reserveSlot(
-                        task,
-                        slot.secondPeriod,
-                        slot.room,
-                        indexes
-                    );
-
-
-                    // ---------------------------------------------
-                    // CREATE FIRST ENTRY
-                    // ---------------------------------------------
-
-                    entries.push(
-
-                        createGeneratedEntry(
-                            task,
-                            slot.firstPeriod,
-                            slot.room
-                        )
-
-                    );
-
-
-                    // ---------------------------------------------
-                    // CREATE SECOND ENTRY
-                    // ---------------------------------------------
-
-                    entries.push(
-
-                        createGeneratedEntry(
-                            task,
-                            slot.secondPeriod,
-                            slot.room
-                        )
-
-                    );
-
-
-                    console.log(
-                        "✅ DOUBLE LESSON PLACED:",
-                        task.taskId
-                    );
-
-                }
-
-            }
-
-
-            // =================================================
-            // SINGLE LESSON
-            // =================================================
-
-            else {
-
-                const slot =
-                    findSingleLessonSlot(
-                        task,
-                        teachingPeriods,
-                        data.rooms,
-                        indexes
-                    );
-
-
-                // ------------------------------------------------
-                // SINGLE LESSON FAILED
-                // ------------------------------------------------
-
-                if (
-                    !slot
-                ) {
-
-                    console.warn(
-                        "SINGLE LESSON COULD NOT BE PLACED:",
-                        task.taskId
-                    );
-
-
-                    conflicts.push({
-
-                        taskId:
-                            task.taskId,
-
-                        requirementId:
-                            task.requirementId,
-
-                        streamId:
-                            task.streamId,
-
-                        subjectId:
-                            task.subjectId,
-
-                        teacherId:
-                            task.teacherId,
-
-                        reason:
-                            "No free period, teacher slot, room, or daily slot was available."
-
-                    });
-
-                }
-
-
-                // ------------------------------------------------
-                // SINGLE LESSON FOUND
-                // ------------------------------------------------
-
-                else {
-
-                    reserveSlot(
-                        task,
-                        slot.period,
-                        slot.room,
-                        indexes
-                    );
-
-
-                    entries.push(
-
-                        createGeneratedEntry(
-                            task,
-                            slot.period,
-                            slot.room
-                        )
-
-                    );
-
-
-                    console.log(
-                        "✅ SINGLE LESSON PLACED:",
-                        task.taskId
-                    );
-
-                }
-
-            }
-
-
-            // =================================================
-            // UPDATE STATUS
-            // =================================================
-
-            if (
-                typeof setTimetableGenerationStatus ===
-                "function"
-            ) {
-
-                setTimetableGenerationStatus(
-
-                    `Generating timetable... ${i + 1} / ${tasks.length}`,
-
-                    "info"
-
-                );
-
-            }
+            };
 
         }
 
+    }
 
-        // ====================================================
-        // STEP 10 — GENERATION RESULT
-        // ====================================================
 
-        console.log(
-            "======================================"
+    // ========================================================
+    // FAILED
+    // ========================================================
+
+    console.warn(
+        "SINGLE LESSON COULD NOT BE PLACED:",
+        {
+
+            taskId:
+                task.taskId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId,
+
+            teacherId:
+                task.teacherId
+
+        }
+    );
+
+
+    return {
+
+        placed:
+            false,
+
+        entries:
+            [],
+
+        reason:
+            "No valid period and room combination was found."
+
+    };
+
+}
+
+// ============================================================
+// STAGE 6A — INTELLIGENT TASK PRIORITY
+// ============================================================
+//
+// Determines which lesson tasks should be scheduled first.
+//
+// IMPORTANT:
+//
+// This function works with the ACTUAL task structure created
+// by createLessonTasks().
+//
+// It does NOT assume that every task contains:
+//
+//     lessonsPerWeek
+//
+// because lessonsPerWeek belongs to the requirement.
+//
+// ============================================================
+
+
+// ============================================================
+// GET REQUIREMENT FOR TASK
+// ============================================================
+
+function getTaskRequirement(
+    task,
+    lookup
+) {
+
+    if (
+        !task ||
+        !lookup ||
+        !lookup.requirements
+    ) {
+
+        return null;
+
+    }
+
+
+    return (
+        lookup.requirements.get(
+            task.requirementId
+        ) ||
+        null
+    );
+
+}
+
+
+// ============================================================
+// COUNT COMPATIBLE ROOMS
+// ============================================================
+
+function getTaskCompatibleRoomCount(
+    task,
+    rooms
+) {
+
+    if (
+        !task ||
+        !task.requiresRoom
+    ) {
+
+        // No room restriction means the task is flexible.
+        return Infinity;
+
+    }
+
+
+    return getCompatibleRooms(
+        task,
+        rooms
+    ).length;
+
+}
+
+
+// ============================================================
+// GET TASK PRIORITY SCORE
+// ============================================================
+
+function getTaskPriorityScore(
+    task,
+    rooms,
+    lookup
+) {
+
+    if (
+        !task
+    ) {
+
+        return -Infinity;
+
+    }
+
+
+    let score = 0;
+
+
+    // ========================================================
+    // 1. DOUBLE LESSON
+    // ========================================================
+    //
+    // A double lesson needs TWO consecutive periods.
+    //
+    // This is substantially more restrictive than a normal
+    // single lesson.
+    //
+    // ========================================================
+
+    if (
+        task.taskType === "double"
+    ) {
+
+        score += 1000;
+
+    }
+
+
+    // ========================================================
+    // 2. ROOM REQUIRED
+    // ========================================================
+
+    if (
+        task.requiresRoom
+    ) {
+
+        score += 500;
+
+    }
+
+
+    // ========================================================
+    // 3. SPECIALIZED ROOM
+    // ========================================================
+    //
+    // A task requiring a specific room type is more
+    // restrictive than one that can use any room.
+    //
+    // ========================================================
+
+    if (
+        normalizeRoomType(
+            task.roomType
+        )
+    ) {
+
+        score += 300;
+
+    }
+
+
+    // ========================================================
+    // 4. NUMBER OF COMPATIBLE ROOMS
+    // ========================================================
+    //
+    // Fewer rooms = more restrictive.
+    //
+    // Example:
+    //
+    // Biology → 1 laboratory
+    // Computer → 2 computer labs
+    // Ordinary lesson → unlimited classroom choice
+    //
+    // Biology should go first.
+    //
+    // ========================================================
+
+    const compatibleRoomCount =
+        getTaskCompatibleRoomCount(
+            task,
+            rooms
         );
 
-        console.log(
-            "GENERATION COMPLETE"
-        );
 
-        console.log(
-            "Total tasks:",
-            tasks.length
-        );
-
-        console.log(
-            "Generated entries:",
-            entries.length
-        );
-
-        console.log(
-            "Conflicts:",
-            conflicts.length
-        );
-
-        console.log(
-            "======================================"
-        );
-
-
-        // ====================================================
-        // SHOW GENERATED ENTRIES
-        // ====================================================
-
-        console.table(
-            entries
-        );
-
-
-        // ====================================================
-        // SHOW CONFLICTS
-        // ====================================================
-
-        console.table(
-            conflicts
-        );
-
-
-        // ====================================================
-        // DO NOT SAVE EMPTY TIMETABLE
-        // ====================================================
+    if (
+        task.requiresRoom
+    ) {
 
         if (
-            entries.length === 0
+            compatibleRoomCount === 0
         ) {
 
-            if (
-                typeof showTimetableConflicts ===
-                "function"
-            ) {
+            // ------------------------------------------------
+            // Impossible task gets very high priority.
+            //
+            // This allows the generator to expose the
+            // impossible requirement early.
+            // ------------------------------------------------
 
-                showTimetableConflicts(
-                    conflicts,
+            score += 5000;
+
+        }
+        else {
+
+            score += Math.max(
+                0,
+                300 -
+                (
+                    compatibleRoomCount *
+                    50
+                )
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // 5. MAX LESSONS PER DAY
+    // ========================================================
+    //
+    // A requirement allowing only one lesson per day is
+    // more restrictive than one allowing three.
+    //
+    // ========================================================
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 0;
+
+
+    if (
+        maxPerDay === 1
+    ) {
+
+        score += 200;
+
+    }
+    else if (
+        maxPerDay === 2
+    ) {
+
+        score += 100;
+
+    }
+    else if (
+        maxPerDay === 3
+    ) {
+
+        score += 50;
+
+    }
+
+
+    // ========================================================
+    // 6. WEEKLY FREQUENCY
+    // ========================================================
+    //
+    // Retrieve the requirement because lessonsPerWeek lives
+    // there rather than directly on the task.
+    //
+    // ========================================================
+
+    const requirement =
+        getTaskRequirement(
+            task,
+            lookup
+        );
+
+
+    const lessonsPerWeek =
+        Number(
+            requirement?.lessonsPerWeek
+        ) || 0;
+
+
+    // More weekly lessons = more scheduling pressure.
+    score += Math.min(
+        lessonsPerWeek * 20,
+        200
+    );
+
+
+    // ========================================================
+    // 7. DOUBLE LESSONS PER WEEK
+    // ========================================================
+    //
+    // Requirements with multiple doubles have greater
+    // consecutive-period pressure.
+    //
+    // ========================================================
+
+    const doubleLessonsPerWeek =
+        Number(
+            requirement?.doubleLessonsPerWeek
+        ) || 0;
+
+
+    score += Math.min(
+        doubleLessonsPerWeek * 50,
+        200
+    );
+
+
+    // ========================================================
+    // FINAL SCORE
+    // ========================================================
+
+    return score;
+
+}
+
+
+// ============================================================
+// SORT TASKS FOR SCHEDULING
+// ============================================================
+//
+// Returns a NEW array.
+//
+// The original lessonTasks array remains untouched.
+//
+// ============================================================
+
+function sortTasksForScheduling(
+    tasks,
+    rooms,
+    lookup
+) {
+
+    if (
+        !Array.isArray(tasks)
+    ) {
+
+        return [];
+
+    }
+
+
+    const sortedTasks =
+        [...tasks];
+
+
+    sortedTasks.sort(
+        (
+            a,
+            b
+        ) => {
+
+            const scoreA =
+                getTaskPriorityScore(
+                    a,
+                    rooms,
                     lookup
                 );
 
+
+            const scoreB =
+                getTaskPriorityScore(
+                    b,
+                    rooms,
+                    lookup
+                );
+
+
+            // ------------------------------------------------
+            // PRIMARY PRIORITY
+            // ------------------------------------------------
+
+            if (
+                scoreA !==
+                scoreB
+            ) {
+
+                return (
+                    scoreB -
+                    scoreA
+                );
+
             }
 
 
-            throw new Error(
+            // ------------------------------------------------
+            // DOUBLE FIRST
+            // ------------------------------------------------
 
-                "No timetable entries could be generated. " +
+            if (
+                a.duration !==
+                b.duration
+            ) {
 
-                conflicts.length +
+                return (
+                    b.duration -
+                    a.duration
+                );
 
-                " lesson task(s) could not be placed."
+            }
 
+
+            // ------------------------------------------------
+            // ROOM REQUIRED FIRST
+            // ------------------------------------------------
+
+            if (
+                a.requiresRoom !==
+                b.requiresRoom
+            ) {
+
+                return a.requiresRoom
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // RANDOM TIE BREAKER
+            // ------------------------------------------------
+            //
+            // Only used when tasks are otherwise equivalent.
+            //
+            // This prevents every generated timetable from
+            // following exactly the same task order.
+            //
+            // ------------------------------------------------
+
+            return (
+                Math.random() -
+                0.5
             );
 
         }
+    );
 
 
-        // ====================================================
-        // STEP 11 — CLEAR OLD TIMETABLE
-        // ====================================================
+    // ========================================================
+    // DEBUG SUMMARY
+    // ========================================================
 
-        if (
-            typeof setTimetableGenerationStatus ===
-            "function"
-        ) {
-
-            setTimetableGenerationStatus(
-
-                "Clearing previous timetable...",
-
-                "info"
-
-            );
-
-        }
-
-
-        console.log(
-            "STEP 11: Clearing old timetable..."
-        );
-
-
-        const {
-            error: deleteError
-        } = await supabaseClient
-
-            .from(
-                "timetable_entries"
-            )
-
-            .delete()
-
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            );
-
-
-        if (
-            deleteError
-        ) {
-
-            console.error(
-                "DELETE ERROR:",
-                deleteError
-            );
-
-
-            throw new Error(
-
-                "Failed to clear previous timetable: " +
-
-                deleteError.message
-
-            );
-
-        }
-
-
-        console.log(
-            "Old timetable cleared."
-        );
-
-
-        // ====================================================
-        // STEP 12 — SAVE NEW TIMETABLE
-        // ====================================================
-
-        if (
-            typeof setTimetableGenerationStatus ===
-            "function"
-        ) {
-
-            setTimetableGenerationStatus(
-
-                `Saving ${entries.length} timetable entries...`,
-
-                "info"
-
-            );
-
-        }
-
-
-        console.log(
-            "STEP 12: Saving generated entries..."
-        );
-
-
-        const {
-            data: insertedEntries,
-            error: insertError
-        } = await supabaseClient
-
-            .from(
-                "timetable_entries"
-            )
-
-            .insert(
-                entries
-            )
-
-            .select();
-
-
-        if (
-            insertError
-        ) {
-
-            console.error(
-                "SUPABASE INSERT ERROR:",
-                insertError
-            );
-
-
-            throw new Error(
-
-                "Failed to save timetable: " +
-
-                insertError.message
-
-            );
-
-        }
-
-
-        // ====================================================
-        // STEP 13 — STORE GENERATED ENTRIES
-        // ====================================================
-
-        generatedTimetableEntries =
-            insertedEntries || entries;
-
-
-        console.log(
-            "STEP 13: Timetable saved."
-        );
-
-
-        console.log(
-            "Saved entries:",
-            generatedTimetableEntries.length
-        );
-
-
-        console.table(
-            generatedTimetableEntries
-        );
-
-
-        // ====================================================
-        // STEP 14 — SHOW CONFLICTS
-        // ====================================================
-
-       if (
-    entries.length === 0
-) {
-
-    console.error(
+    console.log(
         "======================================"
     );
 
-    console.error(
-        "NO TIMETABLE ENTRIES GENERATED"
+    console.log(
+        "TASK SCHEDULING PRIORITY"
     );
 
-    console.error(
+    console.log(
         "======================================"
     );
 
-    console.error(
-        "Total tasks:",
-        tasks.length
-    );
-
-    console.error(
-        "Total conflicts:",
-        conflicts.length
-    );
 
     console.table(
-        conflicts.map(
-            conflict => ({
+        sortedTasks.map(
+            task => ({
+
                 taskId:
-                    conflict.task?.taskId,
+                    task.taskId,
+
+                requirementId:
+                    task.requirementId,
 
                 streamId:
-                    conflict.task?.streamId,
+                    task.streamId,
 
                 subjectId:
-                    conflict.task?.subjectId,
+                    task.subjectId,
 
                 teacherId:
-                    conflict.task?.teacherId,
+                    task.teacherId,
 
-                isDouble:
-                    conflict.task?.isDouble,
+                taskType:
+                    task.taskType,
 
-                lessonsRequired:
-                    conflict.task?.lessonsRequired,
+                duration:
+                    task.duration,
 
                 requiresRoom:
-                    conflict.task?.requiresRoom,
+                    task.requiresRoom,
 
                 roomType:
-                    conflict.task?.roomType,
+                    task.roomType,
 
                 maxLessonsPerDay:
-                    conflict.task?.maxLessonsPerDay,
+                    task.maxLessonsPerDay,
 
-                reason:
-                    conflict.reason
-            })
-        )
-    );
-
-    console.error(
-        "Teaching periods available:",
-        teachingPeriods.length
-    );
-
-    console.table(
-        teachingPeriods.map(
-            period => ({
-                id:
-                    period.id,
-
-                day:
-                    period.day_name,
-
-                dayNumber:
-                    period.day_number,
-
-                order:
-                    period.period_order,
-
-                number:
-                    period.period_number,
-
-                start:
-                    period.start_time,
-
-                end:
-                    period.end_time,
-
-                teaching:
-                    period.is_teaching_period,
-
-                type:
-                    period.period_type
-            })
-        )
-    );
-
-    console.error(
-        "Rooms available:",
-        data.rooms.length
-    );
-
-    console.table(
-        data.rooms.map(
-            room => ({
-                id:
-                    room.id,
-
-                name:
-                    getTimetableRoomName(
-                        room
-                    ),
-
-                type:
-                    getTimetableRoomType(
-                        room
+                priority:
+                    getTaskPriorityScore(
+                        task,
+                        rooms,
+                        lookup
                     )
+
             })
         )
     );
 
-    showTimetableConflicts(
-        conflicts,
-        lookup
+
+    return sortedTasks;
+
+}
+
+// ============================================================
+// STAGE 6B — SMART TASK PRIORITY
+// ============================================================
+//
+// Determines which lesson tasks should be placed first.
+//
+// The principle is:
+//
+//     MOST RESTRICTED / MOST DIFFICULT
+//                 ↓
+//             FIRST
+//
+// This prevents easy lessons from consuming slots that
+// difficult lessons need later.
+//
+// Priority factors include:
+//
+// 1. Double lesson
+// 2. Room-required lesson
+// 3. Specific room type
+// 4. Teacher restrictions
+// 5. High weekly lesson count
+// 6. Low daily limit
+//
+// IMPORTANT:
+// This function DOES NOT place anything.
+//
+// It only calculates a priority score.
+// ============================================================
+
+
+// ============================================================
+// CALCULATE TASK PRIORITY SCORE
+// ============================================================
+
+function calculateTaskPriorityScore(
+    task,
+    data
+) {
+
+    if (
+        !task ||
+        !data
+    ) {
+
+        return 0;
+
+    }
+
+
+    let score = 0;
+
+
+    // ========================================================
+    // 1. DOUBLE LESSON
+    // ========================================================
+    //
+    // Double lessons are harder to place because they need
+    // TWO consecutive free periods.
+    //
+    // Therefore they receive the highest base priority.
+    //
+    // ========================================================
+
+    if (
+        task.taskType === "double"
+    ) {
+
+        score += 100;
+
+    }
+
+
+    // ========================================================
+    // 2. ROOM REQUIRED
+    // ========================================================
+    //
+    // A lesson requiring a room has fewer possible slots.
+    //
+    // ========================================================
+
+    if (
+        task.requiresRoom
+    ) {
+
+        score += 50;
+
+    }
+
+
+    // ========================================================
+    // 3. SPECIFIC ROOM TYPE
+    // ========================================================
+    //
+    // Example:
+    //
+    // Laboratory
+    // Computer Lab
+    // Workshop
+    //
+    // A specific room type makes placement more restrictive.
+    //
+    // ========================================================
+
+    if (
+        task.roomType
+    ) {
+
+        score += 25;
+
+    }
+
+
+    // ========================================================
+    // 4. TEACHER ASSIGNED
+    // ========================================================
+    //
+    // A teacher creates another occupancy constraint.
+    //
+    // ========================================================
+
+    if (
+        task.teacherId
+    ) {
+
+        score += 15;
+
+    }
+
+
+    // ========================================================
+    // 5. DAILY LIMIT
+    // ========================================================
+    //
+    // A low daily limit makes the task more restrictive.
+    //
+    // Example:
+    //
+    // maxPerDay = 1
+    //     → highly restrictive
+    //
+    // maxPerDay = 4
+    //     → less restrictive
+    //
+    // ========================================================
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 0;
+
+
+    if (
+        maxPerDay === 1
+    ) {
+
+        score += 35;
+
+    }
+    else if (
+        maxPerDay === 2
+    ) {
+
+        score += 20;
+
+    }
+    else if (
+        maxPerDay === 3
+    ) {
+
+        score += 10;
+
+    }
+
+
+    // ========================================================
+    // 6. TASK DURATION
+    // ========================================================
+    //
+    // Longer tasks consume more timetable space.
+    //
+    // ========================================================
+
+    if (
+        Number(task.duration) === 2
+    ) {
+
+        score += 20;
+
+    }
+
+
+    // ========================================================
+    // FINAL SCORE
+    // ========================================================
+
+    return score;
+
+}
+
+
+// ============================================================
+// SORT LESSON TASKS BY DIFFICULTY
+// ============================================================
+//
+// Returns a NEW array.
+//
+// The original lessonTasks array is not modified.
+//
+// ============================================================
+
+function sortLessonTasksByPriority(
+    tasks,
+    data
+) {
+
+    if (
+        !Array.isArray(tasks)
+    ) {
+
+        return [];
+
+    }
+
+
+    const sorted =
+        tasks.map(
+            task => ({
+
+                task,
+
+                priority:
+                    calculateTaskPriorityScore(
+                        task,
+                        data
+                    )
+
+            })
+        );
+
+
+    // ========================================================
+    // SORT HIGHEST PRIORITY FIRST
+    // ========================================================
+
+    sorted.sort(
+        (
+            a,
+            b
+        ) => {
+
+            if (
+                b.priority !==
+                a.priority
+            ) {
+
+                return (
+                    b.priority -
+                    a.priority
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // TIE BREAKER 1 — DOUBLE FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.duration !==
+                b.task.duration
+            ) {
+
+                return (
+                    b.task.duration -
+                    a.task.duration
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // TIE BREAKER 2 — ROOM REQUIRED
+            // ------------------------------------------------
+
+            if (
+                a.task.requiresRoom !==
+                b.task.requiresRoom
+            ) {
+
+                return a.task.requiresRoom
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // TIE BREAKER 3 — RANDOM
+            // ------------------------------------------------
+            //
+            // Prevents exactly the same timetable every time
+            // when tasks have equal priority.
+            //
+            // ------------------------------------------------
+
+            return Math.random() - 0.5;
+
+        }
     );
 
-    throw new Error(
-        "No timetable entries could be generated. " +
-        conflicts.length +
-        " lesson task(s) could not be placed."
+
+    const result =
+        sorted.map(
+            item =>
+                item.task
+        );
+
+
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "LESSON TASK PRIORITY ORDER"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.table(
+        result.map(
+            task => ({
+
+                taskId:
+                    task.taskId,
+
+                type:
+                    task.taskType,
+
+                duration:
+                    task.duration,
+
+                roomRequired:
+                    task.requiresRoom,
+
+                roomType:
+                    task.roomType,
+
+                maxPerDay:
+                    task.maxLessonsPerDay,
+
+                priority:
+                    calculateTaskPriorityScore(
+                        task,
+                        data
+                    )
+
+            })
+        )
+    );
+
+
+    return result;
+
+}
+
+// ============================================================
+// PREPARE SMART TASK ORDER
+// ============================================================
+
+function prepareSmartLessonTaskOrder(
+    data
+) {
+
+    if (
+        !data ||
+        !Array.isArray(data.lessonTasks)
+    ) {
+
+        throw new Error(
+            "Cannot prepare task order: lesson tasks are unavailable."
+        );
+
+    }
+
+
+    const orderedTasks =
+        sortLessonTasksByPriority(
+            data.lessonTasks,
+            data
+        );
+
+
+    // ========================================================
+    // RESET PLACEMENT STATE
+    // ========================================================
+
+    orderedTasks.forEach(
+        task => {
+
+            task.placed =
+                false;
+
+            task.periodIds =
+                [];
+
+            task.roomId =
+                null;
+
+        }
+    );
+
+
+    // ========================================================
+    // STORE ORDER
+    // ========================================================
+
+    data.lessonTasks =
+        orderedTasks;
+
+
+    console.log(
+        "Smart lesson task ordering completed.",
+        {
+            totalTasks:
+                orderedTasks.length
+        }
+    );
+
+
+    return orderedTasks;
+
+}
+
+// ============================================================
+// STAGE 6C — CANDIDATE SLOT SCORING
+// ============================================================
+//
+// Determines how GOOD a valid timetable slot is.
+//
+// Stage 6B asks:
+//
+//     "Which lesson should be placed first?"
+//
+// Stage 6C asks:
+//
+//     "Of all valid slots, which slot is BEST for this lesson?"
+//
+// IMPORTANT:
+//
+// This stage does NOT reserve or place lessons.
+//
+// It only:
+//
+//     1. examines candidate slots
+//     2. calculates a score
+//     3. explains the score
+//     4. returns candidates ordered from BEST → WORST
+//
+// Higher score = better slot.
+//
+// ============================================================
+
+
+// ============================================================
+// GET TEACHER DAILY LESSON COUNT
+// ============================================================
+
+function getTeacherDailyLessonCount(
+    indexes,
+    teacherId,
+    dayNumber
+) {
+
+    if (
+        !indexes ||
+        !teacherId ||
+        !Number.isFinite(
+            Number(dayNumber)
+        )
+    ) {
+
+        return 0;
+
+    }
+
+
+    const normalizedTeacherId =
+        normalizeTimetableId(
+            teacherId
+        );
+
+
+    let count = 0;
+
+
+    // ========================================================
+    // COUNT OCCUPIED TEACHER PERIODS
+    // ========================================================
+
+    const prefix =
+        `${normalizedTeacherId}__`;
+
+
+    indexes.teacherPeriod.forEach(
+        key => {
+
+            if (
+                !key.startsWith(
+                    prefix
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            const periodId =
+                key.substring(
+                    prefix.length
+                );
+
+
+            const period =
+                timetableState?.periods?.find(
+                    item =>
+                        normalizeTimetableId(
+                            item.id
+                        ) === periodId
+                );
+
+
+            if (
+                period &&
+                Number(period.dayNumber) ===
+                Number(dayNumber)
+            ) {
+
+                count++;
+
+            }
+
+        }
+    );
+
+
+    return count;
+
+}
+
+
+// ============================================================
+// GET TEACHER DAILY LESSON COUNT FROM PERIODS
+// ============================================================
+//
+// This version uses the actual normalized periods supplied
+// by the generator instead of depending on global state.
+//
+// ============================================================
+
+function getTeacherDailyLessonCountFromPeriods(
+    indexes,
+    teacherId,
+    dayNumber,
+    periods
+) {
+
+    if (
+        !indexes ||
+        !teacherId ||
+        !Array.isArray(periods)
+    ) {
+
+        return 0;
+
+    }
+
+
+    const normalizedTeacherId =
+        normalizeTimetableId(
+            teacherId
+        );
+
+
+    let count = 0;
+
+
+    const periodMap =
+        new Map();
+
+
+    periods.forEach(
+        period => {
+
+            periodMap.set(
+                normalizeTimetableId(
+                    period.id
+                ),
+                period
+            );
+
+        }
+    );
+
+
+    const prefix =
+        `${normalizedTeacherId}__`;
+
+
+    indexes.teacherPeriod.forEach(
+        key => {
+
+            if (
+                !key.startsWith(
+                    prefix
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            const periodId =
+                key.substring(
+                    prefix.length
+                );
+
+
+            const period =
+                periodMap.get(
+                    periodId
+                );
+
+
+            if (
+                period &&
+                Number(period.dayNumber) ===
+                Number(dayNumber)
+            ) {
+
+                count++;
+
+            }
+
+        }
+    );
+
+
+    return count;
+
+}
+
+
+// ============================================================
+// GET TEACHER WEEKLY LESSON COUNT
+// ============================================================
+
+function getTeacherWeeklyLessonCount(
+    indexes,
+    teacherId
+) {
+
+    if (
+        !indexes ||
+        !teacherId
+    ) {
+
+        return 0;
+
+    }
+
+
+    const normalizedTeacherId =
+        normalizeTimetableId(
+            teacherId
+        );
+
+
+    const prefix =
+        `${normalizedTeacherId}__`;
+
+
+    let count = 0;
+
+
+    indexes.teacherPeriod.forEach(
+        key => {
+
+            if (
+                key.startsWith(
+                    prefix
+                )
+            ) {
+
+                count++;
+
+            }
+
+        }
+    );
+
+
+    return count;
+
+}
+
+
+// ============================================================
+// GET STREAM DAILY LESSON COUNT
+// ============================================================
+//
+// Used for timetable balance.
+//
+// This is NOT the requirement daily limit.
+//
+// The requirement limit is handled separately by:
+//
+//     getDailyRequirementLessonCount()
+//
+// This function tells us how busy the stream already is
+// on a particular day.
+//
+// ============================================================
+
+function getStreamDailyLessonCount(
+    indexes,
+    streamId,
+    dayNumber,
+    periods
+) {
+
+    if (
+        !indexes ||
+        !streamId ||
+        !Array.isArray(periods)
+    ) {
+
+        return 0;
+
+    }
+
+
+    const normalizedStreamId =
+        normalizeTimetableId(
+            streamId
+        );
+
+
+    const periodMap =
+        new Map();
+
+
+    periods.forEach(
+        period => {
+
+            periodMap.set(
+                normalizeTimetableId(
+                    period.id
+                ),
+                period
+            );
+
+        }
+    );
+
+
+    const prefix =
+        `${normalizedStreamId}__`;
+
+
+    let count = 0;
+
+
+    indexes.streamPeriod.forEach(
+        key => {
+
+            if (
+                !key.startsWith(
+                    prefix
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            const periodId =
+                key.substring(
+                    prefix.length
+                );
+
+
+            const period =
+                periodMap.get(
+                    periodId
+                );
+
+
+            if (
+                period &&
+                Number(period.dayNumber) ===
+                Number(dayNumber)
+            ) {
+
+                count++;
+
+            }
+
+        }
+    );
+
+
+    return count;
+
+}
+
+
+// ============================================================
+// CHECK IF PERIOD IS LATE
+// ============================================================
+//
+// Used to slightly discourage putting difficult lessons
+// into the final teaching periods unless necessary.
+//
+// ============================================================
+
+function getPeriodPositionScore(
+    period,
+    dayPeriods
+) {
+
+    if (
+        !period ||
+        !Array.isArray(dayPeriods) ||
+        dayPeriods.length === 0
+    ) {
+
+        return 0;
+
+    }
+
+
+    const teachingPeriods =
+        dayPeriods.filter(
+            item =>
+                item.isTeachingPeriod !== false &&
+                item.periodType !== "break" &&
+                item.periodType !== "lunch"
+        );
+
+
+    if (
+        teachingPeriods.length === 0
+    ) {
+
+        return 0;
+
+    }
+
+
+    const firstOrder =
+        Number(
+            teachingPeriods[0].periodOrder
+        );
+
+
+    const lastOrder =
+        Number(
+            teachingPeriods[
+                teachingPeriods.length - 1
+            ].periodOrder
+        );
+
+
+    const currentOrder =
+        Number(
+            period.periodOrder
+        );
+
+
+    if (
+        lastOrder ===
+        firstOrder
+    ) {
+
+        return 0;
+
+    }
+
+
+    const position =
+        (
+            currentOrder -
+            firstOrder
+        ) /
+        (
+            lastOrder -
+            firstOrder
+        );
+
+
+    // Earlier periods receive a small bonus.
+    // Later periods receive a small penalty.
+
+    return Math.round(
+        10 -
+        (
+            position * 10
+        )
     );
 
 }
-        
 
 
-        // ====================================================
-        // STEP 15 — SHOW SUMMARY
-        // ====================================================
+// ============================================================
+// CALCULATE CANDIDATE SLOT SCORE
+// ============================================================
+//
+// IMPORTANT:
+//
+// This function assumes the slot has already passed:
+//
+//     checkSingleSlotConflict()
+//
+// Therefore this function is about QUALITY,
+// not basic validity.
+//
+// ============================================================
+
+function calculateCandidateSlotScore(
+    task,
+    period,
+    room,
+    data,
+    indexes
+) {
+
+    if (
+        !task ||
+        !period ||
+        !data ||
+        !indexes
+    ) {
+
+        return {
+
+            score:
+                -Infinity,
+
+            reasons:
+                [
+                    "Invalid candidate data."
+                ]
+
+        };
+
+    }
+
+
+    let score = 0;
+
+    const reasons = [];
+
+
+    // ========================================================
+    // DAY
+    // ========================================================
+
+    const dayNumber =
+        Number(
+            period.dayNumber
+        );
+
+
+    // ========================================================
+    // REQUIREMENT DAILY USAGE
+    // ========================================================
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
+        );
+
+
+    const requirementDailyCount =
+        getDailyRequirementLessonCount(
+            indexes,
+            requirementId,
+            dayNumber
+        );
+
+
+    // --------------------------------------------------------
+    // Prefer spreading lessons across the week.
+    // --------------------------------------------------------
+
+    if (
+        requirementDailyCount === 0
+    ) {
+
+        score += 35;
+
+        reasons.push(
+            "Subject has no lesson on this day."
+        );
+
+    }
+    else if (
+        requirementDailyCount === 1
+    ) {
+
+        score += 10;
+
+        reasons.push(
+            "Subject already has one lesson on this day."
+        );
+
+    }
+    else {
+
+        score -=
+            requirementDailyCount * 20;
+
+        reasons.push(
+            "Subject already has multiple lessons on this day."
+        );
+
+    }
+
+
+    // ========================================================
+    // STREAM DAILY BALANCE
+    // ========================================================
+
+    const streamDailyCount =
+        getStreamDailyLessonCount(
+            indexes,
+            task.streamId,
+            dayNumber,
+            data.periods
+        );
+
+
+    if (
+        streamDailyCount === 0
+    ) {
+
+        score += 25;
+
+        reasons.push(
+            "Stream has no lesson on this day."
+        );
+
+    }
+    else if (
+        streamDailyCount <= 2
+    ) {
+
+        score += 10;
+
+        reasons.push(
+            "Stream has a light timetable on this day."
+        );
+
+    }
+    else if (
+        streamDailyCount >= 5
+    ) {
+
+        score -= 25;
+
+        reasons.push(
+            "Stream is already heavily loaded on this day."
+        );
+
+    }
+
+
+    // ========================================================
+    // TEACHER DAILY BALANCE
+    // ========================================================
+
+    if (
+        task.teacherId
+    ) {
+
+        const teacherDailyCount =
+            getTeacherDailyLessonCountFromPeriods(
+                indexes,
+                task.teacherId,
+                dayNumber,
+                data.periods
+            );
+
 
         if (
-            typeof showTimetableSummary ===
-            "function"
+            teacherDailyCount === 0
         ) {
 
-            showTimetableSummary(
+            score += 20;
 
-                tasks.length,
+            reasons.push(
+                "Teacher has no lesson on this day."
+            );
 
-                generatedTimetableEntries.length,
+        }
+        else if (
+            teacherDailyCount <= 2
+        ) {
 
-                conflicts.length
+            score += 8;
 
+            reasons.push(
+                "Teacher has a light workload on this day."
+            );
+
+        }
+        else if (
+            teacherDailyCount >= 5
+        ) {
+
+            score -= 20;
+
+            reasons.push(
+                "Teacher is heavily loaded on this day."
             );
 
         }
 
+    }
 
-        // ====================================================
-        // STEP 16 — LOAD GENERATED TIMETABLE
-        // ====================================================
 
-        if (
-            typeof loadGeneratedTimetable ===
-            "function"
-        ) {
+    // ========================================================
+    // TEACHER WEEKLY BALANCE
+    // ========================================================
 
-            console.log(
-                "STEP 16: Loading generated timetable..."
+    if (
+        task.teacherId
+    ) {
+
+        const teacher =
+            data.lookup.teachers.get(
+                task.teacherId
             );
 
 
-            await loadGeneratedTimetable();
+        const weeklyCount =
+            getTeacherWeeklyLessonCount(
+                indexes,
+                task.teacherId
+            );
 
-        }
 
+        const weeklyLimit =
+            Number(
+                teacher?.maxLessonsPerWeek
+            ) || 0;
 
 
         if (
-            typeof setTimetableGenerationStatus ===
-            "function"
+            weeklyLimit > 0
         ) {
+
+            const remaining =
+                weeklyLimit -
+                weeklyCount;
+
 
             if (
-                conflicts.length === 0
+                remaining <= 2
             ) {
 
-                setTimetableGenerationStatus(
+                score -= 20;
 
-                    `Timetable generated successfully. ${generatedTimetableEntries.length} lesson periods saved.`,
+                reasons.push(
+                    "Teacher is close to the weekly workload limit."
+                );
 
-                    "success"
+            }
+            else if (
+                remaining <= 5
+            ) {
 
+                score -= 5;
+
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // PERIOD POSITION
+    // ========================================================
+
+    const dayPeriods =
+        data.periods.filter(
+            item =>
+                Number(
+                    item.dayNumber
+                ) ===
+                dayNumber
+        );
+
+
+    const positionScore =
+        getPeriodPositionScore(
+            period,
+            dayPeriods
+        );
+
+
+    score +=
+        positionScore;
+
+
+    if (
+        positionScore > 0
+    ) {
+
+        reasons.push(
+            "Earlier teaching period is preferred."
+        );
+
+    }
+
+
+    // ========================================================
+    // ROOM USAGE
+    // ========================================================
+
+    if (
+        room &&
+        room.id
+    ) {
+
+        // Prefer a room that is not already heavily used.
+        //
+        // We calculate usage from roomPeriod.
+
+        const roomId =
+            normalizeTimetableId(
+                room.id
+            );
+
+
+        const roomPrefix =
+            `${roomId}__`;
+
+
+        let roomWeeklyUsage =
+            0;
+
+
+        indexes.roomPeriod.forEach(
+            key => {
+
+                if (
+                    key.startsWith(
+                        roomPrefix
+                    )
+                ) {
+
+                    roomWeeklyUsage++;
+
+                }
+
+            }
+        );
+
+
+        if (
+            roomWeeklyUsage <= 2
+        ) {
+
+            score += 10;
+
+            reasons.push(
+                "Room has light weekly usage."
+            );
+
+        }
+        else if (
+            roomWeeklyUsage >= 15
+        ) {
+
+            score -= 5;
+
+            reasons.push(
+                "Room has high weekly usage."
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // FINAL
+    // ========================================================
+
+    return {
+
+        score,
+
+        reasons
+
+    };
+
+}
+
+
+// ============================================================
+// SCORE SINGLE LESSON CANDIDATES
+// ============================================================
+//
+// Returns all VALID candidate slots for a task.
+//
+// Nothing is reserved here.
+//
+// ============================================================
+
+function getScoredSingleLessonCandidates(
+    task,
+    data,
+    indexes
+) {
+
+    if (
+        !task ||
+        !data ||
+        !indexes
+    ) {
+
+        return [];
+
+    }
+
+
+    const teachingPeriods =
+        getTeachingPeriods(
+            data.periods
+        );
+
+
+    const compatibleRooms =
+        getCompatibleRooms(
+            task,
+            data.rooms
+        );
+
+
+    if (
+        task.requiresRoom &&
+        compatibleRooms.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    const candidates = [];
+
+
+    // ========================================================
+    // TEST EVERY PERIOD
+    // ========================================================
+
+    teachingPeriods.forEach(
+        period => {
+
+            const candidateRooms =
+                task.requiresRoom
+                    ? compatibleRooms
+                    : [null];
+
+
+            candidateRooms.forEach(
+                room => {
+
+                    const conflict =
+                        checkSingleSlotConflict(
+                            task,
+                            period,
+                            room,
+                            indexes
+                        );
+
+
+                    if (
+                        !conflict ||
+                        !conflict.valid
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const scoring =
+                        calculateCandidateSlotScore(
+                            task,
+                            period,
+                            room,
+                            data,
+                            indexes
+                        );
+
+
+                    candidates.push({
+
+                        taskId:
+                            task.taskId,
+
+                        period,
+
+                        room,
+
+                        score:
+                            scoring.score,
+
+                        reasons:
+                            scoring.reasons
+
+                    });
+
+                }
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // BEST CANDIDATE FIRST
+    // ========================================================
+
+    candidates.sort(
+        (
+            a,
+            b
+        ) => {
+
+            if (
+                b.score !==
+                a.score
+            ) {
+
+                return (
+                    b.score -
+                    a.score
                 );
 
             }
 
-            else {
 
-                setTimetableGenerationStatus(
+            return (
+                Math.random() -
+                0.5
+            );
 
-                    `Timetable generated with ${conflicts.length} unresolved lesson task(s). ${generatedTimetableEntries.length} lesson periods saved.`,
+        }
+    );
 
-                    "warning"
 
+    return candidates;
+
+}
+
+
+// ============================================================
+// GET BEST SINGLE LESSON CANDIDATE
+// ============================================================
+
+function getBestSingleLessonCandidate(
+    task,
+    data,
+    indexes
+) {
+
+    const candidates =
+        getScoredSingleLessonCandidates(
+            task,
+            data,
+            indexes
+        );
+
+
+    if (
+        candidates.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    return candidates[0];
+
+}
+
+// ============================================================
+// STAGE 6D — DOUBLE LESSON CANDIDATE SCORING
+// ============================================================
+//
+// Determines which consecutive pair is the BEST location
+// for a double lesson.
+//
+// Example:
+//
+//     Monday P1 + P2
+//     Monday P2 + P3
+//     Monday P3 + P4
+//     Tuesday P1 + P2
+//     ...
+//
+// Each valid pair receives a score.
+//
+// Higher score = better placement.
+//
+// IMPORTANT:
+//
+// This stage DOES NOT reserve periods.
+//
+// It only:
+//
+//     1. finds valid consecutive pairs
+//     2. checks both periods
+//     3. scores the pair
+//     4. returns candidates BEST → WORST
+//
+// ============================================================
+
+
+// ============================================================
+// CALCULATE DOUBLE LESSON CANDIDATE SCORE
+// ============================================================
+
+function calculateDoubleLessonCandidateScore(
+    task,
+    firstPeriod,
+    secondPeriod,
+    room,
+    data,
+    indexes
+) {
+
+    if (
+        !task ||
+        !firstPeriod ||
+        !secondPeriod ||
+        !data ||
+        !indexes
+    ) {
+
+        return {
+
+            score:
+                -Infinity,
+
+            reasons:
+                [
+                    "Invalid double lesson candidate data."
+                ]
+
+        };
+
+    }
+
+
+    let score = 0;
+
+    const reasons = [];
+
+
+    // ========================================================
+    // DAY
+    // ========================================================
+
+    const dayNumber =
+        Number(
+            firstPeriod.dayNumber
+        );
+
+
+    // ========================================================
+    // REQUIREMENT DAILY COUNT
+    // ========================================================
+    //
+    // A double occupies TWO periods.
+    //
+    // Therefore the current daily count is evaluated before
+    // adding both periods.
+    //
+    // ========================================================
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
+        );
+
+
+    const currentRequirementDailyCount =
+        getDailyRequirementLessonCount(
+            indexes,
+            requirementId,
+            dayNumber
+        );
+
+
+    // ========================================================
+    // PREFER DAYS WITH NO LESSON FOR THIS SUBJECT
+    // ========================================================
+
+    if (
+        currentRequirementDailyCount === 0
+    ) {
+
+        score += 45;
+
+        reasons.push(
+            "Subject has no lesson on this day."
+        );
+
+    }
+    else if (
+        currentRequirementDailyCount === 1
+    ) {
+
+        score += 15;
+
+        reasons.push(
+            "Subject has only one lesson on this day."
+        );
+
+    }
+    else {
+
+        score -=
+            currentRequirementDailyCount * 25;
+
+        reasons.push(
+            "Subject already has multiple lessons on this day."
+        );
+
+    }
+
+
+    // ========================================================
+    // STREAM DAILY LOAD
+    // ========================================================
+
+    const streamDailyCount =
+        getStreamDailyLessonCount(
+            indexes,
+            task.streamId,
+            dayNumber,
+            data.periods
+        );
+
+
+    // IMPORTANT:
+    //
+    // A double lesson adds TWO lessons to the stream's
+    // daily timetable.
+
+    const projectedStreamDailyCount =
+        streamDailyCount + 2;
+
+
+    if (
+        streamDailyCount === 0
+    ) {
+
+        score += 30;
+
+        reasons.push(
+            "Stream has no lesson on this day."
+        );
+
+    }
+    else if (
+        streamDailyCount <= 2
+    ) {
+
+        score += 12;
+
+        reasons.push(
+            "Stream has a light daily workload."
+        );
+
+    }
+    else if (
+        projectedStreamDailyCount <= 5
+    ) {
+
+        score -= 5;
+
+        reasons.push(
+            "Stream will have a moderate daily workload."
+        );
+
+    }
+    else {
+
+        score -= 30;
+
+        reasons.push(
+            "Double lesson would heavily load the stream on this day."
+        );
+
+    }
+
+
+    // ========================================================
+    // TEACHER DAILY LOAD
+    // ========================================================
+
+    if (
+        task.teacherId
+    ) {
+
+        const teacherDailyCount =
+            getTeacherDailyLessonCountFromPeriods(
+                indexes,
+                task.teacherId,
+                dayNumber,
+                data.periods
+            );
+
+
+        const projectedTeacherDailyCount =
+            teacherDailyCount + 2;
+
+
+        const teacher =
+            data.lookup.teachers.get(
+                task.teacherId
+            );
+
+
+        const maxTeacherDaily =
+            Number(
+                teacher?.maxLessonsPerDay
+            ) || 0;
+
+
+        if (
+            teacherDailyCount === 0
+        ) {
+
+            score += 25;
+
+            reasons.push(
+                "Teacher has no lesson on this day."
+            );
+
+        }
+        else if (
+            teacherDailyCount <= 2
+        ) {
+
+            score += 10;
+
+            reasons.push(
+                "Teacher has a light daily workload."
+            );
+
+        }
+        else if (
+            maxTeacherDaily > 0 &&
+            projectedTeacherDailyCount >
+            maxTeacherDaily
+        ) {
+
+            // This should normally already have been rejected
+            // by a stronger conflict check later.
+
+            score -= 100;
+
+            reasons.push(
+                "Double lesson would exceed teacher daily workload."
+            );
+
+        }
+        else if (
+            projectedTeacherDailyCount >= 5
+        ) {
+
+            score -= 20;
+
+            reasons.push(
+                "Teacher would have a heavy daily workload."
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // TEACHER WEEKLY LOAD
+    // ========================================================
+
+    if (
+        task.teacherId
+    ) {
+
+        const teacher =
+            data.lookup.teachers.get(
+                task.teacherId
+            );
+
+
+        const weeklyCount =
+            getTeacherWeeklyLessonCount(
+                indexes,
+                task.teacherId
+            );
+
+
+        const weeklyLimit =
+            Number(
+                teacher?.maxLessonsPerWeek
+            ) || 0;
+
+
+        if (
+            weeklyLimit > 0
+        ) {
+
+            const projectedWeeklyCount =
+                weeklyCount + 2;
+
+
+            const remainingAfterPlacement =
+                weeklyLimit -
+                projectedWeeklyCount;
+
+
+            if (
+                remainingAfterPlacement < 0
+            ) {
+
+                score -= 100;
+
+                reasons.push(
+                    "Double lesson would exceed teacher weekly workload."
+                );
+
+            }
+            else if (
+                remainingAfterPlacement <= 2
+            ) {
+
+                score -= 15;
+
+                reasons.push(
+                    "Teacher would be close to weekly workload limit."
                 );
 
             }
 
         }
 
+    }
 
-        // ====================================================
-        // FINAL LOG
-        // ====================================================
 
-        console.log(
-            "======================================"
-        );
+    // ========================================================
+    // PERIOD POSITION
+    // ========================================================
+    //
+    // Evaluate BOTH periods.
+    //
+    // A double lesson should preferably not consume the
+    // final two teaching periods unless necessary.
+    //
+    // ========================================================
 
-        console.log(
-            "✅ SMART TIMETABLE GENERATION SUCCESS"
-        );
-
-        console.log(
-            "Entries:",
-            generatedTimetableEntries.length
-        );
-
-        console.log(
-            "Conflicts:",
-            conflicts.length
-        );
-
-        console.log(
-            "======================================"
+    const dayPeriods =
+        data.periods.filter(
+            period =>
+                Number(
+                    period.dayNumber
+                ) ===
+                dayNumber
         );
 
 
-        // ====================================================
-        // RETURN RESULT
-        // ====================================================
+    const firstPositionScore =
+        getPeriodPositionScore(
+            firstPeriod,
+            dayPeriods
+        );
+
+
+    const secondPositionScore =
+        getPeriodPositionScore(
+            secondPeriod,
+            dayPeriods
+        );
+
+
+    const averagePositionScore =
+        (
+            firstPositionScore +
+            secondPositionScore
+        ) / 2;
+
+
+    score +=
+        Math.round(
+            averagePositionScore
+        );
+
+
+    if (
+        averagePositionScore > 0
+    ) {
+
+        reasons.push(
+            "Double lesson is positioned relatively early in the day."
+        );
+
+    }
+
+
+    // ========================================================
+    // ROOM USAGE
+    // ========================================================
+
+    if (
+        room &&
+        room.id
+    ) {
+
+        const roomId =
+            normalizeTimetableId(
+                room.id
+            );
+
+
+        const roomPrefix =
+            `${roomId}__`;
+
+
+        let roomWeeklyUsage =
+            0;
+
+
+        indexes.roomPeriod.forEach(
+            key => {
+
+                if (
+                    key.startsWith(
+                        roomPrefix
+                    )
+                ) {
+
+                    roomWeeklyUsage++;
+
+                }
+
+            }
+        );
+
+
+        if (
+            roomWeeklyUsage <= 2
+        ) {
+
+            score += 10;
+
+            reasons.push(
+                "Room has light weekly usage."
+            );
+
+        }
+        else if (
+            roomWeeklyUsage >= 15
+        ) {
+
+            score -= 5;
+
+            reasons.push(
+                "Room has high weekly usage."
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // KEEP SAME DAY AS A TRUE DOUBLE
+    // ========================================================
+    //
+    // This is normally guaranteed by
+    // arePeriodsConsecutive().
+    //
+    // We still score it defensively.
+    //
+    // ========================================================
+
+    if (
+        Number(firstPeriod.dayNumber) ===
+        Number(secondPeriod.dayNumber)
+    ) {
+
+        score += 10;
+
+    }
+
+
+    // ========================================================
+    // FINAL RESULT
+    // ========================================================
+
+    return {
+
+        score,
+
+        reasons
+
+    };
+
+}
+
+
+// ============================================================
+// GET SCORED DOUBLE LESSON CANDIDATES
+// ============================================================
+//
+// Returns every VALID consecutive pair.
+//
+// Nothing is reserved here.
+//
+// ============================================================
+
+function getScoredDoubleLessonCandidates(
+    task,
+    data,
+    indexes
+) {
+
+    if (
+        !task ||
+        !data ||
+        !indexes
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // GET CONSECUTIVE PERIOD PAIRS
+    // ========================================================
+
+    const pairs =
+        getConsecutiveTeachingPeriodPairs(
+            data.periods
+        );
+
+
+    if (
+        pairs.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // GET COMPATIBLE ROOMS
+    // ========================================================
+
+    const compatibleRooms =
+        getCompatibleRooms(
+            task,
+            data.rooms
+        );
+
+
+    if (
+        task.requiresRoom &&
+        compatibleRooms.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    const candidates = [];
+
+
+    // ========================================================
+    // TEST EVERY PERIOD PAIR
+    // ========================================================
+
+    pairs.forEach(
+        pair => {
+
+            const candidateRooms =
+                task.requiresRoom
+                    ? compatibleRooms
+                    : [null];
+
+
+            candidateRooms.forEach(
+                room => {
+
+                    // ========================================
+                    // VALIDATE THE DOUBLE
+                    // ========================================
+
+                    const conflict =
+                        checkDoubleLessonConflict(
+                            task,
+                            pair.first,
+                            pair.second,
+                            room,
+                            indexes
+                        );
+
+
+                    if (
+                        !conflict ||
+                        !conflict.valid
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    // ========================================
+                    // SCORE THE DOUBLE
+                    // ========================================
+
+                    const scoring =
+                        calculateDoubleLessonCandidateScore(
+                            task,
+                            pair.first,
+                            pair.second,
+                            room,
+                            data,
+                            indexes
+                        );
+
+
+                    candidates.push({
+
+                        taskId:
+                            task.taskId,
+
+                        firstPeriod:
+                            pair.first,
+
+                        secondPeriod:
+                            pair.second,
+
+                        room,
+
+                        score:
+                            scoring.score,
+
+                        reasons:
+                            scoring.reasons
+
+                    });
+
+                }
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // BEST PAIR FIRST
+    // ========================================================
+
+    candidates.sort(
+        (
+            a,
+            b
+        ) => {
+
+            if (
+                b.score !==
+                a.score
+            ) {
+
+                return (
+                    b.score -
+                    a.score
+                );
+
+            }
+
+
+            return (
+                Math.random() -
+                0.5
+            );
+
+        }
+    );
+
+
+    return candidates;
+
+}
+
+
+// ============================================================
+// GET BEST DOUBLE LESSON CANDIDATE
+// ============================================================
+
+function getBestDoubleLessonCandidate(
+    task,
+    data,
+    indexes
+) {
+
+    const candidates =
+        getScoredDoubleLessonCandidates(
+            task,
+            data,
+            indexes
+        );
+
+
+    if (
+        candidates.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    return candidates[0];
+
+}
+
+
+// ============================================================
+// DEBUG DOUBLE LESSON CANDIDATES
+// ============================================================
+
+function logDoubleLessonCandidates(
+    task,
+    data,
+    indexes
+) {
+
+    const candidates =
+        getScoredDoubleLessonCandidates(
+            task,
+            data,
+            indexes
+        );
+
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "DOUBLE LESSON CANDIDATES"
+    );
+
+    console.log(
+        "Task:",
+        task?.taskId
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.table(
+        candidates.map(
+            candidate => ({
+
+                taskId:
+                    candidate.taskId,
+
+                firstPeriod:
+                    candidate.firstPeriod?.id,
+
+                secondPeriod:
+                    candidate.secondPeriod?.id,
+
+                firstOrder:
+                    candidate.firstPeriod?.periodOrder,
+
+                secondOrder:
+                    candidate.secondPeriod?.periodOrder,
+
+                day:
+                    candidate.firstPeriod?.dayName ||
+                    candidate.firstPeriod?.dayNumber,
+
+                room:
+                    candidate.room?.id ||
+                    "None",
+
+                score:
+                    candidate.score
+
+            })
+        )
+    );
+
+
+    return candidates;
+
+}
+
+// ============================================================
+// STAGE 6E — UNIFIED SMART CANDIDATE SELECTION
+// ============================================================
+//
+// Purpose:
+//
+// Creates ONE common candidate-selection interface for:
+//
+//     SINGLE lessons
+//     DOUBLE lessons
+//
+// Stage 6B:
+//     Determines which TASK should be scheduled first.
+//
+// Stage 6C:
+//     Scores SINGLE lesson candidates.
+//
+// Stage 6D:
+//     Scores DOUBLE lesson candidates.
+//
+// Stage 6E:
+//     Combines both into one scheduling decision.
+//
+// IMPORTANT:
+//
+// This stage DOES NOT reserve slots.
+//
+// It only answers:
+//
+//     "What is currently the best valid placement
+//      for this task?"
+//
+// Reservation is handled later by the placement stage.
+//
+// ============================================================
+
+
+// ============================================================
+// GET SMART CANDIDATES FOR TASK
+// ============================================================
+
+function getSmartCandidatesForTask(
+    task,
+    data,
+    indexes
+) {
+
+    if (
+        !task ||
+        !data ||
+        !indexes
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // DOUBLE LESSON
+    // ========================================================
+
+    if (
+        task.taskType === "double"
+    ) {
+
+        return getScoredDoubleLessonCandidates(
+            task,
+            data,
+            indexes
+        );
+
+    }
+
+
+    // ========================================================
+    // SINGLE LESSON
+    // ========================================================
+
+    return getScoredSingleLessonCandidates(
+        task,
+        data,
+        indexes
+    );
+
+}
+
+
+// ============================================================
+// GET BEST SMART CANDIDATE
+// ============================================================
+//
+// Returns the highest-scoring valid candidate.
+//
+// IMPORTANT:
+//
+// This function DOES NOT reserve the slot.
+//
+// ============================================================
+
+function getBestSmartCandidate(
+    task,
+    data,
+    indexes
+) {
+
+    const candidates =
+        getSmartCandidatesForTask(
+            task,
+            data,
+            indexes
+        );
+
+
+    if (
+        !Array.isArray(candidates) ||
+        candidates.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    return candidates[0];
+
+}
+
+
+// ============================================================
+// DESCRIBE SMART CANDIDATE
+// ============================================================
+//
+// Used for debugging and diagnostics.
+//
+// ============================================================
+
+function describeSmartCandidate(
+    candidate
+) {
+
+    if (
+        !candidate
+    ) {
 
         return {
 
-            entries:
-                generatedTimetableEntries,
-
-            conflicts:
-                conflicts,
-
-            tasks:
-                tasks
+            available:
+                false
 
         };
 
@@ -5594,85 +8266,2584 @@ async function generateTimetable() {
 
 
     // ========================================================
-    // ERROR HANDLER
+    // SINGLE
     // ========================================================
 
-    catch (error) {
+    if (
+        candidate.period
+    ) {
 
-        console.error(
-            "======================================"
+        return {
+
+            available:
+                true,
+
+            type:
+                "single",
+
+            periodId:
+                candidate.period?.id ||
+                null,
+
+            roomId:
+                candidate.room?.id ||
+                null,
+
+            score:
+                candidate.score ??
+                0,
+
+            reasons:
+                candidate.reasons ||
+                []
+
+        };
+
+    }
+
+
+    // ========================================================
+    // DOUBLE
+    // ========================================================
+
+    if (
+        candidate.firstPeriod ||
+        candidate.secondPeriod
+    ) {
+
+        return {
+
+            available:
+                true,
+
+            type:
+                "double",
+
+            firstPeriodId:
+                candidate.firstPeriod?.id ||
+                null,
+
+            secondPeriodId:
+                candidate.secondPeriod?.id ||
+                null,
+
+            roomId:
+                candidate.room?.id ||
+                null,
+
+            score:
+                candidate.score ??
+                0,
+
+            reasons:
+                candidate.reasons ||
+                []
+
+        };
+
+    }
+
+
+    return {
+
+        available:
+            false
+
+    };
+
+}
+
+
+// ============================================================
+// GET BEST CANDIDATE FOR EACH TASK
+// ============================================================
+//
+// This gives the generator a complete picture:
+//
+// TASK A → best candidate
+// TASK B → best candidate
+// TASK C → best candidate
+//
+// This is NOT placement yet.
+//
+// ============================================================
+
+function getBestCandidatesForTasks(
+    tasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(tasks)
+    ) {
+
+        return [];
+
+    }
+
+
+    const results = [];
+
+
+    tasks.forEach(
+        task => {
+
+            if (
+                !task ||
+                task.placed
+            ) {
+
+                return;
+
+            }
+
+
+            const candidate =
+                getBestSmartCandidate(
+                    task,
+                    data,
+                    indexes
+                );
+
+
+            results.push({
+
+                task,
+
+                candidate,
+
+                available:
+                    Boolean(
+                        candidate
+                    ),
+
+                score:
+                    candidate?.score ??
+                    -Infinity
+
+            });
+
+        }
+    );
+
+
+    return results;
+
+}
+
+
+// ============================================================
+// SORT TASKS BY BEST AVAILABLE CANDIDATE
+// ============================================================
+//
+// This is the important Stage 6E decision.
+//
+// We already have task priority from Stage 6B.
+//
+// Now we additionally consider:
+//
+//     "How difficult is this task to place RIGHT NOW?"
+//
+// A task with fewer valid candidates is more constrained.
+//
+// Therefore:
+//
+//     fewer candidates = higher priority
+//
+// If candidate availability is equal,
+// use the Stage 6B task ordering.
+//
+// ============================================================
+
+function sortTasksBySmartPlacementDifficulty(
+    tasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(tasks)
+    ) {
+
+        return [];
+
+    }
+
+
+    const analysis =
+        tasks
+            .filter(
+                task =>
+                    task &&
+                    !task.placed
+            )
+            .map(
+                task => {
+
+                    const candidates =
+                        getSmartCandidatesForTask(
+                            task,
+                            data,
+                            indexes
+                        );
+
+
+                    return {
+
+                        task,
+
+                        candidateCount:
+                            candidates.length,
+
+                        bestScore:
+                            candidates.length > 0
+                                ? candidates[0].score
+                                : -Infinity
+
+                    };
+
+                }
+            );
+
+
+    analysis.sort(
+        (
+            a,
+            b
+        ) => {
+
+            // =================================================
+            // NO CANDIDATES FIRST
+            // =================================================
+            //
+            // We want impossible tasks identified early.
+            //
+            // =================================================
+
+            const aImpossible =
+                a.candidateCount === 0;
+
+
+            const bImpossible =
+                b.candidateCount === 0;
+
+
+            if (
+                aImpossible !==
+                bImpossible
+            ) {
+
+                return aImpossible
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // =================================================
+            // FEWER CANDIDATES = MORE CONSTRAINED
+            // =================================================
+
+            if (
+                a.candidateCount !==
+                b.candidateCount
+            ) {
+
+                return (
+                    a.candidateCount -
+                    b.candidateCount
+                );
+
+            }
+
+
+            // =================================================
+            // BEST CANDIDATE SCORE
+            // =================================================
+
+            if (
+                a.bestScore !==
+                b.bestScore
+            ) {
+
+                return (
+                    b.bestScore -
+                    a.bestScore
+                );
+
+            }
+
+
+            return 0;
+
+        }
+    );
+
+
+    return analysis.map(
+        item =>
+            item.task
+    );
+
+}
+
+
+// ============================================================
+// ANALYZE TASK PLACEMENT DIFFICULTY
+// ============================================================
+//
+// Useful before the actual placement loop.
+//
+// ============================================================
+
+function analyzeTaskPlacementDifficulty(
+    tasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(tasks)
+    ) {
+
+        return [];
+
+    }
+
+
+    const analysis = [];
+
+
+    tasks.forEach(
+        task => {
+
+            if (
+                !task ||
+                task.placed
+            ) {
+
+                return;
+
+            }
+
+
+            const candidates =
+                getSmartCandidatesForTask(
+                    task,
+                    data,
+                    indexes
+                );
+
+
+            const bestCandidate =
+                candidates.length > 0
+                    ? candidates[0]
+                    : null;
+
+
+            analysis.push({
+
+                taskId:
+                    task.taskId,
+
+                taskType:
+                    task.taskType,
+
+                streamId:
+                    task.streamId,
+
+                subjectId:
+                    task.subjectId,
+
+                teacherId:
+                    task.teacherId,
+
+                candidateCount:
+                    candidates.length,
+
+                bestScore:
+                    bestCandidate?.score ??
+                    null,
+
+                bestCandidate:
+                    describeSmartCandidate(
+                        bestCandidate
+                    )
+
+            });
+
+        }
+    );
+
+
+    return analysis;
+
+}
+
+
+// ============================================================
+// LOG SMART PLACEMENT ANALYSIS
+// ============================================================
+
+function logSmartPlacementAnalysis(
+    tasks,
+    data,
+    indexes
+) {
+
+    const analysis =
+        analyzeTaskPlacementDifficulty(
+            tasks,
+            data,
+            indexes
         );
 
-        console.error(
-            "❌ TIMETABLE GENERATION ERROR"
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6E — SMART PLACEMENT ANALYSIS"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.table(
+        analysis.map(
+            item => ({
+
+                taskId:
+                    item.taskId,
+
+                type:
+                    item.taskType,
+
+                candidateCount:
+                    item.candidateCount,
+
+                bestScore:
+                    item.bestScore,
+
+                firstPeriod:
+                    item.bestCandidate
+                        ?.firstPeriodId ||
+                    item.bestCandidate
+                        ?.periodId ||
+                    null,
+
+                secondPeriod:
+                    item.bestCandidate
+                        ?.secondPeriodId ||
+                    null,
+
+                room:
+                    item.bestCandidate
+                        ?.roomId ||
+                    null
+
+            })
+        )
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+
+    return analysis;
+
+}
+
+
+// ============================================================
+// SELECT NEXT TASK TO PLACE
+// ============================================================
+//
+// This is the main Stage 6E selector.
+//
+// It combines:
+//
+//     1. Task priority
+//     2. Candidate availability
+//     3. Candidate difficulty
+//     4. Candidate score
+//
+// It does NOT reserve anything.
+//
+// ============================================================
+
+function selectNextSmartTask(
+    tasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(tasks) ||
+        !data ||
+        !indexes
+    ) {
+
+        return null;
+
+    }
+
+
+    const unplacedTasks =
+        tasks.filter(
+            task =>
+                task &&
+                !task.placed
         );
 
-        console.error(
-            error
+
+    if (
+        unplacedTasks.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    const analyzed =
+        unplacedTasks.map(
+            task => {
+
+                const candidates =
+                    getSmartCandidatesForTask(
+                        task,
+                        data,
+                        indexes
+                    );
+
+
+                return {
+
+                    task,
+
+                    candidates,
+
+                    candidateCount:
+                        candidates.length,
+
+                    bestCandidate:
+                        candidates[0] ||
+                        null
+
+                };
+
+            }
         );
 
-        console.error(
-            "Message:",
-            error.message
+
+    // ========================================================
+    // SORT NEXT TASK
+    // ========================================================
+
+    analyzed.sort(
+        (
+            a,
+            b
+        ) => {
+
+            // ------------------------------------------------
+            // MOST CONSTRAINED FIRST
+            // ------------------------------------------------
+
+            if (
+                a.candidateCount !==
+                b.candidateCount
+            ) {
+
+                return (
+                    a.candidateCount -
+                    b.candidateCount
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // BEST CANDIDATE SCORE
+            // ------------------------------------------------
+
+            const scoreA =
+                a.bestCandidate?.score ??
+                -Infinity;
+
+
+            const scoreB =
+                b.bestCandidate?.score ??
+                -Infinity;
+
+
+            if (
+                scoreA !==
+                scoreB
+            ) {
+
+                return (
+                    scoreB -
+                    scoreA
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // DOUBLE LESSON FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.duration !==
+                b.task.duration
+            ) {
+
+                return (
+                    b.task.duration -
+                    a.task.duration
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM REQUIRED FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.requiresRoom !==
+                b.task.requiresRoom
+            ) {
+
+                return a.task.requiresRoom
+                    ? -1
+                    : 1;
+
+            }
+
+
+            return 0;
+
+        }
+    );
+
+
+    const selected =
+        analyzed[0];
+
+
+    if (
+        !selected
+    ) {
+
+        return null;
+
+    }
+
+
+    console.log(
+        "STAGE 6E — NEXT SMART TASK:",
+        {
+
+            taskId:
+                selected.task.taskId,
+
+            taskType:
+                selected.task.taskType,
+
+            candidateCount:
+                selected.candidateCount,
+
+            bestScore:
+                selected.bestCandidate?.score ??
+                null
+
+        }
+    );
+
+
+    return {
+
+        task:
+            selected.task,
+
+        candidate:
+            selected.bestCandidate,
+
+        candidates:
+            selected.candidates,
+
+        candidateCount:
+            selected.candidateCount
+
+    };
+
+}
+
+// ============================================================
+// STAGE 6F — SMART TIMETABLE PLACEMENT ENGINE
+// ============================================================
+//
+// This is the first real scheduling engine.
+//
+// Responsibilities:
+//
+// 1. Receive validated lesson tasks.
+// 2. Create fresh occupancy indexes.
+// 3. Select the next most constrained task.
+// 4. Select its best available candidate.
+// 5. Reserve the required period(s).
+// 6. Create timetable entries.
+// 7. Continue until all tasks are processed.
+// 8. Record tasks that could not be placed.
+//
+// IMPORTANT:
+//
+// This stage does NOT save anything to Supabase.
+//
+// It only generates the timetable in memory.
+//
+// ============================================================
+
+
+// ============================================================
+// CREATE EMPTY PLACEMENT RESULT
+// ============================================================
+
+function createTimetablePlacementResult() {
+
+    return {
+
+        entries:
+            [],
+
+        placedTasks:
+            [],
+
+        failedTasks:
+            [],
+
+        statistics: {
+
+            totalTasks:
+                0,
+
+            placedTasks:
+                0,
+
+            failedTasks:
+                0,
+
+            totalPeriodsPlaced:
+                0
+
+        }
+
+    };
+
+}
+
+
+// ============================================================
+// PLACE SINGLE TASK USING SMART CANDIDATE
+// ============================================================
+//
+// The candidate has already been validated and scored.
+//
+// IMPORTANT:
+//
+// We still perform a final conflict check immediately
+// before reservation.
+//
+// If reservation succeeds but entry creation fails,
+// the reservation is rolled back.
+//
+// ============================================================
+
+function placeSelectedSingleTask(
+    task,
+    candidate,
+    indexes
+) {
+
+    if (
+        !task ||
+        !candidate ||
+        !candidate.period ||
+        !indexes
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Invalid single lesson candidate."
+
+        };
+
+    }
+
+
+    const period =
+        candidate.period;
+
+
+    const room =
+        candidate.room ||
+        null;
+
+
+    // ========================================================
+    // FINAL SAFETY CHECK
+    // ========================================================
+
+    const conflict =
+        checkSingleSlotConflict(
+            task,
+            period,
+            room,
+            indexes
         );
 
-        console.error(
-            "Stack:",
-            error.stack
+
+    if (
+        !conflict ||
+        !conflict.valid
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                conflict?.reason ||
+                "Candidate became unavailable."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // RESERVE
+    // ========================================================
+
+    const reserved =
+        reserveSlot(
+            task,
+            period,
+            room,
+            indexes
         );
 
-        console.error(
-            "======================================"
+
+    if (
+        !reserved
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Failed to reserve single lesson slot."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // CREATE ENTRY
+    // ========================================================
+
+    const entry =
+        createGeneratedEntry(
+            task,
+            period,
+            room
         );
+
+
+    // ========================================================
+    // ENTRY CREATION FAILED
+    // ========================================================
+    //
+    // Reservation already happened.
+    //
+    // Therefore rollback immediately.
+    //
+    // ========================================================
+
+    if (
+        !entry
+    ) {
+
+        releaseReservedSlot(
+            task,
+            period,
+            room,
+            indexes
+        );
+
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Failed to create timetable entry; reservation was rolled back."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // UPDATE TASK
+    // ========================================================
+
+    task.placed =
+        true;
+
+
+    task.periodIds =
+        [
+            period.id
+        ];
+
+
+    task.roomId =
+        room?.id ||
+        null;
+
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    return {
+
+        placed:
+            true,
+
+        entries:
+            [
+                entry
+            ],
+
+        reason:
+            ""
+
+    };
+
+}
+
+
+// ============================================================
+// PLACE DOUBLE TASK USING SMART CANDIDATE
+// ============================================================
+//
+// A double candidate contains:
+//
+//     firstPeriod
+//     secondPeriod
+//     room
+//
+// Both periods must be reserved.
+//
+// ============================================================
+
+function placeSelectedDoubleTask(
+    task,
+    candidate,
+    indexes
+) {
+
+    if (
+        !task ||
+        !candidate ||
+        !candidate.firstPeriod ||
+        !candidate.secondPeriod ||
+        !indexes
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Invalid double lesson candidate."
+
+        };
+
+    }
+
+
+    const firstPeriod =
+        candidate.firstPeriod;
+
+
+    const secondPeriod =
+        candidate.secondPeriod;
+
+
+    const room =
+        candidate.room ||
+        null;
+
+
+    // ========================================================
+    // FINAL CONSECUTIVE CHECK
+    // ========================================================
+
+    if (
+        !arePeriodsConsecutive(
+            firstPeriod,
+            secondPeriod
+        )
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Double lesson periods are not consecutive."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // FINAL CONFLICT CHECK
+    // ========================================================
+
+    const conflict =
+        checkDoubleLessonConflict(
+            task,
+            firstPeriod,
+            secondPeriod,
+            room,
+            indexes
+        );
+
+
+    if (
+        !conflict ||
+        !conflict.valid
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                conflict?.reason ||
+                "Double lesson candidate became unavailable."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // RESERVE FIRST PERIOD
+    // ========================================================
+
+    const firstReserved =
+        reserveSlot(
+            task,
+            firstPeriod,
+            room,
+            indexes
+        );
+
+
+    if (
+        !firstReserved
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Failed to reserve first double-lesson period."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // RESERVE SECOND PERIOD
+    // ========================================================
+
+    const secondReserved =
+        reserveSlot(
+            task,
+            secondPeriod,
+            room,
+            indexes
+        );
+
+
+    if (
+        !secondReserved
+    ) {
+
+        // ----------------------------------------------------
+        // ROLLBACK FIRST PERIOD
+        // ----------------------------------------------------
+
+        releaseReservedSlot(
+            task,
+            firstPeriod,
+            room,
+            indexes
+        );
+
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Failed to reserve second double-lesson period."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // CREATE ENTRIES
+    // ========================================================
+
+    const firstEntry =
+        createGeneratedEntry(
+            task,
+            firstPeriod,
+            room
+        );
+
+
+    const secondEntry =
+        createGeneratedEntry(
+            task,
+            secondPeriod,
+            room
+        );
+
+
+    // ========================================================
+    // ENTRY CREATION FAILURE
+    // ========================================================
+
+    if (
+        !firstEntry ||
+        !secondEntry
+    ) {
+
+        // ----------------------------------------------------
+        // ROLLBACK BOTH
+        // ----------------------------------------------------
+
+        releaseReservedSlot(
+            task,
+            firstPeriod,
+            room,
+            indexes
+        );
+
+
+        releaseReservedSlot(
+            task,
+            secondPeriod,
+            room,
+            indexes
+        );
+
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Failed to create double lesson timetable entries; reservations were rolled back."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // UPDATE TASK
+    // ========================================================
+
+    task.placed =
+        true;
+
+
+    task.periodIds =
+        [
+            firstPeriod.id,
+            secondPeriod.id
+        ];
+
+
+    task.roomId =
+        room?.id ||
+        null;
+
+
+    // ========================================================
+    // SUCCESS
+    // ========================================================
+
+    return {
+
+        placed:
+            true,
+
+        entries:
+            [
+                firstEntry,
+                secondEntry
+            ],
+
+        reason:
+            ""
+
+    };
+
+}
+
+
+// ============================================================
+// RELEASE RESERVED SLOT
+// ============================================================
+//
+// Used only for rollback.
+//
+// This reverses reserveSlot() for ONE period.
+//
+// ============================================================
+
+function releaseReservedSlot(
+    task,
+    period,
+    room,
+    indexes
+) {
+
+    if (
+        !task ||
+        !period ||
+        !indexes
+    ) {
+
+        return false;
+
+    }
+
+
+    const streamId =
+        normalizeTimetableId(
+            task.streamId
+        );
+
+
+    const periodId =
+        normalizeTimetableId(
+            period.id
+        );
+
+
+    // ========================================================
+    // STREAM
+    // ========================================================
+
+    indexes.streamPeriod.delete(
+        `${streamId}__${periodId}`
+    );
+
+
+    // ========================================================
+    // TEACHER
+    // ========================================================
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId
+        );
+
+
+    if (
+        teacherId
+    ) {
+
+        indexes.teacherPeriod.delete(
+            `${teacherId}__${periodId}`
+        );
+
+    }
+
+
+    // ========================================================
+    // ROOM
+    // ========================================================
+
+    if (
+        room &&
+        room.id
+    ) {
+
+        const roomId =
+            normalizeTimetableId(
+                room.id
+            );
+
+
+        indexes.roomPeriod.delete(
+            `${roomId}__${periodId}`
+        );
+
+    }
+
+
+    // ========================================================
+    // REQUIREMENT / DAY
+    // ========================================================
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
+        );
+
+
+    const dayNumber =
+        Number(
+            period.dayNumber
+        );
+
+
+    if (
+        requirementId &&
+        Number.isFinite(dayNumber)
+    ) {
+
+        const key =
+            getDailyRequirementKey(
+                requirementId,
+                dayNumber
+            );
+
+
+        const currentCount =
+            getDailyRequirementLessonCount(
+                indexes,
+                requirementId,
+                dayNumber
+            );
 
 
         if (
-            typeof setTimetableGenerationStatus ===
-            "function"
+            currentCount <= 1
         ) {
 
-            setTimetableGenerationStatus(
+            indexes.dailyRequirementLessons.delete(
+                key
+            );
 
-                "Timetable generation failed: " +
-                error.message,
+        }
+        else {
 
-                "error"
+            indexes.dailyRequirementLessons.set(
+                key,
+                currentCount - 1
+            );
 
+        }
+
+    }
+
+
+    return true;
+
+}
+
+
+// ============================================================
+// PLACE SELECTED TASK
+// ============================================================
+//
+// Routes the task to the correct placement function.
+//
+// ============================================================
+
+function placeSelectedSmartTask(
+    selection,
+    indexes
+) {
+
+    if (
+        !selection ||
+        !selection.task ||
+        !selection.candidate
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "No valid task selection was supplied."
+
+        };
+
+    }
+
+
+    const task =
+        selection.task;
+
+
+    const candidate =
+        selection.candidate;
+
+
+    // ========================================================
+    // DOUBLE
+    // ========================================================
+
+    if (
+        task.taskType === "double"
+    ) {
+
+        return placeSelectedDoubleTask(
+            task,
+            candidate,
+            indexes
+        );
+
+    }
+
+
+    // ========================================================
+    // SINGLE
+    // ========================================================
+
+    return placeSelectedSingleTask(
+        task,
+        candidate,
+        indexes
+    );
+
+}
+
+
+// ============================================================
+// SELECT NEXT SMART TASK
+// ============================================================
+//
+// Connects:
+//
+//     6B — Task Priority
+//     6C — Single Candidate Scoring
+//     6D — Double Candidate Scoring
+//
+// Determines:
+//
+//     1. Which task is most restricted
+//     2. Its current valid candidates
+//     3. Its best candidate
+//
+// IMPORTANT:
+//
+// Returns ALL ranked candidates.
+//
+// That allows Stage 6F to try:
+//
+//     BEST → SECOND BEST → THIRD BEST → ...
+//
+// ============================================================
+
+function selectNextSmartTask(
+    remainingTasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(remainingTasks) ||
+        remainingTasks.length === 0 ||
+        !data ||
+        !indexes
+    ) {
+
+        return null;
+
+    }
+
+
+    const taskCandidates = [];
+
+
+    // ========================================================
+    // ANALYSE EVERY REMAINING TASK
+    // ========================================================
+
+    remainingTasks.forEach(
+        task => {
+
+            if (
+                !task ||
+                task.placed
+            ) {
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // TASK PRIORITY FROM 6B
+            // ==================================================
+
+            const priority =
+                calculateTaskPriorityScore(
+                    task,
+                    data
+                );
+
+
+            // ==================================================
+            // GET CURRENT VALID CANDIDATES
+            // ==================================================
+
+            let candidates = [];
+
+
+            if (
+                task.taskType === "double"
+            ) {
+
+                candidates =
+                    getScoredDoubleLessonCandidates(
+                        task,
+                        data,
+                        indexes
+                    );
+
+            }
+            else {
+
+                candidates =
+                    getScoredSingleLessonCandidates(
+                        task,
+                        data,
+                        indexes
+                    );
+
+            }
+
+
+            // ==================================================
+            // NUMBER OF AVAILABLE CANDIDATES
+            // ==================================================
+
+            const candidateCount =
+                candidates.length;
+
+
+            // ==================================================
+            // BEST CANDIDATE
+            // ==================================================
+
+            const bestCandidate =
+                candidateCount > 0
+                    ? candidates[0]
+                    : null;
+
+
+            // ==================================================
+            // STORE COMPLETE ANALYSIS
+            // ==================================================
+
+            taskCandidates.push({
+
+                task,
+
+                priority,
+
+                candidates,
+
+                candidateCount,
+
+                candidate:
+                    bestCandidate
+
+            });
+
+        }
+    );
+
+
+    // ========================================================
+    // NO TASKS AVAILABLE
+    // ========================================================
+
+    if (
+        taskCandidates.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // SORT TASKS
+    // ========================================================
+    //
+    // Priority:
+    //
+    // 1. Fewest candidates
+    // 2. Higher 6B priority
+    // 3. Better candidate score
+    // 4. Longer task
+    // 5. Room-required
+    //
+    // ========================================================
+
+    taskCandidates.sort(
+        (
+            a,
+            b
+        ) => {
+
+            // ------------------------------------------------
+            // FEWEST CANDIDATES FIRST
+            // ------------------------------------------------
+
+            if (
+                a.candidateCount !==
+                b.candidateCount
+            ) {
+
+                return (
+                    a.candidateCount -
+                    b.candidateCount
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // HIGHER TASK PRIORITY
+            // ------------------------------------------------
+
+            if (
+                b.priority !==
+                a.priority
+            ) {
+
+                return (
+                    b.priority -
+                    a.priority
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // BETTER CANDIDATE SCORE
+            // ------------------------------------------------
+
+            const scoreA =
+                a.candidate?.score ??
+                -Infinity;
+
+
+            const scoreB =
+                b.candidate?.score ??
+                -Infinity;
+
+
+            if (
+                scoreB !==
+                scoreA
+            ) {
+
+                return (
+                    scoreB -
+                    scoreA
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // DOUBLE FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.duration !==
+                b.task.duration
+            ) {
+
+                return (
+                    b.task.duration -
+                    a.task.duration
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM REQUIRED FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.requiresRoom !==
+                b.task.requiresRoom
+            ) {
+
+                return a.task.requiresRoom
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // RANDOM TIE BREAK
+            // ------------------------------------------------
+
+            return (
+                Math.random() -
+                0.5
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // SELECT FIRST TASK
+    // ========================================================
+
+    const selected =
+        taskCandidates[0];
+
+
+    if (
+        !selected
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
+    console.log(
+        "SMART TASK SELECTION:",
+        {
+
+            taskId:
+                selected.task?.taskId,
+
+            taskType:
+                selected.task?.taskType,
+
+            priority:
+                selected.priority,
+
+            availableCandidates:
+                selected.candidateCount,
+
+            bestCandidateScore:
+                selected.candidate?.score ??
+                null
+
+        }
+    );
+
+
+    // ========================================================
+    // RETURN SELECTION
+    // ========================================================
+
+    return {
+
+        task:
+            selected.task,
+
+        candidate:
+            selected.candidate,
+
+        candidates:
+            selected.candidates,
+
+        priority:
+            selected.priority,
+
+        candidateCount:
+            selected.candidateCount
+
+    };
+
+}
+
+
+// ============================================================
+// SMART TIMETABLE GENERATION
+// ============================================================
+//
+// Main Stage 6F engine.
+//
+// ============================================================
+
+function generateSmartTimetable(
+    data
+) {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6F — SMART TIMETABLE GENERATION"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    // ========================================================
+    // VALIDATE DATA
+    // ========================================================
+
+    if (
+        !data ||
+        !Array.isArray(data.lessonTasks) ||
+        !Array.isArray(data.periods)
+    ) {
+
+        throw new Error(
+            "Cannot generate timetable: generator data is incomplete."
+        );
+
+    }
+
+
+    // ========================================================
+    // CREATE FRESH OCCUPANCY INDEXES
+    // ========================================================
+
+    const indexes =
+        createOccupancyIndexes();
+
+
+    // ========================================================
+    // CREATE RESULT
+    // ========================================================
+
+    const result =
+        createTimetablePlacementResult();
+
+
+    result.statistics.totalTasks =
+        data.lessonTasks.length;
+
+
+    // ========================================================
+    // COPY ACTIVE TASKS
+    // ========================================================
+    //
+    // Do NOT modify the original task ordering here.
+    //
+    // ========================================================
+
+    const remainingTasks =
+        data.lessonTasks.filter(
+            task =>
+                task &&
+                !task.placed
+        );
+
+
+    // ========================================================
+    // SAFETY LIMIT
+    // ========================================================
+
+    const maximumIterations =
+        Math.max(
+            remainingTasks.length * 3,
+            100
+        );
+
+
+    let iteration =
+        0;
+
+
+    // ========================================================
+    // MAIN PLACEMENT LOOP
+    // ========================================================
+
+    while (
+        remainingTasks.length > 0 &&
+        iteration < maximumIterations
+    ) {
+
+        iteration++;
+
+
+        // ====================================================
+        // SELECT NEXT TASK
+        // ====================================================
+
+        const selection =
+            selectNextSmartTask(
+                remainingTasks,
+                data,
+                indexes
+            );
+
+
+        // ====================================================
+        // NO TASK
+        // ====================================================
+
+        if (
+            !selection
+        ) {
+
+            break;
+
+        }
+
+
+        const task =
+            selection.task;
+
+
+        // ====================================================
+        // NO CANDIDATES
+        // ====================================================
+
+        if (
+            selection.candidateCount === 0
+        ) {
+
+            console.warn(
+                "SMART PLACEMENT — NO CANDIDATE:",
+                {
+
+                    taskId:
+                        task.taskId,
+
+                    taskType:
+                        task.taskType,
+
+                    streamId:
+                        task.streamId,
+
+                    subjectId:
+                        task.subjectId
+
+                }
+            );
+
+
+            result.failedTasks.push({
+
+                task,
+
+                reason:
+                    "No valid placement candidate exists."
+
+            });
+
+
+            task.placed =
+                false;
+
+
+            task.periodIds =
+                [];
+
+
+            task.roomId =
+                null;
+
+
+            // ------------------------------------------------
+            // REMOVE FROM ACTIVE TASKS
+            // ------------------------------------------------
+
+            const failedIndex =
+                remainingTasks.indexOf(
+                    task
+                );
+
+
+            if (
+                failedIndex >= 0
+            ) {
+
+                remainingTasks.splice(
+                    failedIndex,
+                    1
+                );
+
+            }
+
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // TRY ALL RANKED CANDIDATES
+        // ====================================================
+        //
+        // IMPORTANT:
+        //
+        // We DO NOT fail the task after candidate #1 fails.
+        //
+        // We try every candidate returned by 6C / 6D.
+        //
+        // ====================================================
+
+        let successfulPlacement =
+            null;
+
+
+        let successfulCandidate =
+            null;
+
+
+        let lastFailureReason =
+            "All candidates failed.";
+
+
+        for (
+            const candidate of selection.candidates
+        ) {
+
+            const candidateSelection = {
+
+                task,
+
+                candidate
+
+            };
+
+
+            const attempt =
+                placeSelectedSmartTask(
+                    candidateSelection,
+                    indexes
+                );
+
+
+            // =================================================
+            // SUCCESS
+            // =================================================
+
+            if (
+                attempt.placed
+            ) {
+
+                successfulPlacement =
+                    attempt;
+
+
+                successfulCandidate =
+                    candidate;
+
+
+                break;
+
+            }
+
+
+            // =================================================
+            // FAILED CANDIDATE
+            // =================================================
+
+            lastFailureReason =
+                attempt.reason ||
+                lastFailureReason;
+
+
+            console.warn(
+                "SMART CANDIDATE REJECTED:",
+                {
+
+                    taskId:
+                        task.taskId,
+
+                    taskType:
+                        task.taskType,
+
+                    candidateScore:
+                        candidate.score,
+
+                    reason:
+                        attempt.reason
+
+                }
             );
 
         }
 
 
-        return {
+        // ====================================================
+        // SUCCESSFUL TASK
+        // ====================================================
 
-            entries: [],
+        if (
+            successfulPlacement &&
+            successfulPlacement.placed
+        ) {
 
-            conflicts: [],
-
-            error: error
-
-        };
-
-    }
+            result.entries.push(
+                ...successfulPlacement.entries
+            );
 
 
-    // ========================================================
-    // FINALLY
-    // ========================================================
+            result.placedTasks.push({
 
-    finally {
+                task,
 
-        timetableGenerationRunning =
+                entries:
+                    successfulPlacement.entries,
+
+                candidate:
+                    successfulCandidate
+
+            });
+
+
+            result.statistics.placedTasks++;
+
+
+            // =================================================
+            // TASK DURATION IS AUTHORITATIVE
+            // =================================================
+            //
+            // Single:
+            //     duration = 1
+            //
+            // Double:
+            //     duration = 2
+            //
+            // =================================================
+
+            result.statistics.totalPeriodsPlaced +=
+                Number(
+                    task.duration
+                ) || 0;
+
+
+            // -------------------------------------------------
+            // REMOVE PLACED TASK
+            // -------------------------------------------------
+
+            const placedIndex =
+                remainingTasks.indexOf(
+                    task
+                );
+
+
+            if (
+                placedIndex >= 0
+            ) {
+
+                remainingTasks.splice(
+                    placedIndex,
+                    1
+                );
+
+            }
+
+
+            console.log(
+                "SMART PLACEMENT SUCCESS:",
+                {
+
+                    taskId:
+                        task.taskId,
+
+                    type:
+                        task.taskType,
+
+                    periods:
+                        task.periodIds,
+
+                    room:
+                        task.roomId,
+
+                    score:
+                        successfulCandidate?.score ??
+                        null
+
+                }
+            );
+
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // ALL CANDIDATES FAILED
+        // ====================================================
+
+        console.warn(
+            "SMART PLACEMENT — ALL CANDIDATES FAILED:",
+            {
+
+                taskId:
+                    task.taskId,
+
+                taskType:
+                    task.taskType,
+
+                reason:
+                    lastFailureReason
+
+            }
+        );
+
+
+        result.failedTasks.push({
+
+            task,
+
+            reason:
+                lastFailureReason
+
+        });
+
+
+        task.placed =
             false;
 
 
-        console.log(
-            "Generation running reset to false."
+        task.periodIds =
+            [];
+
+
+        task.roomId =
+            null;
+
+
+        // ----------------------------------------------------
+        // REMOVE FAILED TASK
+        // ----------------------------------------------------
+
+        const failedIndex =
+            remainingTasks.indexOf(
+                task
+            );
+
+
+        if (
+            failedIndex >= 0
+        ) {
+
+            remainingTasks.splice(
+                failedIndex,
+                1
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // HANDLE SAFETY LIMIT
+    // ========================================================
+
+    if (
+        iteration >=
+        maximumIterations &&
+        remainingTasks.length > 0
+    ) {
+
+        remainingTasks.forEach(
+            task => {
+
+                result.failedTasks.push({
+
+                    task,
+
+                    reason:
+                        "Generator safety iteration limit reached."
+
+                });
+
+            }
         );
 
     }
 
+
+    // ========================================================
+    // FINAL STATISTICS
+    // ========================================================
+
+    result.statistics.failedTasks =
+        result.failedTasks.length;
+
+
+    // ========================================================
+    // LOG RESULT
+    // ========================================================
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6F — GENERATION COMPLETE"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "Total tasks:",
+        result.statistics.totalTasks
+    );
+
+    console.log(
+        "Placed tasks:",
+        result.statistics.placedTasks
+    );
+
+    console.log(
+        "Failed tasks:",
+        result.statistics.failedTasks
+    );
+
+    console.log(
+        "Teaching periods placed:",
+        result.statistics.totalPeriodsPlaced
+    );
+
+    console.log(
+        "Iterations:",
+        iteration
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    // ========================================================
+    // FAILED TASK TABLE
+    // ========================================================
+
+    if (
+        result.failedTasks.length > 0
+    ) {
+
+        console.table(
+            result.failedTasks.map(
+                item => ({
+
+                    taskId:
+                        item.task?.taskId ||
+                        null,
+
+                    type:
+                        item.task?.taskType ||
+                        null,
+
+                    streamId:
+                        item.task?.streamId ||
+                        null,
+
+                    subjectId:
+                        item.task?.subjectId ||
+                        null,
+
+                    teacherId:
+                        item.task?.teacherId ||
+                        null,
+
+                    reason:
+                        item.reason
+
+                })
+            )
+        );
+
+    }
+
+
+    // ========================================================
+    // SUCCESS TABLE
+    // ========================================================
+
+    if (
+        result.placedTasks.length > 0
+    ) {
+
+        console.table(
+            result.placedTasks.map(
+                item => ({
+
+                    taskId:
+                        item.task?.taskId ||
+                        null,
+
+                    type:
+                        item.task?.taskType ||
+                        null,
+
+                    periods:
+                        item.task?.periodIds?.join(
+                            ", "
+                        ) ||
+                        "",
+
+                    room:
+                        item.task?.roomId ||
+                        null,
+
+                    score:
+                        item.candidate?.score ??
+                        null
+
+                })
+            )
+        );
+
+    }
+
+
+    // ========================================================
+    // RETURN COMPLETE RESULT
+    // ========================================================
+
+    return {
+
+        ...result,
+
+        indexes
+
+    };
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
