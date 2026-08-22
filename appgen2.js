@@ -10809,7 +10809,150 @@ function generateSmartTimetable(
 }
 
 
+// ============================================================
+// GENERATE TIMETABLE — APPLICATION ENTRY POINT
+// ============================================================
+//
+// Existing UI code calls:
+//
+//     generateTimetable()
+//
+// The new scheduling engine is:
+//
+//     generateSmartTimetable()
+//
+// This wrapper keeps the existing application interface
+// unchanged while connecting it to the new generator.
+//
+// ============================================================
 
+async function generateTimetable() {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "GENERATE TIMETABLE ENTRY POINT"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    try {
+
+        // ====================================================
+        // PREPARE GENERATOR DATA
+        // ====================================================
+        //
+        // LOAD
+        // NORMALIZE
+        // VALIDATE
+        // CREATE TASKS
+        //
+        // ====================================================
+
+        const generatorData =
+            await prepareTimetableGeneratorData();
+
+
+        // ====================================================
+        // PREPARE TASK ORDER
+        // ====================================================
+
+        prepareSmartLessonTaskOrder(
+            generatorData
+        );
+
+
+        // ====================================================
+        // RUN SMART GENERATOR
+        // ====================================================
+
+        const result =
+            generateSmartTimetable(
+                generatorData
+            );
+
+
+        // ====================================================
+        // STORE GENERATION RESULT
+        // ====================================================
+
+        generatorData.generationResult =
+            result;
+
+
+        // ====================================================
+        // DEBUG
+        // ====================================================
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "TIMETABLE GENERATION RESULT"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "Total tasks:",
+            result.statistics.totalTasks
+        );
+
+        console.log(
+            "Placed tasks:",
+            result.statistics.placedTasks
+        );
+
+        console.log(
+            "Failed tasks:",
+            result.statistics.failedTasks
+        );
+
+        console.log(
+            "Periods placed:",
+            result.statistics.totalPeriodsPlaced
+        );
+
+        console.log(
+            "Generated entries:",
+            result.entries.length
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        // ====================================================
+        // RETURN RESULT
+        // ====================================================
+
+        return result;
+
+    }
+    catch (
+        error
+    ) {
+
+        console.error(
+            "TIMETABLE GENERATION FAILED:",
+            error
+        );
+
+
+        throw error;
+
+    }
+
+}
 
 
 
