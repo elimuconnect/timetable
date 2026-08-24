@@ -6333,16 +6333,18 @@ async function loadStreamClasses() {
     );
 
 }
-// LOAD STREAMS
-// ============================================================
 
 
-              // ============================================================
-// LOAD STREAMS
-// ============================================================
+
+
+
+
 
 async function loadStreams() {
 
+   console.log("🔥🔥🔥 LOAD STREAMS FUNCTION CALLED 🔥🔥🔥");
+
+    
     const container =
         document.getElementById(
             "streamsTableContainer"
