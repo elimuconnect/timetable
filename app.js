@@ -2345,21 +2345,233 @@ if (schoolSelect) {
 // ============================================================
 
 
-// ------------------------------------------------------------
+
+// ============================================================
+// ROOM MANAGEMENT
+// GLOBAL ROOM TYPES + SCHOOL ROOMS
+// ============================================================
+
+
+// ============================================================
+// ROOM TYPE CACHE
+// ============================================================
+
+let timetableRoomTypes = [];
+
+
+// ============================================================
+// LOAD GLOBAL ROOM TYPES
+// ============================================================
+
+async function loadRoomTypes() {
+
+    const select =
+        document.getElementById(
+            "roomTypeSelect"
+        );
+
+
+    if (!select) {
+
+        console.warn(
+            "roomTypeSelect element not found."
+        );
+
+        return;
+
+    }
+
+
+    select.innerHTML = `
+        <option value="">
+            Loading room types...
+        </option>
+    `;
+
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+
+        .from(
+            "timetable_room_types"
+        )
+
+        .select(
+            "id, type_name"
+        )
+
+        .order(
+            "type_name"
+        );
+
+
+    if (error) {
+
+        console.error(
+            "Failed to load room types:",
+            error
+        );
+
+
+        select.innerHTML = `
+            <option value="">
+                Failed to load room types
+            </option>
+        `;
+
+
+        return;
+
+    }
+
+
+    timetableRoomTypes =
+        data || [];
+
+
+    if (
+        timetableRoomTypes.length === 0
+    ) {
+
+        select.innerHTML = `
+            <option value="">
+                No room types available
+            </option>
+        `;
+
+
+        return;
+
+    }
+
+
+    select.innerHTML = `
+        <option value="">
+            Select room type
+        </option>
+    `;
+
+
+    timetableRoomTypes.forEach(
+        type => {
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+
+            option.value =
+                type.id;
+
+
+            option.textContent =
+                type.type_name;
+
+
+            select.appendChild(
+                option
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// GET ROOM TYPE NAME
+// ============================================================
+
+function getRoomTypeName(
+    roomTypeId
+) {
+
+    if (!roomTypeId) {
+
+        return "";
+
+    }
+
+
+    const type =
+        timetableRoomTypes.find(
+            item =>
+                item.id ===
+                roomTypeId
+        );
+
+
+    return type
+        ? type.type_name
+        : "";
+
+}
+
+
+// ============================================================
+// FIND ROOM TYPE BY NAME
+// ============================================================
+//
+// This is useful for older rooms that still have
+// room_type text but room_type_id is NULL.
+//
+
+function findRoomTypeByName(
+    roomTypeName
+) {
+
+    if (!roomTypeName) {
+
+        return null;
+
+    }
+
+
+    const normalized =
+        String(
+            roomTypeName
+        )
+        .trim()
+        .toLowerCase();
+
+
+    return (
+        timetableRoomTypes.find(
+            type =>
+                String(
+                    type.type_name
+                )
+                .trim()
+                .toLowerCase() ===
+                normalized
+        ) || null
+    );
+
+}
+
+
+// ============================================================
 // OPEN ADD ROOM FORM
-// ------------------------------------------------------------
+// ============================================================
 
 const addRoomBtn =
-    document.getElementById("addRoomBtn");
+    document.getElementById(
+        "addRoomBtn"
+    );
 
 
 if (addRoomBtn) {
 
     addRoomBtn.addEventListener(
         "click",
-        () => {
+        async function() {
 
-            if (!timetableState.schoolId) {
+            if (
+                !timetableState.schoolId
+            ) {
 
                 alert(
                     "Please select a school first."
@@ -2369,6 +2581,19 @@ if (addRoomBtn) {
 
             }
 
+
+            // Make sure global room types
+            // are available before opening form.
+
+            if (
+                timetableRoomTypes.length === 0
+            ) {
+
+                await loadRoomTypes();
+
+            }
+
+
             openRoomForm();
 
         }
@@ -2377,11 +2602,13 @@ if (addRoomBtn) {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // OPEN ROOM FORM
-// ------------------------------------------------------------
+// ============================================================
 
-function openRoomForm(room = null) {
+async function openRoomForm(
+    room = null
+) {
 
     const form =
         document.getElementById(
@@ -2389,87 +2616,203 @@ function openRoomForm(room = null) {
         );
 
 
-    if (!form) return;
+    if (!form) {
+
+        return;
+
+    }
 
 
-    form.style.display = "block";
+    // --------------------------------------------------------
+    // ENSURE ROOM TYPES ARE LOADED
+    // --------------------------------------------------------
 
+    if (
+        timetableRoomTypes.length === 0
+    ) {
+
+        await loadRoomTypes();
+
+    }
+
+
+    form.style.display =
+        "block";
+
+
+    const roomIdInput =
+        document.getElementById(
+            "roomId"
+        );
+
+
+    const roomNameInput =
+        document.getElementById(
+            "roomName"
+        );
+
+
+    const roomTypeSelect =
+        document.getElementById(
+            "roomTypeSelect"
+        );
+
+
+    const roomCapacityInput =
+        document.getElementById(
+            "roomCapacity"
+        );
+
+
+    const title =
+        document.getElementById(
+            "roomFormTitle"
+        );
+
+
+    // ========================================================
+    // EDIT EXISTING ROOM
+    // ========================================================
 
     if (room) {
 
-        document.getElementById(
-            "roomFormTitle"
-        ).textContent =
-            "Edit Room";
+        if (title) {
+
+            title.textContent =
+                "Edit Room";
+
+        }
 
 
-        document.getElementById(
-            "roomId"
-        ).value =
-            room.id;
+        if (roomIdInput) {
+
+            roomIdInput.value =
+                room.id || "";
+
+        }
 
 
-        document.getElementById(
-            "roomName"
-        ).value =
-            room.room_name || "";
+        if (roomNameInput) {
+
+            roomNameInput.value =
+                room.room_name || "";
+
+        }
 
 
-        document.getElementById(
-            "roomTypeSelect"
-        ).value =
-            room.room_type || "Classroom";
+        if (roomCapacityInput) {
+
+            roomCapacityInput.value =
+                room.capacity || 50;
+
+        }
 
 
-        document.getElementById(
-            "roomCapacity"
-        ).value =
-            room.capacity || 50;
+        // ----------------------------------------------------
+        // PREFERRED:
+        // Use room_type_id
+        // ----------------------------------------------------
 
-    } else {
-
-        document.getElementById(
-            "roomFormTitle"
-        ).textContent =
-            "Add Room";
+        let roomTypeId =
+            room.room_type_id || "";
 
 
-        document.getElementById(
-            "roomId"
-        ).value =
-            "";
+        // ----------------------------------------------------
+        // LEGACY COMPATIBILITY:
+        // If old room has room_type text but no ID,
+        // find matching global room type.
+        // ----------------------------------------------------
+
+        if (
+            !roomTypeId &&
+            room.room_type
+        ) {
+
+            const matchingType =
+                findRoomTypeByName(
+                    room.room_type
+                );
 
 
-        document.getElementById(
-            "roomName"
-        ).value =
-            "";
+            if (matchingType) {
+
+                roomTypeId =
+                    matchingType.id;
+
+            }
+
+        }
 
 
-        document.getElementById(
-            "roomTypeSelect"
-        ).value =
-            "Classroom";
+        if (roomTypeSelect) {
+
+            roomTypeSelect.value =
+                roomTypeId;
+
+        }
+
+    }
 
 
-        document.getElementById(
-            "roomCapacity"
-        ).value =
-            50;
+    // ========================================================
+    // ADD NEW ROOM
+    // ========================================================
+
+    else {
+
+        if (title) {
+
+            title.textContent =
+                "Add Room";
+
+        }
+
+
+        if (roomIdInput) {
+
+            roomIdInput.value =
+                "";
+
+        }
+
+
+        if (roomNameInput) {
+
+            roomNameInput.value =
+                "";
+
+        }
+
+
+        if (roomTypeSelect) {
+
+            roomTypeSelect.value =
+                "";
+
+        }
+
+
+        if (roomCapacityInput) {
+
+            roomCapacityInput.value =
+                50;
+
+        }
 
     }
 
 
     form.scrollIntoView({
-        behavior: "smooth"
+        behavior:
+            "smooth"
     });
 
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // CANCEL ROOM FORM
-// ------------------------------------------------------------
+// ============================================================
 
 const cancelRoomBtn =
     document.getElementById(
@@ -2505,9 +2848,9 @@ function closeRoomForm() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // SAVE ROOM
-// ------------------------------------------------------------
+// ============================================================
 
 const saveRoomBtn =
     document.getElementById(
@@ -2527,11 +2870,13 @@ if (saveRoomBtn) {
 
 async function saveRoom() {
 
-    // -----------------------------------------
+    // ========================================================
     // CHECK SCHOOL
-    // -----------------------------------------
+    // ========================================================
 
-    if (!timetableState.schoolId) {
+    if (
+        !timetableState.schoolId
+    ) {
 
         alert(
             "Please select a school first."
@@ -2542,39 +2887,46 @@ async function saveRoom() {
     }
 
 
-    // -----------------------------------------
+    // ========================================================
     // GET VALUES
-    // -----------------------------------------
+    // ========================================================
 
     const roomId =
         document.getElementById(
             "roomId"
-        ).value.trim();
+        )
+        ?.value
+        .trim();
 
 
     const roomName =
         document.getElementById(
             "roomName"
-        ).value.trim();
+        )
+        ?.value
+        .trim();
 
 
-    const roomType =
+    const roomTypeId =
         document.getElementById(
             "roomTypeSelect"
-        ).value;
+        )
+        ?.value
+        .trim();
 
 
     const capacity =
         Number(
             document.getElementById(
                 "roomCapacity"
-            ).value
+            )
+            ?.value
         );
 
 
-    // -----------------------------------------
+    // ========================================================
     // VALIDATION
-    // -----------------------------------------
+    // ========================================================
 
     if (!roomName) {
 
@@ -2587,7 +2939,21 @@ async function saveRoom() {
     }
 
 
-    if (!capacity || capacity < 1) {
+    if (!roomTypeId) {
+
+        alert(
+            "Please select a room type."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !capacity ||
+        capacity < 1
+    ) {
 
         alert(
             "Please enter a valid room capacity."
@@ -2598,9 +2964,41 @@ async function saveRoom() {
     }
 
 
-    // -----------------------------------------
-    // PREPARE DATA
-    // -----------------------------------------
+    // ========================================================
+    // FIND GLOBAL ROOM TYPE
+    // ========================================================
+
+    const selectedType =
+        timetableRoomTypes.find(
+            type =>
+                type.id ===
+                roomTypeId
+        );
+
+
+    if (!selectedType) {
+
+        alert(
+            "The selected room type could not be found."
+        );
+
+        return;
+
+    }
+
+
+    // ========================================================
+    // PREPARE ROOM DATA
+    // ========================================================
+    //
+    // room_type_id = NEW / CORRECT relationship
+    //
+    // room_type = kept temporarily for compatibility
+    // with existing timetable generator code.
+    //
+    // Later we can remove room_type once the generator
+    // has been fully migrated to room_type_id.
+    //
 
     const roomData = {
 
@@ -2610,8 +3008,11 @@ async function saveRoom() {
         room_name:
             roomName,
 
+        room_type_id:
+            roomTypeId,
+
         room_type:
-            roomType,
+            selectedType.type_name,
 
         capacity:
             capacity
@@ -2622,9 +3023,9 @@ async function saveRoom() {
     let result;
 
 
-    // -----------------------------------------
+    // ========================================================
     // UPDATE
-    // -----------------------------------------
+    // ========================================================
 
     if (roomId) {
 
@@ -2652,9 +3053,9 @@ async function saveRoom() {
     }
 
 
-    // -----------------------------------------
+    // ========================================================
     // INSERT
-    // -----------------------------------------
+    // ========================================================
 
     else {
 
@@ -2672,9 +3073,9 @@ async function saveRoom() {
     }
 
 
-    // -----------------------------------------
+    // ========================================================
     // ERROR
-    // -----------------------------------------
+    // ========================================================
 
     if (result.error) {
 
@@ -2695,9 +3096,9 @@ async function saveRoom() {
     }
 
 
-    // -----------------------------------------
+    // ========================================================
     // SUCCESS
-    // -----------------------------------------
+    // ========================================================
 
     alert(
         roomId
@@ -2719,9 +3120,9 @@ async function saveRoom() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // LOAD ROOMS
-// ------------------------------------------------------------
+// ============================================================
 
 async function loadRooms() {
 
@@ -2731,30 +3132,51 @@ async function loadRooms() {
         );
 
 
-    if (!container) return;
-
-
-    if (!timetableState.schoolId) {
-
-        container.innerHTML =
-            `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-            `;
+    if (!container) {
 
         return;
 
     }
 
 
-    container.innerHTML =
-        `
+    if (
+        !timetableState.schoolId
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-message">
+                Please select a school first.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    container.innerHTML = `
         <div class="loading-message">
             Loading rooms...
         </div>
-        `;
+    `;
 
+
+    // ========================================================
+    // LOAD GLOBAL TYPES FIRST
+    // ========================================================
+
+    if (
+        timetableRoomTypes.length === 0
+    ) {
+
+        await loadRoomTypes();
+
+    }
+
+
+    // ========================================================
+    // LOAD SCHOOL ROOMS
+    // ========================================================
 
     const {
         data,
@@ -2765,7 +3187,16 @@ async function loadRooms() {
             "timetable_rooms"
         )
 
-        .select("*")
+        .select(`
+            id,
+            school_id,
+            room_name,
+            room_type,
+            room_type_id,
+            capacity,
+            available,
+            created_at
+        `)
 
         .eq(
             "school_id",
@@ -2777,6 +3208,10 @@ async function loadRooms() {
         );
 
 
+    // ========================================================
+    // ERROR
+    // ========================================================
+
     if (error) {
 
         console.error(
@@ -2785,32 +3220,41 @@ async function loadRooms() {
         );
 
 
-        container.innerHTML =
-            `
+        container.innerHTML = `
             <div class="empty-message">
                 Failed to load rooms.
             </div>
-            `;
+        `;
 
         return;
 
     }
 
 
-    if (!data || data.length === 0) {
+    // ========================================================
+    // NO ROOMS
+    // ========================================================
 
-        container.innerHTML =
-            `
+    if (
+        !data ||
+        data.length === 0
+    ) {
+
+        container.innerHTML = `
             <div class="empty-message">
                 No rooms have been added
                 for this school yet.
             </div>
-            `;
+        `;
 
         return;
 
     }
 
+
+    // ========================================================
+    // TABLE
+    // ========================================================
 
     let html = `
 
@@ -2820,11 +3264,13 @@ async function loadRooms() {
 
                 <tr>
 
-                    <th>Room</th>
+                    <th>Room Name</th>
 
-                    <th>Type</th>
+                    <th>Room Type</th>
 
                     <th>Capacity</th>
+
+                    <th>Available</th>
 
                     <th>Actions</th>
 
@@ -2837,67 +3283,108 @@ async function loadRooms() {
     `;
 
 
-    data.forEach(room => {
+    data.forEach(
+        room => {
 
-        html += `
+            // ------------------------------------------------
+            // Determine type name
+            // ------------------------------------------------
 
-            <tr>
+            let typeName =
+                getRoomTypeName(
+                    room.room_type_id
+                );
 
-                <td>
 
-                    <strong>
+            // ------------------------------------------------
+            // Legacy fallback
+            // ------------------------------------------------
+
+            if (!typeName) {
+
+                typeName =
+                    room.room_type ||
+                    "-";
+
+            }
+
+
+            const available =
+                room.available !== false;
+
+
+            html += `
+
+                <tr>
+
+                    <td>
+
+                        <strong>
+                            ${escapeHtml(
+                                room.room_name ||
+                                "-"
+                            )}
+                        </strong>
+
+                    </td>
+
+
+                    <td>
+
                         ${escapeHtml(
-                            room.room_name
+                            typeName
                         )}
-                    </strong>
 
-                </td>
-
-
-                <td>
-
-                    ${escapeHtml(
-                        room.room_type || "-"
-                    )}
-
-                </td>
+                    </td>
 
 
-                <td>
+                    <td>
 
-                    ${room.capacity || "-"}
+                        ${room.capacity || "-"}
 
-                </td>
-
-
-                <td>
-
-                    <button
-                        class="action-btn edit-btn"
-                        onclick='editRoom(${JSON.stringify(
-                            room
-                        )})'>
-
-                        Edit
-
-                    </button>
+                    </td>
 
 
-                    <button
-                        class="action-btn delete-btn"
-                        onclick="deleteRoom('${room.id}')">
+                    <td>
 
-                        Delete
+                        ${
+                            available
+                                ? "Yes"
+                                : "No"
+                        }
 
-                    </button>
+                    </td>
 
-                </td>
 
-            </tr>
+                    <td>
 
-        `;
+                        <button
+                            class="action-btn edit-btn"
+                            onclick='editRoom(${JSON.stringify(
+                                room
+                            )})'>
 
-    });
+                            Edit
+
+                        </button>
+
+
+                        <button
+                            class="action-btn delete-btn"
+                            onclick="deleteRoom('${room.id}')">
+
+                            Delete
+
+                        </button>
+
+                    </td>
+
+                </tr>
+
+            `;
+
+        }
+    );
 
 
     html += `
@@ -2915,9 +3402,9 @@ async function loadRooms() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // EDIT ROOM
-// ------------------------------------------------------------
+// ============================================================
 
 window.editRoom =
     function(room) {
@@ -2929,14 +3416,16 @@ window.editRoom =
     };
 
 
-// ------------------------------------------------------------
+// ============================================================
 // DELETE ROOM
-// ------------------------------------------------------------
+// ============================================================
 
 window.deleteRoom =
     async function(roomId) {
 
-        if (!timetableState.schoolId) {
+        if (
+            !timetableState.schoolId
+        ) {
 
             alert(
                 "Please select a school."
@@ -3015,9 +3504,9 @@ window.deleteRoom =
     };
 
 
-// ------------------------------------------------------------
+// ============================================================
 // LOAD ROOMS WHEN SCHOOL CHANGES
-// ------------------------------------------------------------
+// ============================================================
 
 if (schoolSelect) {
 
@@ -3029,6 +3518,8 @@ if (schoolSelect) {
                 timetableState.schoolId
             ) {
 
+                await loadRoomTypes();
+
                 await loadRooms();
 
             }
@@ -3037,6 +3528,21 @@ if (schoolSelect) {
     );
 
 }
+
+
+// ============================================================
+// INITIAL ROOM TYPE LOAD
+// ============================================================
+
+document.addEventListener(
+    "DOMContentLoaded",
+    async function() {
+
+        await loadRoomTypes();
+
+    }
+);
+
 
 // ============================================================
 // REQUIREMENTS
