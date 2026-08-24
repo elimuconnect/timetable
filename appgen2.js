@@ -11825,26 +11825,20 @@ function generateSmartTimetable(
 }
 
 
-// ============================================================
-// GENERATE TIMETABLE — APPLICATION ENTRY POINT
-// ============================================================
-//
-// Existing UI code calls:
-//
-//     generateTimetable()
-//
-// The new scheduling engine is:
-//
-//     generateSmartTimetable()
-//
-// This wrapper keeps the existing application interface
-// unchanged while connecting it to the new generator.
-//
-// ============================================================
 
 
 // ============================================================
 // GENERATE TIMETABLE — APPLICATION ENTRY POINT
+// ============================================================
+//
+// STAGE FLOW:
+//
+// 1. Prepare generator data
+// 2. Prepare task order
+// 3. Stage 6F — Smart generation
+// 4. Stage 6G — Final audit
+// 5. Stage 7 — SAVE + DISPLAY + APPLICATION STATE
+//
 // ============================================================
 
 async function generateTimetable() {
@@ -11862,18 +11856,66 @@ async function generateTimetable() {
     );
 
 
+    // ========================================================
+    // PREVENT DUPLICATE GENERATION
+    // ========================================================
+
+    if (
+        timetableGenerationRunning
+    ) {
+
+        console.warn(
+            "Timetable generation is already running."
+        );
+
+        return null;
+
+    }
+
+
+    if (
+        !timetableState ||
+        !timetableState.schoolId
+    ) {
+
+        throw new Error(
+            "Please select a school first."
+        );
+
+    }
+
+
+    timetableGenerationRunning =
+        true;
+
+
     try {
 
+        setTimetableGenerationStatus(
+            "Preparing timetable generation...",
+            "info"
+        );
+
+
         // ====================================================
-        // PREPARE GENERATOR DATA
+        // STAGE 1 — PREPARE GENERATOR DATA
         // ====================================================
 
         const generatorData =
             await prepareTimetableGeneratorData();
 
 
+        if (!generatorData) {
+
+            throw new Error(
+                "Timetable generator data could not be prepared."
+            );
+
+        }
+
+
         // ====================================================
-        // PREPARE TASK ORDER
+        // STAGE 2 — PREPARE TASK ORDER
         // ====================================================
 
         prepareSmartLessonTaskOrder(
@@ -11882,8 +11924,14 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // RUN SMART GENERATOR — STAGE 6F
+        // STAGE 6F — SMART GENERATOR
         // ====================================================
+
+        setTimetableGenerationStatus(
+            "Generating timetable...",
+            "info"
+        );
+
 
         const result =
             generateSmartTimetable(
@@ -11891,8 +11939,32 @@ async function generateTimetable() {
             );
 
 
+        if (
+            !result
+        ) {
+
+            throw new Error(
+                "Smart timetable generator returned no result."
+            );
+
+        }
+
+
+        if (
+            !Array.isArray(
+                result.entries
+            )
+        ) {
+
+            throw new Error(
+                "Generator returned an invalid entries array."
+            );
+
+        }
+
+
         // ====================================================
-        // RUN FINAL AUDIT — STAGE 6G
+        // STAGE 6G — FINAL AUDIT
         // ====================================================
 
         const audit =
@@ -11901,10 +11973,6 @@ async function generateTimetable() {
                 result
             );
 
-
-        // ====================================================
-        // STORE AUDIT RESULT
-        // ====================================================
 
         generatorData.generationAudit =
             audit;
@@ -11922,14 +11990,29 @@ async function generateTimetable() {
         ) {
 
             console.error(
-                "TIMETABLE GENERATION BLOCKED:",
-                "Stage 6G audit failed."
+                "TIMETABLE GENERATION BLOCKED."
             );
 
+            console.error(
+                "Stage 6G audit failed."
+            );
 
             console.error(
                 "Audit errors:",
                 audit.errors
+            );
+
+
+            showTimetableConflicts(
+                audit.errors || [],
+                generatorData.lookup ||
+                generatorData
+            );
+
+
+            setTimetableGenerationStatus(
+                "Timetable failed final audit. Nothing was saved.",
+                "error"
             );
 
 
@@ -11947,12 +12030,16 @@ async function generateTimetable() {
         }
 
 
-        // ====================================================
-        // AUDIT PASSED
-        // ====================================================
+        console.log(
+            "======================================"
+        );
 
         console.log(
             "✅ 6G AUDIT PASSED"
+        );
+
+        console.log(
+            "======================================"
         );
 
 
@@ -11965,7 +12052,7 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // DEBUG
+        // GENERATION DEBUG
         // ====================================================
 
         console.log(
@@ -11982,22 +12069,22 @@ async function generateTimetable() {
 
         console.log(
             "Total tasks:",
-            result.statistics.totalTasks
+            result.statistics?.totalTasks || 0
         );
 
         console.log(
             "Placed tasks:",
-            result.statistics.placedTasks
+            result.statistics?.placedTasks || 0
         );
 
         console.log(
             "Failed tasks:",
-            result.statistics.failedTasks
+            result.statistics?.failedTasks || 0
         );
 
         console.log(
             "Periods placed:",
-            result.statistics.totalPeriodsPlaced
+            result.statistics?.totalPeriodsPlaced || 0
         );
 
         console.log(
@@ -12011,19 +12098,316 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // RETURN VALID GENERATED TIMETABLE
+        // STAGE 7 — SAVE GENERATED TIMETABLE
+        // ====================================================
+        //
+        // IMPORTANT:
+        // Do not duplicate the scheduling logic here.
+        //
+        // Stage 6 has already produced:
+        //
+        //     result.entries
+        //
+        // Stage 7 only persists those entries.
+        //
         // ====================================================
 
-        return result;
+        setTimetableGenerationStatus(
+            "Saving generated timetable...",
+            "info"
+        );
+
+
+        const schoolId =
+            timetableState.schoolId;
+
+
+        // ----------------------------------------------------
+        // REMOVE PREVIOUS GENERATED ENTRIES
+        // ----------------------------------------------------
+
+        const deleteResult =
+            await supabaseClient
+                .from(
+                    "timetable_entries"
+                )
+                .delete()
+                .eq(
+                    "school_id",
+                    schoolId
+                );
+
+
+        if (
+            deleteResult.error
+        ) {
+
+            throw new Error(
+                "Failed to clear previous timetable: " +
+                deleteResult.error.message
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // PREPARE DATABASE ENTRIES
+        // ----------------------------------------------------
+
+        const entriesToSave =
+            result.entries.map(
+                entry => {
+
+                    return {
+
+                        school_id:
+                            schoolId,
+
+                        generation_id:
+                            entry.generation_id ||
+                            entry.generationId ||
+                            null,
+
+                        period_id:
+                            entry.period_id ||
+                            entry.periodId,
+
+                        stream_id:
+                            entry.stream_id ||
+                            entry.streamId,
+
+                        subject_id:
+                            entry.subject_id ||
+                            entry.subjectId,
+
+                        teacher_id:
+                            entry.teacher_id ||
+                            entry.teacherId,
+
+                        room_id:
+                            entry.room_id ||
+                            entry.roomId ||
+                            null
+
+                    };
+
+                }
+            );
+
+
+        // ----------------------------------------------------
+        // VALIDATE BEFORE INSERT
+        // ----------------------------------------------------
+
+        const invalidEntries =
+            entriesToSave.filter(
+                entry =>
+                    !entry.school_id ||
+                    !entry.period_id ||
+                    !entry.stream_id ||
+                    !entry.subject_id ||
+                    !entry.teacher_id
+            );
+
+
+        if (
+            invalidEntries.length > 0
+        ) {
+
+            console.error(
+                "Invalid entries before database insert:",
+                invalidEntries
+            );
+
+
+            throw new Error(
+                `${invalidEntries.length} generated timetable entries are missing required IDs.`
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // INSERT GENERATED ENTRIES
+        // ----------------------------------------------------
+
+        if (
+            entriesToSave.length > 0
+        ) {
+
+            const insertResult =
+                await supabaseClient
+                    .from(
+                        "timetable_entries"
+                    )
+                    .insert(
+                        entriesToSave
+                    );
+
+
+            if (
+                insertResult.error
+            ) {
+
+                throw new Error(
+                    "Failed to save generated timetable: " +
+                    insertResult.error.message
+                );
+
+            }
+
+        }
+
+
+        // ====================================================
+        // STAGE 7 — UPDATE LOCAL STATE
+        // ====================================================
+
+        generatedTimetableEntries =
+            entriesToSave;
+
+
+        // ====================================================
+        // STAGE 7 — LOAD DISPLAY DATA
+        // ====================================================
+
+        await loadTimetableFilters();
+
+
+        await loadGeneratedTimetable();
+
+
+        // ====================================================
+        // STAGE 7 — SUMMARY
+        // ====================================================
+
+        const totalTasks =
+            result.statistics?.totalTasks || 0;
+
+
+        const generatedEntries =
+            result.entries?.length || 0;
+
+
+        const failedTasks =
+            result.statistics?.failedTasks || 0;
+
+
+        showTimetableSummary(
+            totalTasks,
+            generatedEntries,
+            failedTasks
+        );
+
+
+        // ====================================================
+        // STAGE 7 — CONFLICT DISPLAY
+        // ====================================================
+
+        if (
+            Array.isArray(
+                result.failedTasks
+            ) &&
+            result.failedTasks.length > 0
+        ) {
+
+            console.warn(
+                "Some timetable tasks were not placed:",
+                result.failedTasks
+            );
+
+        }
+
+
+        // ====================================================
+        // FINAL STATUS
+        // ====================================================
+
+        setTimetableGenerationStatus(
+            `Timetable generated successfully. ${generatedEntries} lesson periods saved.`,
+            "success"
+        );
+
+
+        // ====================================================
+        // FINAL DEBUG
+        // ====================================================
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "✅ STAGE 7 COMPLETE"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "Saved entries:",
+            entriesToSave.length
+        );
+
+        console.log(
+            "School:",
+            schoolId
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        // ====================================================
+        // RETURN FINAL RESULT
+        // ====================================================
+
+        return {
+
+            ...result,
+
+            audit,
+
+            saved:
+                true,
+
+            savedEntries:
+                entriesToSave.length
+
+        };
 
     }
+
     catch (
         error
     ) {
 
         console.error(
-            "TIMETABLE GENERATION FAILED:",
+            "======================================"
+        );
+
+        console.error(
+            "❌ TIMETABLE GENERATION FAILED"
+        );
+
+        console.error(
             error
+        );
+
+        console.error(
+            "======================================"
+        );
+
+
+        setTimetableGenerationStatus(
+            "Timetable generation failed: " +
+            (
+                error.message ||
+                "Unknown error"
+            ),
+            "error"
         );
 
 
@@ -12031,7 +12415,15 @@ async function generateTimetable() {
 
     }
 
+    finally {
+
+        timetableGenerationRunning =
+            false;
+
+    }
+
 }
+
 
 
 
@@ -15297,80 +15689,1353 @@ function auditGeneratedTimetable(
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================
-// PART 7 — LOAD AND DISPLAY GENERATED TIMETABLE
+// STAGE 7 — REPAIR / BACKTRACKING ENGINE
+// ============================================================
+//
+// PURPOSE:
+//
+// Stage 6 performs normal placement.
+//
+// Stage 7 handles tasks that Stage 6 could not place.
+//
+// It will:
+//
+// 1. Take failed tasks.
+// 2. Search alternative periods.
+// 3. Search alternative rooms.
+// 4. Try to move an already placed lesson if necessary.
+// 5. Re-attempt the failed task.
+// 6. Repeat for a limited number of repair passes.
+//
+// IMPORTANT:
+//
+// This stage does NOT generate new tasks.
+// This stage does NOT create timetable periods.
+// This stage does NOT render the timetable.
+//
+// It only repairs the scheduling result.
 // ============================================================
 
 
+// ============================================================
+// STAGE 7 CONFIGURATION
+// ============================================================
 
-```javascript
+const STAGE7_CONFIG = {
+
+    maxRepairPasses: 5,
+
+    maxMovesPerTask: 8,
+
+    maxCandidatesPerTask: 50,
+
+    allowMovingSingleLessons: true,
+
+    allowMovingDoubleLessons: false
+
+};
+
+
+// ============================================================
+// STAGE 7 — MAIN ENTRY POINT
+// ============================================================
+
+function runStage7Repair(
+    failedTasks,
+    placedTasks,
+    generatorData
+) {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 7 — REPAIR / BACKTRACKING"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    if (
+        !Array.isArray(
+            failedTasks
+        ) ||
+        failedTasks.length === 0
+    ) {
+
+        console.log(
+            "STAGE 7: No failed tasks. Repair not required."
+        );
+
+        return {
+
+            repaired:
+                [],
+
+            stillFailed:
+                [],
+
+            moved:
+                [],
+
+            repairedCount:
+                0,
+
+            failedCount:
+                0
+
+        };
+
+    }
+
+
+    if (
+        !generatorData
+    ) {
+
+        console.error(
+            "STAGE 7: generatorData missing."
+        );
+
+        return {
+
+            repaired:
+                [],
+
+            stillFailed:
+                failedTasks,
+
+            moved:
+                [],
+
+            repairedCount:
+                0,
+
+            failedCount:
+                failedTasks.length
+
+        };
+
+    }
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    if (
+        !indexes
+    ) {
+
+        console.error(
+            "STAGE 7: Occupancy indexes missing."
+        );
+
+        return {
+
+            repaired:
+                [],
+
+            stillFailed:
+                failedTasks,
+
+            moved:
+                [],
+
+            repairedCount:
+                0,
+
+            failedCount:
+                failedTasks.length
+
+        };
+
+    }
+
+
+    const repaired = [];
+
+    const stillFailed = [];
+
+    const moved = [];
+
+
+    // --------------------------------------------------------
+    // WORKING COPY
+    // --------------------------------------------------------
+
+    let remainingTasks =
+        [...failedTasks];
+
+
+    // --------------------------------------------------------
+    // REPAIR PASSES
+    // --------------------------------------------------------
+
+    for (
+        let pass = 1;
+        pass <= STAGE7_CONFIG.maxRepairPasses;
+        pass++
+    ) {
+
+        console.log(
+            `STAGE 7 REPAIR PASS ${pass}`
+        );
+
+
+        if (
+            remainingTasks.length === 0
+        ) {
+
+            break;
+
+        }
+
+
+        const nextFailed = [];
+
+
+        for (
+            const task of remainingTasks
+        ) {
+
+            console.log(
+                "Attempting repair:",
+                task?.taskId ||
+                task?.id
+            );
+
+
+            const result =
+                repairSingleFailedTask(
+                    task,
+                    generatorData
+                );
+
+
+            if (
+                result &&
+                result.repaired
+            ) {
+
+                repaired.push(
+                    task
+                );
+
+
+                if (
+                    Array.isArray(
+                        result.moved
+                    )
+                ) {
+
+                    moved.push(
+                        ...result.moved
+                    );
+
+                }
+
+
+                console.log(
+                    "✅ STAGE 7 REPAIRED:",
+                    task?.taskId ||
+                    task?.id
+                );
+
+            }
+            else {
+
+                nextFailed.push(
+                    task
+                );
+
+            }
+
+        }
+
+
+        remainingTasks =
+            nextFailed;
+
+
+        console.log(
+            `STAGE 7 PASS ${pass}:`,
+            {
+                repaired:
+                    repaired.length,
+
+                remaining:
+                    remainingTasks.length,
+
+                moved:
+                    moved.length
+            }
+        );
+
+
+        if (
+            remainingTasks.length === 0
+        ) {
+
+            break;
+
+        }
+
+    }
+
+
+    stillFailed.push(
+        ...remainingTasks
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 7 COMPLETE"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.log(
+        "Repaired:",
+        repaired.length
+    );
+
+    console.log(
+        "Moved:",
+        moved.length
+    );
+
+    console.log(
+        "Still failed:",
+        stillFailed.length
+    );
+
+
+    return {
+
+        repaired,
+
+        stillFailed,
+
+        moved,
+
+        repairedCount:
+            repaired.length,
+
+        failedCount:
+            stillFailed.length
+
+    };
+
+}
+
+
+// ============================================================
+// REPAIR ONE FAILED TASK
+// ============================================================
+
+function repairSingleFailedTask(
+    task,
+    generatorData
+) {
+
+    if (
+        !task ||
+        !generatorData
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    const periods =
+        generatorData.periods ||
+        [];
+
+
+    const rooms =
+        generatorData.rooms ||
+        [];
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    if (
+        !indexes
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    // ========================================================
+    // BUILD PERIOD CANDIDATES
+    // ========================================================
+
+    const candidatePeriods =
+        buildStage7PeriodCandidates(
+            task,
+            periods
+        );
+
+
+    if (
+        candidatePeriods.length === 0
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    let attempts = 0;
+
+
+    // ========================================================
+    // TRY EMPTY / VALID SLOTS FIRST
+    // ========================================================
+
+    for (
+        const period of candidatePeriods
+    ) {
+
+        if (
+            attempts >=
+            STAGE7_CONFIG.maxCandidatesPerTask
+        ) {
+
+            break;
+
+        }
+
+
+        attempts++;
+
+
+        const candidateRooms =
+            buildStage7RoomCandidates(
+                task,
+                rooms
+            );
+
+
+        for (
+            const room of candidateRooms
+        ) {
+
+            const conflict =
+                checkSingleSlotConflict(
+                    task,
+                    period,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                conflict &&
+                conflict.valid === true
+            ) {
+
+                const placed =
+                    placeStage7Task(
+                        task,
+                        period,
+                        room,
+                        generatorData
+                    );
+
+
+                if (
+                    placed
+                ) {
+
+                    return {
+
+                        repaired:
+                            true,
+
+                        moved:
+                            []
+
+                    };
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NO DIRECT SLOT
+    // TRY MOVING AN EXISTING SINGLE LESSON
+    // ========================================================
+
+    if (
+        STAGE7_CONFIG.allowMovingSingleLessons
+    ) {
+
+        const moveResult =
+            attemptStage7Relocation(
+                task,
+                candidatePeriods,
+                rooms,
+                generatorData
+            );
+
+
+        if (
+            moveResult &&
+            moveResult.repaired
+        ) {
+
+            return moveResult;
+
+        }
+
+    }
+
+
+    return {
+
+        repaired:
+            false,
+
+        moved:
+            []
+
+    };
+
+}
+
+// ============================================================
+// BUILD STAGE 7 PERIOD CANDIDATES
+// ============================================================
+
+function buildStage7PeriodCandidates(
+    task,
+    periods
+) {
+
+    if (
+        !Array.isArray(periods)
+    ) {
+
+        return [];
+
+    }
+
+
+    const candidates =
+        periods
+            .filter(
+                period =>
+                    period &&
+                    period.id
+            )
+            .sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    const dayA =
+                        Number(
+                            a.day_number || 0
+                        );
+
+                    const dayB =
+                        Number(
+                            b.day_number || 0
+                        );
+
+
+                    if (
+                        dayA !== dayB
+                    ) {
+
+                        return (
+                            dayA - dayB
+                        );
+
+                    }
+
+
+                    const orderA =
+                        Number(
+                            a.period_order ??
+                            a.period_number ??
+                            0
+                        );
+
+
+                    const orderB =
+                        Number(
+                            b.period_order ??
+                            b.period_number ??
+                            0
+                        );
+
+
+                    return (
+                        orderA - orderB
+                    );
+
+                }
+            );
+
+
+    return candidates;
+
+}
+
+// ============================================================
+// BUILD STAGE 7 ROOM CANDIDATES
+// ============================================================
+
+function buildStage7RoomCandidates(
+    task,
+    rooms
+) {
+
+    if (
+        !Array.isArray(rooms)
+    ) {
+
+        return [null];
+
+    }
+
+
+    // --------------------------------------------------------
+    // Subjects that do not require rooms
+    // --------------------------------------------------------
+
+    if (
+        task.requiresRoom !== true &&
+        task.requires_room !== true
+    ) {
+
+        return [null];
+
+    }
+
+
+    const validRooms =
+        rooms.filter(
+            room =>
+                room &&
+                room.id
+        );
+
+
+    if (
+        validRooms.length === 0
+    ) {
+
+        return [null];
+
+    }
+
+
+    return validRooms;
+
+}
+
+// ============================================================
+// STAGE 7 TASK PLACEMENT ADAPTER
+// ============================================================
+
+function placeStage7Task(
+    task,
+    period,
+    room,
+    generatorData
+) {
+
+    if (
+        !task ||
+        !period ||
+        !generatorData
+    ) {
+
+        return false;
+
+    }
+
+
+    // --------------------------------------------------------
+    // REUSE EXISTING PLACEMENT ENGINE
+    // --------------------------------------------------------
+
+    if (
+        typeof placeTaskInSlot ===
+        "function"
+    ) {
+
+        return Boolean(
+            placeTaskInSlot(
+                task,
+                period,
+                room,
+                generatorData
+            )
+        );
+
+    }
+
+
+    if (
+        typeof placeSingleTask ===
+        "function"
+    ) {
+
+        return Boolean(
+            placeSingleTask(
+                task,
+                period,
+                room,
+                generatorData
+            )
+        );
+
+    }
+
+
+    console.error(
+        "STAGE 7: Existing placement function not found."
+    );
+
+
+    return false;
+
+}
+
+
+// ============================================================
+// STAGE 7 — RELOCATION
+// ============================================================
+
+function attemptStage7Relocation(
+    failedTask,
+    candidatePeriods,
+    rooms,
+    generatorData
+) {
+
+    if (
+        !failedTask ||
+        !Array.isArray(candidatePeriods)
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    const placedTasks =
+        generatorData.placedTasks ||
+        [];
+
+
+    if (
+        !Array.isArray(placedTasks) ||
+        placedTasks.length === 0
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    let moveAttempts = 0;
+
+
+    // ========================================================
+    // LOOK FOR A SINGLE LESSON TO MOVE
+    // ========================================================
+
+    for (
+        const existingTask of placedTasks
+    ) {
+
+        if (
+            moveAttempts >=
+            STAGE7_CONFIG.maxMovesPerTask
+        ) {
+
+            break;
+
+        }
+
+
+        // ----------------------------------------------------
+        // NEVER MOVE A DOUBLE LESSON IN THIS PASS
+        // ----------------------------------------------------
+
+        if (
+            existingTask.type === "double" ||
+            existingTask.isDouble === true
+        ) {
+
+            continue;
+
+        }
+
+
+        moveAttempts++;
+
+
+        // ----------------------------------------------------
+        // FIND A NEW LOCATION FOR EXISTING TASK
+        // ----------------------------------------------------
+
+        const alternative =
+            findAlternativeSlotForExistingTask(
+                existingTask,
+                failedTask,
+                candidatePeriods,
+                rooms,
+                generatorData
+            );
+
+
+        if (
+            !alternative
+        ) {
+
+            continue;
+
+        }
+
+
+        // ----------------------------------------------------
+        // MOVE EXISTING TASK
+        // ----------------------------------------------------
+
+        const moved =
+            moveStage7Task(
+                existingTask,
+                alternative.period,
+                alternative.room,
+                generatorData
+            );
+
+
+        if (
+            !moved
+        ) {
+
+            continue;
+
+        }
+
+
+        // ----------------------------------------------------
+        // NOW TRY FAILED TASK
+        // ----------------------------------------------------
+
+        const placed =
+            placeStage7Task(
+                failedTask,
+                alternative.oldPeriod,
+                alternative.oldRoom,
+                generatorData
+            );
+
+
+        if (
+            placed
+        ) {
+
+            return {
+
+                repaired:
+                    true,
+
+                moved: [
+                    {
+                        task:
+                            existingTask,
+
+                        from:
+                            {
+                                period:
+                                    alternative.oldPeriod,
+
+                                room:
+                                    alternative.oldRoom
+                            },
+
+                        to:
+                            {
+                                period:
+                                    alternative.period,
+
+                                room:
+                                    alternative.room
+                            }
+                    }
+                ]
+
+            };
+
+        }
+
+
+        // ----------------------------------------------------
+        // FAILED TO PLACE FAILED TASK
+        // ROLLBACK
+        // ----------------------------------------------------
+
+        moveStage7Task(
+            existingTask,
+            alternative.oldPeriod,
+            alternative.oldRoom,
+            generatorData
+        );
+
+    }
+
+
+    return {
+
+        repaired:
+            false,
+
+        moved:
+            []
+
+    };
+
+}
+
+
+// ============================================================
+// FIND ALTERNATIVE SLOT FOR EXISTING TASK
+// ============================================================
+
+function findAlternativeSlotForExistingTask(
+    existingTask,
+    failedTask,
+    candidatePeriods,
+    rooms,
+    generatorData
+) {
+
+    if (
+        !existingTask ||
+        !failedTask
+    ) {
+
+        return null;
+
+    }
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    if (
+        !indexes
+    ) {
+
+        return null;
+
+    }
+
+
+    const oldPeriod =
+        findTaskPeriod(
+            existingTask,
+            generatorData
+        );
+
+
+    const oldRoom =
+        findTaskRoom(
+            existingTask,
+            generatorData
+        );
+
+
+    if (
+        !oldPeriod
+    ) {
+
+        return null;
+
+    }
+
+
+    for (
+        const period of candidatePeriods
+    ) {
+
+        // Do not return the same slot.
+        if (
+            String(period.id) ===
+            String(oldPeriod.id)
+        ) {
+
+            continue;
+
+        }
+
+
+        const candidateRooms =
+            buildStage7RoomCandidates(
+                existingTask,
+                rooms
+            );
+
+
+        for (
+            const room of candidateRooms
+        ) {
+
+            const conflict =
+                checkSingleSlotConflict(
+                    existingTask,
+                    period,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                conflict &&
+                conflict.valid === true
+            ) {
+
+                return {
+
+                    period,
+
+                    room,
+
+                    oldPeriod,
+
+                    oldRoom
+
+                };
+
+            }
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+// ============================================================
+// FIND CURRENT PERIOD OF TASK
+// ============================================================
+
+function findTaskPeriod(
+    task,
+    generatorData
+) {
+
+    const periods =
+        generatorData.periods ||
+        [];
+
+
+    if (
+        task.periodId
+    ) {
+
+        return periods.find(
+            period =>
+                String(period.id) ===
+                String(task.periodId)
+        ) || null;
+
+    }
+
+
+    if (
+        task.period_id
+    ) {
+
+        return periods.find(
+            period =>
+                String(period.id) ===
+                String(task.period_id)
+        ) || null;
+
+    }
+
+
+    return null;
+
+}
+
+
+// ============================================================
+// FIND CURRENT ROOM OF TASK
+// ============================================================
+
+function findTaskRoom(
+    task,
+    generatorData
+) {
+
+    const rooms =
+        generatorData.rooms ||
+        [];
+
+
+    const roomId =
+        task.roomId ||
+        task.room_id ||
+        null;
+
+
+    if (
+        !roomId
+    ) {
+
+        return null;
+
+    }
+
+
+    return rooms.find(
+        room =>
+            String(room.id) ===
+            String(roomId)
+    ) || null;
+
+}
+
+// ============================================================
+// STAGE 7 — MOVE TASK
+// ============================================================
+
+function moveStage7Task(
+    task,
+    newPeriod,
+    newRoom,
+    generatorData
+) {
+
+    if (
+        !task ||
+        !newPeriod
+    ) {
+
+        return false;
+
+    }
+
+
+    // --------------------------------------------------------
+    // PREFER EXISTING MOVE FUNCTION
+    // --------------------------------------------------------
+
+    if (
+        typeof moveTaskToSlot ===
+        "function"
+    ) {
+
+        return Boolean(
+            moveTaskToSlot(
+                task,
+                newPeriod,
+                newRoom,
+                generatorData
+            )
+        );
+
+    }
+
+
+    // --------------------------------------------------------
+    // OTHERWISE USE EXISTING REMOVE + PLACE
+    // --------------------------------------------------------
+
+    if (
+        typeof removeTaskFromSlot ===
+            "function" &&
+        typeof placeTaskInSlot ===
+            "function"
+    ) {
+
+        const removed =
+            removeTaskFromSlot(
+                task,
+                generatorData
+            );
+
+
+        if (
+            !removed
+        ) {
+
+            return false;
+
+        }
+
+
+        const placed =
+            placeTaskInSlot(
+                task,
+                newPeriod,
+                newRoom,
+                generatorData
+            );
+
+
+        if (
+            placed
+        ) {
+
+            return true;
+
+        }
+
+
+        // ----------------------------------------------------
+        // ROLLBACK
+        // ----------------------------------------------------
+
+        placeTaskInSlot(
+            task,
+            findTaskPeriod(
+                task,
+                generatorData
+            ),
+            findTaskRoom(
+                task,
+                generatorData
+            ),
+            generatorData
+        );
+
+
+        return false;
+
+    }
+
+
+    console.error(
+        "STAGE 7: No task movement implementation available."
+    );
+
+
+    return false;
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ------------------------------------------------------------
 // LOAD GENERATED TIMETABLE
 // ------------------------------------------------------------
