@@ -618,200 +618,430 @@
       </div>
      </div>
     </div>
-    <!-- ============================================================
+
+<!-- ============================================================
      PERIODS
      ============================================================ -->
-    <div aria-labelledby="periods-section-title" class="section" data-module="periods" id="periods">
-     <div class="page-heading">
-      <div>
-       <h2 id="periods-section-title">
-        ⏰ Periods
-       </h2>
-       <p>
-        Configure the school's daily schedule.
-       </p>
-      </div>
-     </div>
-     <div id="periodsContent">
-      <!-- ====================================================
-             ADD PERIOD BUTTON
+
+<div
+    aria-labelledby="periods-section-title"
+    class="section"
+    data-module="periods"
+    id="periods"
+>
+
+    <div class="page-heading">
+
+        <div>
+
+            <h2 id="periods-section-title">
+                ⏰ Timetable Periods
+            </h2>
+
+            <p>
+                Load the standard CBC timetable structure for this
+                school, then customize the school's periods if needed.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div id="periodsContent">
+
+
+        <!-- ====================================================
+             STANDARD PERIOD INFORMATION
              ==================================================== -->
-      <button aria-label="➕ Add Period" class="primary-btn" id="addPeriodBtn" type="button">
-       ➕ Add Period
-      </button>
-      <!-- ====================================================
+
+        <div
+            class="form-card"
+            id="standardPeriodsCard"
+        >
+
+            <h3>
+                📚 Standard CBC Timetable Structure
+            </h3>
+
+            <p>
+                The standard timetable runs from
+                <strong>8:00 AM to 5:00 PM</strong>
+                Monday to Friday.
+            </p>
+
+            <p>
+                It includes assembly, lessons, short breaks,
+                long break, lunch, and afternoon games,
+                societies and clubs.
+            </p>
+
+
+            <div class="form-actions">
+
+                <button
+                    aria-label="Load Standard CBC Periods"
+                    class="primary-btn"
+                    id="loadStandardPeriodsBtn"
+                    type="button"
+                >
+                    📥 Load Standard CBC Periods
+                </button>
+
+            </div>
+
+
+            <div
+                id="standardPeriodsStatus"
+                style="margin-top:15px;"
+            >
+            </div>
+
+        </div>
+
+
+        <!-- ====================================================
              PERIOD FORM
+             Used ONLY for editing an existing school period
              ==================================================== -->
-      <div class="form-card" id="periodFormCard" style="display:none;">
-       <h3 id="periodFormTitle">
-        Add Period
-       </h3>
-       <!-- PERIOD ID -->
-       <input id="periodId" type="hidden"/>
-       <div class="form-grid">
-        <!-- =================================================
+
+        <div
+            class="form-card"
+            id="periodFormCard"
+            style="display:none;"
+        >
+
+            <h3 id="periodFormTitle">
+                Edit Period
+            </h3>
+
+
+            <!-- PERIOD ID -->
+
+            <input
+                id="periodId"
+                type="hidden"
+            />
+
+
+            <div class="form-grid">
+
+
+                <!-- =================================================
                      DAY
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodDayName">
-          Day
-         </label>
-         <select id="periodDayName" required="">
-          <option value="">
-           Select day
-          </option>
-          <option value="Monday">
-           Monday
-          </option>
-          <option value="Tuesday">
-           Tuesday
-          </option>
-          <option value="Wednesday">
-           Wednesday
-          </option>
-          <option value="Thursday">
-           Thursday
-          </option>
-          <option value="Friday">
-           Friday
-          </option>
-          <option value="Saturday">
-           Saturday
-          </option>
-         </select>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodDayName">
+                        Day
+                    </label>
+
+                    <select
+                        id="periodDayName"
+                        required
+                    >
+
+                        <option value="">
+                            Select day
+                        </option>
+
+                        <option value="Monday">
+                            Monday
+                        </option>
+
+                        <option value="Tuesday">
+                            Tuesday
+                        </option>
+
+                        <option value="Wednesday">
+                            Wednesday
+                        </option>
+
+                        <option value="Thursday">
+                            Thursday
+                        </option>
+
+                        <option value="Friday">
+                            Friday
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <!-- =================================================
                      DAY NUMBER
-                     Automatically determined from Day
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodDayNumber">
-          Day Number
-         </label>
-         <input id="periodDayNumber" max="6" min="1" readonly="" required="" type="number" value="1"/>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodDayNumber">
+                        Day Number
+                    </label>
+
+                    <input
+                        id="periodDayNumber"
+                        max="5"
+                        min="1"
+                        readonly
+                        required
+                        type="number"
+                    />
+
+                    <small>
+                        Automatically determined from the selected day.
+                    </small>
+
+                </div>
+
+
+                <!-- =================================================
                      PERIOD NUMBER
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodNumber">
-          Period Number
-         </label>
-         <input id="periodNumber" min="1" required="" type="number" value="1"/>
-         <small>
-          Example: 1, 2, 3, 4...
-         </small>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodNumber">
+                        Period Number
+                    </label>
+
+                    <input
+                        id="periodNumber"
+                        min="1"
+                        max="14"
+                        required
+                        type="number"
+                    />
+
+                    <small>
+                        Standard structure uses 1–14.
+                    </small>
+
+                </div>
+
+
+                <!-- =================================================
                      PERIOD ORDER
-                     Automatically calculated by JavaScript
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodOrder">
-          Period Order
-         </label>
-         <input id="periodOrder" min="1" readonly="" required="" type="number" value="1"/>
-         <small>
-          Automatically calculated.
-         </small>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodOrder">
+                        Period Order
+                    </label>
+
+                    <input
+                        id="periodOrder"
+                        min="1"
+                        readonly
+                        required
+                        type="number"
+                    />
+
+                    <small>
+                        Automatically calculated.
+                    </small>
+
+                </div>
+
+
+                <!-- =================================================
                      PERIOD NAME
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodName">
-          Period Name
-         </label>
-         <input id="periodName" placeholder="Automatically generated" readonly="" required="" type="text"/>
-         <small>
-          Example: Period 1, Period 2, Break, Lunch.
-         </small>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodName">
+                        Period Name
+                    </label>
+
+                    <input
+                        id="periodName"
+                        placeholder="Period name"
+                        required
+                        type="text"
+                    />
+
+                    <small>
+                        Example: Period 1, Short Break, Lunch Break.
+                    </small>
+
+                </div>
+
+
+                <!-- =================================================
                      START TIME
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodStartTime">
-          Start Time
-         </label>
-         <input id="periodStartTime" required="" type="time"/>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodStartTime">
+                        Start Time
+                    </label>
+
+                    <input
+                        id="periodStartTime"
+                        required
+                        type="time"
+                    />
+
+                </div>
+
+
+                <!-- =================================================
                      END TIME
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodEndTime">
-          End Time
-         </label>
-         <input id="periodEndTime" required="" type="time"/>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodEndTime">
+                        End Time
+                    </label>
+
+                    <input
+                        id="periodEndTime"
+                        required
+                        type="time"
+                    />
+
+                </div>
+
+
+                <!-- =================================================
                      PERIOD TYPE
                      ================================================= -->
-        <div class="form-group">
-         <label for="periodType">
-          Period Type
-         </label>
-         <select id="periodType" required="">
-          <option value="lesson">
-           Lesson
-          </option>
-          <option value="registration">
-           Registration
-          </option>
-          <option value="break">
-           Break
-          </option>
-          <option value="lunch">
-           Lunch
-          </option>
-          <option value="assembly">
-           Assembly
-          </option>
-          <option value="activity">
-           Activity
-          </option>
-          <option value="other">
-           Other
-          </option>
-         </select>
-        </div>
-        <!-- =================================================
+
+                <div class="form-group">
+
+                    <label for="periodType">
+                        Period Type
+                    </label>
+
+                    <select
+                        id="periodType"
+                        required
+                    >
+
+                        <option value="lesson">
+                            Lesson
+                        </option>
+
+                        <option value="break">
+                            Break
+                        </option>
+
+                        <option value="lunch">
+                            Lunch
+                        </option>
+
+                        <option value="assembly">
+                            Assembly
+                        </option>
+
+                        <option value="activity">
+                            Activity
+                        </option>
+
+                        <option value="registration">
+                            Registration
+                        </option>
+
+                        <option value="other">
+                            Other
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <!-- =================================================
                      TEACHING PERIOD
                      ================================================= -->
-        <div class="form-group">
-         <label for="isTeachingPeriod">
-          <input checked="" id="isTeachingPeriod" type="checkbox"/>
-          Teaching Period
-         </label>
-         <small>
-          Enable this for periods where lessons
-                        can be scheduled.
-         </small>
-        </div>
-       </div>
-       <!-- ====================================================
+
+                <div class="form-group">
+
+                    <label for="isTeachingPeriod">
+
+                        <input
+                            checked
+                            id="isTeachingPeriod"
+                            type="checkbox"
+                        />
+
+                        Teaching Period
+
+                    </label>
+
+                    <small>
+                        Enable this when lessons can be scheduled
+                        in this period.
+                    </small>
+
+                </div>
+
+            </div>
+
+
+            <!-- ====================================================
                  FORM BUTTONS
                  ==================================================== -->
-       <div class="form-actions">
-        <button aria-label="💾 Save Period" class="primary-btn" id="savePeriodBtn" type="button">
-         💾 Save Period
-        </button>
-        <button aria-label="Cancel" class="secondary-btn" id="cancelPeriodBtn" type="button">
-         Cancel
-        </button>
-       </div>
-      </div>
-      <!-- ====================================================
+
+            <div class="form-actions">
+
+                <button
+                    aria-label="Save Period"
+                    class="primary-btn"
+                    id="savePeriodBtn"
+                    type="button"
+                >
+                    💾 Save Changes
+                </button>
+
+                <button
+                    aria-label="Cancel"
+                    class="secondary-btn"
+                    id="cancelPeriodBtn"
+                    type="button"
+                >
+                    Cancel
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <!-- ====================================================
              PERIOD TABLE
              ==================================================== -->
-      <div aria-atomic="false" aria-live="polite" id="periodsTableContainer" style="margin-top:20px;">
-       <div class="empty-message" role="status">
-        Please select a school first.
-       </div>
-      </div>
-     </div>
+
+        <div
+            aria-atomic="false"
+            aria-live="polite"
+            id="periodsTableContainer"
+            style="margin-top:20px;"
+        >
+
+            <div
+                class="empty-message"
+                role="status"
+            >
+
+                Please select a school first.
+
+            </div>
+
+        </div>
+
+
     </div>
+
+</div>
+
+   
     <!-- REQUIREMENTS -->
     <div aria-labelledby="requirements-section-title" class="section" data-module="requirements" id="requirements">
      <div class="page-heading">
