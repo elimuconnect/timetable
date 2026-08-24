@@ -5986,6 +5986,346 @@ async function loadPeriods() {
 }
 
 
+
+// ============================================================
+// LOAD STANDARD CBC PERIODS BUTTON
+// ============================================================
+
+const loadStandardPeriodsBtn =
+    document.getElementById(
+        "loadStandardPeriodsBtn"
+    );
+
+
+if (loadStandardPeriodsBtn) {
+
+    loadStandardPeriodsBtn.addEventListener(
+        "click",
+        async function () {
+
+            console.log(
+                "======================================"
+            );
+
+            console.log(
+                "LOAD STANDARD CBC PERIODS BUTTON CLICKED"
+            );
+
+            console.log(
+                "======================================"
+            );
+
+
+            // ==================================================
+            // CHECK SCHOOL
+            // ==================================================
+
+            if (
+                !timetableState ||
+                !timetableState.schoolId
+            ) {
+
+                alert(
+                    "Please select a school first."
+                );
+
+                return;
+
+            }
+
+
+            const schoolId =
+                timetableState.schoolId;
+
+
+            console.log(
+                "School ID:",
+                schoolId
+            );
+
+
+            // ==================================================
+            // CHECK WHETHER SCHOOL ALREADY HAS PERIODS
+            // ==================================================
+
+            const {
+                data: existingPeriods,
+                error: existingError
+            } = await supabaseClient
+
+                .from(
+                    PERIOD_SCHOOL_TABLE
+                )
+
+                .select("id")
+
+                .eq(
+                    "school_id",
+                    schoolId
+                );
+
+
+            if (existingError) {
+
+                console.error(
+                    "Failed checking existing periods:",
+                    existingError
+                );
+
+                alert(
+                    "Failed to check existing school periods:\n\n" +
+                    existingError.message
+                );
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // DO NOT DUPLICATE
+            // ==================================================
+
+            if (
+                existingPeriods &&
+                existingPeriods.length > 0
+            ) {
+
+                alert(
+                    "This school already has " +
+                    existingPeriods.length +
+                    " periods.\n\n" +
+                    "The standard template will not be copied again."
+                );
+
+                await loadPeriods();
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // LOAD TEMPLATE
+            // ==================================================
+
+            console.log(
+                "Loading timetable_period_templates..."
+            );
+
+
+            const {
+                data: templatePeriods,
+                error: templateError
+            } = await supabaseClient
+
+                .from(
+                    PERIOD_TEMPLATE_TABLE
+                )
+
+                .select(
+                    `
+                        day_name,
+                        day_number,
+                        period_number,
+                        period_name,
+                        start_time,
+                        end_time,
+                        period_type,
+                        is_teaching_period,
+                        period_order
+                    `
+                )
+
+                .order(
+                    "day_number",
+                    {
+                        ascending: true
+                    }
+                )
+
+                .order(
+                    "period_order",
+                    {
+                        ascending: true
+                    }
+                );
+
+
+            if (templateError) {
+
+                console.error(
+                    "Template loading error:",
+                    templateError
+                );
+
+                alert(
+                    "Failed to load standard timetable template:\n\n" +
+                    templateError.message
+                );
+
+                return;
+
+            }
+
+
+            console.log(
+                "Template rows loaded:",
+                templatePeriods
+                    ? templatePeriods.length
+                    : 0
+            );
+
+
+            // ==================================================
+            // EMPTY TEMPLATE
+            // ==================================================
+
+            if (
+                !templatePeriods ||
+                templatePeriods.length === 0
+            ) {
+
+                alert(
+                    "The standard timetable template is empty."
+                );
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // COPY TEMPLATE TO SCHOOL
+            // ==================================================
+
+            const schoolPeriodRows =
+                templatePeriods
+                    .filter(
+                        period =>
+                            Number(
+                                period.day_number
+                            ) >= 1 &&
+                            Number(
+                                period.day_number
+                            ) <= 5
+                    )
+                    .map(
+                        period => ({
+
+                            school_id:
+                                schoolId,
+
+                            day_name:
+                                period.day_name,
+
+                            day_number:
+                                period.day_number,
+
+                            period_number:
+                                period.period_number,
+
+                            period_name:
+                                period.period_name,
+
+                            start_time:
+                                period.start_time,
+
+                            end_time:
+                                period.end_time,
+
+                            period_type:
+                                period.period_type,
+
+                            is_teaching_period:
+                                period.is_teaching_period,
+
+                            period_order:
+                                period.period_order
+
+                        })
+                    );
+
+
+            console.log(
+                "Creating school periods:",
+                schoolPeriodRows.length
+            );
+
+
+            // ==================================================
+            // INSERT
+            // ==================================================
+
+            const {
+                data: insertedPeriods,
+                error: insertError
+            } = await supabaseClient
+
+                .from(
+                    PERIOD_SCHOOL_TABLE
+                )
+
+                .insert(
+                    schoolPeriodRows
+                )
+
+                .select();
+
+
+            if (insertError) {
+
+                console.error(
+                    "Period template insert error:",
+                    insertError
+                );
+
+                alert(
+                    "Failed to create school periods:\n\n" +
+                    insertError.message
+                );
+
+                return;
+
+            }
+
+
+            console.log(
+                "School periods created:",
+                insertedPeriods
+                    ? insertedPeriods.length
+                    : 0
+            );
+
+
+            // ==================================================
+            // SUCCESS
+            // ==================================================
+
+            alert(
+                "Standard CBC timetable periods loaded successfully.\n\n" +
+                schoolPeriodRows.length +
+                " periods created."
+            );
+
+
+            // ==================================================
+            // DISPLAY THEM
+            // ==================================================
+
+            await loadPeriods();
+
+        }
+    );
+
+}
+
+
+
+
+
+
+
 // ============================================================
 // RENDER PERIODS
 // ============================================================
