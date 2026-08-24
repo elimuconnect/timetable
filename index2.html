@@ -1041,151 +1041,288 @@
 
 </div>
 
-   
-    <!-- REQUIREMENTS -->
-    <div aria-labelledby="requirements-section-title" class="section" data-module="requirements" id="requirements">
-     <div class="page-heading">
-      <div>
-       <h2 id="requirements-section-title">
-        📋 Requirements
-       </h2>
-       <p>
-        Define what each stream must learn
+   <!-- REQUIREMENTS -->
+<div
+    aria-labelledby="requirements-section-title"
+    class="section"
+    data-module="requirements"
+    id="requirements"
+>
+
+    <div class="page-heading">
+
+        <div>
+
+            <h2 id="requirements-section-title">
+                📋 Requirements
+            </h2>
+
+            <p>
+                Define what each stream must learn
                 each week.
-       </p>
-      </div>
-     </div>
-     <!-- REQUIREMENT FORM -->
-     <div class="card">
-      <h3>
-       ➕ Add Subject Requirement
-      </h3>
-      <div class="form-grid">
-       <!-- STREAM -->
-       <div class="form-group">
-        <label>
-         Stream
-        </label>
-        <select id="requirementStream">
-         <option value="">
-          Select stream
-         </option>
-        </select>
-       </div>
-       <!-- SUBJECT -->
-       <div class="form-group">
-        <label>
-         Subject
-        </label>
-        <select id="requirementSubject">
-         <option value="">
-          Select subject
-         </option>
-        </select>
-       </div>
-       <!-- TEACHER -->
-       <div class="form-group">
-        <label>
-         Teacher
-        </label>
-        <select id="requirementTeacher">
-         <option value="">
-          Select teacher
-         </option>
-        </select>
-       </div>
-       <!-- LESSONS PER WEEK -->
-       <div class="form-group">
-        <label>
-         Lessons per Week
-        </label>
-        <input id="requirementLessons" min="1" type="number" value="1"/>
-       </div>
-       <!-- DOUBLE LESSONS -->
-       <div class="form-group">
-        <label>
-         Double Lessons per Week
-        </label>
-        <input id="requirementDoubleLessons" min="0" type="number" value="0"/>
-       </div>
-       <!-- MAX PER DAY -->
+            </p>
 
-<!-- MAX PER DAY -->
-<div class="form-group">
-    <label>
-        Maximum Lessons per Day
-    </label>
+        </div>
 
-    <input
-        id="requirementMaxPerDay"
-        min="1"
-        type="number"
-        value="1"
-    />
-</div>
-
-<!-- PARALLEL GROUP -->
-<div class="form-group">
-    <label>
-        Parallel Group
-    </label>
-
-    <input
-        id="requirementParallelGroup"
-        type="text"
-        placeholder="e.g. SCIENCE-A"
-    />
-
-    <small>
-        Use the same group name for subjects taught
-        simultaneously within the same stream.
-    </small>
-</div>
-
-<!-- ROOM REQUIRED -->
-<div class="form-group">
-    <label>
-        Requires Special Room?
-    </label>
-
-    <select id="requirementRequiresRoom">
-        <option value="false">
-            No
-        </option>
-
-        <option value="true">
-            Yes
-        </option>
-    </select>
-</div>
-
-      
-       <!-- ROOM TYPE -->
-       <div class="form-group">
-        <label>
-         Room Type
-        </label>
-        <input id="requirementRoomType" placeholder="e.g. Laboratory" type="text"/>
-       </div>
-      </div>
-      <div class="form-actions">
-       <button aria-label="💾 Save Requirement" class="primary-btn" id="saveRequirementBtn" type="button">
-        💾 Save Requirement
-       </button>
-      </div>
-     </div>
-     <!-- EXISTING REQUIREMENTS -->
-     <div class="card">
-      <h3>
-       📚 Current Requirements
-      </h3>
-      <div aria-atomic="false" aria-live="polite" id="requirementsTableContainer">
-       <div class="empty-message" role="status">
-        Select a school to view requirements.
-       </div>
-      </div>
-     </div>
     </div>
+
+
+    <!-- ===================================================== -->
+    <!-- REQUIREMENT FORM -->
+    <!-- ===================================================== -->
+
+    <div class="card">
+
+        <h3>
+            ➕ Add Subject Requirement
+        </h3>
+
+
+        <div class="form-grid">
+
+
+            <!-- STREAM -->
+            <div class="form-group">
+
+                <label for="requirementStream">
+                    Stream
+                </label>
+
+                <select id="requirementStream">
+
+                    <option value="">
+                        Select stream
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- SUBJECT -->
+            <div class="form-group">
+
+                <label for="requirementSubject">
+                    Subject
+                </label>
+
+                <select id="requirementSubject">
+
+                    <option value="">
+                        Select subject
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- TEACHER -->
+            <div class="form-group">
+
+                <label for="requirementTeacher">
+                    Teacher
+                </label>
+
+                <select id="requirementTeacher">
+
+                    <option value="">
+                        Select teacher
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- LESSONS PER WEEK -->
+            <div class="form-group">
+
+                <label for="requirementLessons">
+                    Lessons per Week
+                </label>
+
+                <input
+                    id="requirementLessons"
+                    min="1"
+                    type="number"
+                    value="1"
+                />
+
+            </div>
+
+
+            <!-- DOUBLE LESSONS -->
+            <div class="form-group">
+
+                <label for="requirementDoubleLessons">
+                    Double Lessons per Week
+                </label>
+
+                <input
+                    id="requirementDoubleLessons"
+                    min="0"
+                    type="number"
+                    value="0"
+                />
+
+            </div>
+
+
+            <!-- MAXIMUM LESSONS PER DAY -->
+            <div class="form-group">
+
+                <label for="requirementMaxPerDay">
+                    Maximum Lessons per Day
+                </label>
+
+                <input
+                    id="requirementMaxPerDay"
+                    min="1"
+                    type="number"
+                    value="1"
+                />
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- PARALLEL GROUP -->
+            <!-- ================================================= -->
+
+            <div class="form-group">
+
+                <label for="requirementParallelGroup">
+                    Parallel Group
+                </label>
+
+                <input
+                    id="requirementParallelGroup"
+                    type="text"
+                    placeholder="e.g. SCIENCE-A"
+                />
+
+                <small>
+                    Use the same group name for subjects
+                    taught simultaneously.
+                </small>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- ROOM REQUIRED -->
+            <!-- ================================================= -->
+
+            <div class="form-group">
+
+                <label for="requirementRequiresRoom">
+                    Requires Special Room?
+                </label>
+
+                <select id="requirementRequiresRoom">
+
+                    <option value="false">
+                        No
+                    </option>
+
+                    <option value="true">
+                        Yes
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- GLOBAL ROOM TYPE -->
+            <!-- ================================================= -->
+
+            <div class="form-group">
+
+                <label for="requirementRoomType">
+
+                    Required Room Type
+
+                </label>
+
+
+                <select id="requirementRoomType">
+
+                    <option value="">
+                        No special room
+                    </option>
+
+                </select>
+
+
+                <small>
+
+                    Select a room type from the global
+                    room-type list. The timetable generator
+                    will automatically find an available
+                    room of this type at the school.
+
+                </small>
+
+            </div>
+
+
+        </div>
+
+
+        <!-- FORM ACTIONS -->
+
+        <div class="form-actions">
+
+            <button
+                aria-label="💾 Save Requirement"
+                class="primary-btn"
+                id="saveRequirementBtn"
+                type="button"
+            >
+
+                💾 Save Requirement
+
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- ===================================================== -->
+    <!-- EXISTING REQUIREMENTS -->
+    <!-- ===================================================== -->
+
+    <div class="card">
+
+        <h3>
+            📚 Current Requirements
+        </h3>
+
+
+        <div
+            aria-atomic="false"
+            aria-live="polite"
+            id="requirementsTableContainer"
+        >
+
+            <div
+                class="empty-message"
+                role="status"
+            >
+
+                Select a school to view requirements.
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
     <!-- TIMETABLE -->
     <!-- ============================================================
      TIMETABLE GENERATOR
