@@ -3543,10 +3543,10 @@ document.addEventListener(
     }
 );
 
-
 // ============================================================
 // REQUIREMENTS
-// ADD / EDIT / DELETE
+// ROOM TYPES ARE GLOBAL
+// REQUIREMENTS STORE room_type_id
 // ============================================================
 
 
@@ -3564,7 +3564,9 @@ let editingRequirementId = null;
 async function loadRequirementOptions() {
 
     if (!timetableState.schoolId) {
+
         return false;
+
     }
 
 
@@ -3572,16 +3574,18 @@ async function loadRequirementOptions() {
         timetableState.schoolId;
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // STREAMS
-    // --------------------------------------------------------
+    // ========================================================
 
     const {
         data: streams,
         error: streamsError
     } = await supabaseClient
 
-        .from("timetable_streams")
+        .from(
+            "timetable_streams"
+        )
 
         .select(
             "id, stream_name"
@@ -3605,6 +3609,7 @@ async function loadRequirementOptions() {
         );
 
         return false;
+
     }
 
 
@@ -3631,11 +3636,14 @@ async function loadRequirementOptions() {
                         "option"
                     );
 
+
                 option.value =
                     stream.id;
 
+
                 option.textContent =
                     stream.stream_name;
+
 
                 streamSelect.appendChild(
                     option
@@ -3647,16 +3655,18 @@ async function loadRequirementOptions() {
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // SUBJECTS
-    // --------------------------------------------------------
+    // ========================================================
 
     const {
         data: subjects,
         error: subjectsError
     } = await supabaseClient
 
-        .from("timetable_subjects")
+        .from(
+            "timetable_subjects"
+        )
 
         .select(
             "id, subject_name"
@@ -3680,6 +3690,7 @@ async function loadRequirementOptions() {
         );
 
         return false;
+
     }
 
 
@@ -3706,11 +3717,14 @@ async function loadRequirementOptions() {
                         "option"
                     );
 
+
                 option.value =
                     subject.id;
 
+
                 option.textContent =
                     subject.subject_name;
+
 
                 subjectSelect.appendChild(
                     option
@@ -3722,16 +3736,18 @@ async function loadRequirementOptions() {
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // TEACHERS
-    // --------------------------------------------------------
+    // ========================================================
 
     const {
         data: teachers,
         error: teachersError
     } = await supabaseClient
 
-        .from("timetable_teachers")
+        .from(
+            "timetable_teachers"
+        )
 
         .select(
             "id, teacher_name, teacher_code"
@@ -3755,6 +3771,7 @@ async function loadRequirementOptions() {
         );
 
         return false;
+
     }
 
 
@@ -3781,13 +3798,16 @@ async function loadRequirementOptions() {
                         "option"
                     );
 
+
                 option.value =
                     teacher.id;
+
 
                 option.textContent =
                     teacher.teacher_code
                         ? `${teacher.teacher_name} (${teacher.teacher_code})`
                         : teacher.teacher_name;
+
 
                 teacherSelect.appendChild(
                     option
@@ -3799,7 +3819,84 @@ async function loadRequirementOptions() {
     }
 
 
+    // ========================================================
+    // GLOBAL ROOM TYPES
+    // ========================================================
+
+    const {
+        data: roomTypes,
+        error: roomTypesError
+    } = await supabaseClient
+
+        .from(
+            "timetable_room_types"
+        )
+
+        .select(
+            "id, type_name"
+        )
+
+        .order(
+            "type_name"
+        );
+
+
+    if (roomTypesError) {
+
+        console.error(
+            "Failed to load room types:",
+            roomTypesError
+        );
+
+        return false;
+
+    }
+
+
+    const roomTypeSelect =
+        document.getElementById(
+            "requirementRoomType"
+        );
+
+
+    if (roomTypeSelect) {
+
+        roomTypeSelect.innerHTML = `
+            <option value="">
+                Select room type
+            </option>
+        `;
+
+
+        (roomTypes || []).forEach(
+            roomType => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                option.value =
+                    roomType.id;
+
+
+                option.textContent =
+                    roomType.type_name;
+
+
+                roomTypeSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+
+
     return true;
+
 }
 
 
@@ -3829,9 +3926,9 @@ if (saveRequirementBtn) {
 
 async function saveRequirement() {
 
-    // --------------------------------------------------------
+    // ========================================================
     // CHECK SCHOOL
-    // --------------------------------------------------------
+    // ========================================================
 
     if (!timetableState.schoolId) {
 
@@ -3840,47 +3937,55 @@ async function saveRequirement() {
         );
 
         return;
+
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // GET FORM ELEMENTS
-    // --------------------------------------------------------
+    // ========================================================
 
     const streamElement =
         document.getElementById(
             "requirementStream"
         );
 
+
     const subjectElement =
         document.getElementById(
             "requirementSubject"
         );
+
 
     const teacherElement =
         document.getElementById(
             "requirementTeacher"
         );
 
+
     const lessonsElement =
         document.getElementById(
             "requirementLessons"
         );
+
 
     const doubleLessonsElement =
         document.getElementById(
             "requirementDoubleLessons"
         );
 
+
     const maxPerDayElement =
         document.getElementById(
             "requirementMaxPerDay"
         );
 
+
     const requiresRoomElement =
         document.getElementById(
             "requirementRequiresRoom"
         );
+
 
     const roomTypeElement =
         document.getElementById(
@@ -3888,9 +3993,15 @@ async function saveRequirement() {
         );
 
 
-    // --------------------------------------------------------
+    const parallelGroupElement =
+        document.getElementById(
+            "requirementParallelGroup"
+        );
+
+
+    // ========================================================
     // CHECK FORM
-    // --------------------------------------------------------
+    // ========================================================
 
     if (
         !streamElement ||
@@ -3907,17 +4018,20 @@ async function saveRequirement() {
             "Requirement form elements missing."
         );
 
+
         alert(
             "Requirement form is incomplete."
         );
 
+
         return;
+
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // READ VALUES
-    // --------------------------------------------------------
+    // ========================================================
 
     const streamId =
         streamElement.value.trim();
@@ -3950,16 +4064,23 @@ async function saveRequirement() {
 
 
     const requiresRoom =
-        requiresRoomElement.value === "true";
+        requiresRoomElement.value ===
+        "true";
 
 
-    const roomType =
+    const roomTypeId =
         roomTypeElement.value.trim();
 
 
-    // --------------------------------------------------------
+    const parallelGroup =
+        parallelGroupElement
+            ? parallelGroupElement.value.trim()
+            : "";
+
+
+    // ========================================================
     // VALIDATION
-    // --------------------------------------------------------
+    // ========================================================
 
     if (!streamId) {
 
@@ -3970,6 +4091,7 @@ async function saveRequirement() {
         streamElement.focus();
 
         return;
+
     }
 
 
@@ -3982,6 +4104,7 @@ async function saveRequirement() {
         subjectElement.focus();
 
         return;
+
     }
 
 
@@ -3994,6 +4117,7 @@ async function saveRequirement() {
         teacherElement.focus();
 
         return;
+
     }
 
 
@@ -4011,6 +4135,7 @@ async function saveRequirement() {
         lessonsElement.focus();
 
         return;
+
     }
 
 
@@ -4032,6 +4157,7 @@ async function saveRequirement() {
         doubleLessonsElement.focus();
 
         return;
+
     }
 
 
@@ -4049,12 +4175,33 @@ async function saveRequirement() {
         maxPerDayElement.focus();
 
         return;
+
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
+    // ROOM VALIDATION
+    // ========================================================
+
+    if (
+        requiresRoom &&
+        !roomTypeId
+    ) {
+
+        alert(
+            "Please select the required room type."
+        );
+
+        roomTypeElement.focus();
+
+        return;
+
+    }
+
+
+    // ========================================================
     // PREPARE DATA
-    // --------------------------------------------------------
+    // ========================================================
 
     const requirementData = {
 
@@ -4076,18 +4223,16 @@ async function saveRequirement() {
         double_lessons_per_week:
             doubleLessonsPerWeek,
 
+        max_lessons_per_day:
+            maxLessonsPerDay,
+
         requires_room:
             requiresRoom,
 
-        room_type:
+        room_type_id:
             requiresRoom
-                ? (
-                    roomType || null
-                )
-                : null,
-
-        max_lessons_per_day:
-            maxLessonsPerDay
+                ? roomTypeId
+                : null
 
     };
 
@@ -4100,7 +4245,8 @@ async function saveRequirement() {
 
         console.log(
             "Updating requirement:",
-            editingRequirementId
+            editingRequirementId,
+            requirementData
         );
 
 
@@ -4136,7 +4282,8 @@ async function saveRequirement() {
 
 
             if (
-                error.code === "23505"
+                error.code ===
+                "23505"
             ) {
 
                 alert(
@@ -4152,7 +4299,9 @@ async function saveRequirement() {
 
             }
 
+
             return;
+
         }
 
 
@@ -4166,7 +4315,9 @@ async function saveRequirement() {
 
         await loadRequirements();
 
+
         return;
+
     }
 
 
@@ -4202,7 +4353,8 @@ async function saveRequirement() {
 
 
         if (
-            error.code === "23505"
+            error.code ===
+            "23505"
         ) {
 
             alert(
@@ -4218,13 +4370,18 @@ async function saveRequirement() {
 
         }
 
+
         return;
+
     }
 
 
     alert(
         "Requirement added successfully."
     );
+
+
+    cancelRequirementEdit();
 
 
     await loadRequirements();
@@ -4237,7 +4394,7 @@ async function saveRequirement() {
 // ============================================================
 
 window.editRequirement =
-    async function (
+    async function(
         requirementId
     ) {
 
@@ -4248,6 +4405,7 @@ window.editRequirement =
             );
 
             return;
+
         }
 
 
@@ -4257,9 +4415,9 @@ window.editRequirement =
         );
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // GET REQUIREMENT
-        // ----------------------------------------------------
+        // ====================================================
 
         const {
             data: requirement,
@@ -4279,7 +4437,7 @@ window.editRequirement =
                 lessons_per_week,
                 double_lessons_per_week,
                 requires_room,
-                room_type,
+                room_type_id,
                 max_lessons_per_day
             `)
 
@@ -4303,12 +4461,15 @@ window.editRequirement =
                 error
             );
 
+
             alert(
                 "Failed to load requirement:\n\n" +
                 error.message
             );
 
+
             return;
+
         }
 
 
@@ -4318,14 +4479,15 @@ window.editRequirement =
                 "Requirement not found."
             );
 
+
             return;
+
         }
 
 
-        // ----------------------------------------------------
-        // IMPORTANT
-        // LOAD OPTIONS FIRST
-        // ----------------------------------------------------
+        // ====================================================
+        // LOAD OPTIONS
+        // ====================================================
 
         const optionsLoaded =
             await loadRequirementOptions();
@@ -4337,48 +4499,57 @@ window.editRequirement =
                 "Failed to load requirement options."
             );
 
+
             return;
+
         }
 
 
-        // ----------------------------------------------------
-        // GET FORM ELEMENTS
-        // ----------------------------------------------------
+        // ====================================================
+        // FORM ELEMENTS
+        // ====================================================
 
         const streamElement =
             document.getElementById(
                 "requirementStream"
             );
 
+
         const subjectElement =
             document.getElementById(
                 "requirementSubject"
             );
+
 
         const teacherElement =
             document.getElementById(
                 "requirementTeacher"
             );
 
+
         const lessonsElement =
             document.getElementById(
                 "requirementLessons"
             );
+
 
         const doubleLessonsElement =
             document.getElementById(
                 "requirementDoubleLessons"
             );
 
+
         const maxPerDayElement =
             document.getElementById(
                 "requirementMaxPerDay"
             );
 
+
         const requiresRoomElement =
             document.getElementById(
                 "requirementRequiresRoom"
             );
+
 
         const roomTypeElement =
             document.getElementById(
@@ -4386,95 +4557,29 @@ window.editRequirement =
             );
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // SET EDITING ID
-        // ----------------------------------------------------
+        // ====================================================
 
         editingRequirementId =
             requirement.id;
 
 
-        // ----------------------------------------------------
-        // SET SELECTS
-        // ----------------------------------------------------
+        // ====================================================
+        // SET BASIC VALUES
+        // ====================================================
 
         streamElement.value =
             requirement.stream_id;
 
+
         subjectElement.value =
             requirement.subject_id;
+
 
         teacherElement.value =
             requirement.teacher_id;
 
-
-        // ----------------------------------------------------
-        // VERIFY SELECTS
-        // ----------------------------------------------------
-
-        if (
-            streamElement.value !==
-            requirement.stream_id
-        ) {
-
-            console.error(
-                "Stream ID not found in options:",
-                requirement.stream_id
-            );
-
-            cancelRequirementEdit();
-
-            alert(
-                "The stream belonging to this requirement could not be found."
-            );
-
-            return;
-        }
-
-
-        if (
-            subjectElement.value !==
-            requirement.subject_id
-        ) {
-
-            console.error(
-                "Subject ID not found in options:",
-                requirement.subject_id
-            );
-
-            cancelRequirementEdit();
-
-            alert(
-                "The subject belonging to this requirement could not be found."
-            );
-
-            return;
-        }
-
-
-        if (
-            teacherElement.value !==
-            requirement.teacher_id
-        ) {
-
-            console.error(
-                "Teacher ID not found in options:",
-                requirement.teacher_id
-            );
-
-            cancelRequirementEdit();
-
-            alert(
-                "The teacher belonging to this requirement could not be found."
-            );
-
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // SET OTHER VALUES
-        // ----------------------------------------------------
 
         lessonsElement.value =
             requirement.lessons_per_week;
@@ -4494,18 +4599,134 @@ window.editRequirement =
                 : "false";
 
 
+        // ====================================================
+        // SET ROOM TYPE
+        // ====================================================
+
         roomTypeElement.value =
-            requirement.room_type || "";
+            requirement.room_type_id || "";
 
 
-        // ----------------------------------------------------
-        // CHANGE SAVE BUTTON
-        // ----------------------------------------------------
+        // ====================================================
+        // VERIFY ROOM TYPE
+        // ====================================================
+
+        if (
+            requirement.requires_room &&
+            requirement.room_type_id &&
+            roomTypeElement.value !==
+                requirement.room_type_id
+        ) {
+
+            console.error(
+                "Room type ID not found:",
+                requirement.room_type_id
+            );
+
+            alert(
+                "The room type belonging to this requirement could not be found."
+            );
+
+            cancelRequirementEdit();
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // VERIFY STREAM
+        // ====================================================
+
+        if (
+            streamElement.value !==
+            requirement.stream_id
+        ) {
+
+            console.error(
+                "Stream ID not found:",
+                requirement.stream_id
+            );
+
+
+            cancelRequirementEdit();
+
+
+            alert(
+                "The stream belonging to this requirement could not be found."
+            );
+
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // VERIFY SUBJECT
+        // ====================================================
+
+        if (
+            subjectElement.value !==
+            requirement.subject_id
+        ) {
+
+            console.error(
+                "Subject ID not found:",
+                requirement.subject_id
+            );
+
+
+            cancelRequirementEdit();
+
+
+            alert(
+                "The subject belonging to this requirement could not be found."
+            );
+
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // VERIFY TEACHER
+        // ====================================================
+
+        if (
+            teacherElement.value !==
+            requirement.teacher_id
+        ) {
+
+            console.error(
+                "Teacher ID not found:",
+                requirement.teacher_id
+            );
+
+
+            cancelRequirementEdit();
+
+
+            alert(
+                "The teacher belonging to this requirement could not be found."
+            );
+
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // SAVE BUTTON
+        // ====================================================
 
         if (saveRequirementBtn) {
 
             saveRequirementBtn.innerHTML =
                 "💾 Update Requirement";
+
 
             saveRequirementBtn.dataset.mode =
                 "edit";
@@ -4513,9 +4734,9 @@ window.editRequirement =
         }
 
 
-        // ----------------------------------------------------
-        // CREATE CANCEL BUTTON
-        // ----------------------------------------------------
+        // ====================================================
+        // CANCEL BUTTON
+        // ====================================================
 
         let cancelButton =
             document.getElementById(
@@ -4530,17 +4751,22 @@ window.editRequirement =
                     "button"
                 );
 
+
             cancelButton.type =
                 "button";
+
 
             cancelButton.id =
                 "cancelRequirementEditBtn";
 
+
             cancelButton.className =
                 "action-btn";
 
+
             cancelButton.style.marginLeft =
                 "10px";
+
 
             cancelButton.textContent =
                 "✖ Cancel";
@@ -4557,7 +4783,8 @@ window.editRequirement =
                 saveRequirementBtn.parentElement
             ) {
 
-                saveRequirementBtn.parentElement
+                saveRequirementBtn
+                    .parentElement
                     .appendChild(
                         cancelButton
                     );
@@ -4571,9 +4798,9 @@ window.editRequirement =
             "inline-block";
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // SCROLL TO FORM
-        // ----------------------------------------------------
+        // ====================================================
 
         const formElement =
             document.getElementById(
@@ -4603,14 +4830,15 @@ function cancelRequirementEdit() {
         null;
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // RESET BUTTON
-    // --------------------------------------------------------
+    // ========================================================
 
     if (saveRequirementBtn) {
 
         saveRequirementBtn.innerHTML =
             "💾 Save Requirement";
+
 
         saveRequirementBtn.dataset.mode =
             "add";
@@ -4618,9 +4846,9 @@ function cancelRequirementEdit() {
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // HIDE CANCEL
-    // --------------------------------------------------------
+    // ========================================================
 
     const cancelButton =
         document.getElementById(
@@ -4636,44 +4864,51 @@ function cancelRequirementEdit() {
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // RESET FORM
-    // --------------------------------------------------------
+    // ========================================================
 
     const streamElement =
         document.getElementById(
             "requirementStream"
         );
 
+
     const subjectElement =
         document.getElementById(
             "requirementSubject"
         );
+
 
     const teacherElement =
         document.getElementById(
             "requirementTeacher"
         );
 
+
     const lessonsElement =
         document.getElementById(
             "requirementLessons"
         );
+
 
     const doubleLessonsElement =
         document.getElementById(
             "requirementDoubleLessons"
         );
 
+
     const maxPerDayElement =
         document.getElementById(
             "requirementMaxPerDay"
         );
 
+
     const requiresRoomElement =
         document.getElementById(
             "requirementRequiresRoom"
         );
+
 
     const roomTypeElement =
         document.getElementById(
@@ -4708,7 +4943,7 @@ function cancelRequirementEdit() {
     if (lessonsElement) {
 
         lessonsElement.value =
-            "";
+            "1";
 
     }
 
@@ -4716,7 +4951,7 @@ function cancelRequirementEdit() {
     if (doubleLessonsElement) {
 
         doubleLessonsElement.value =
-            "";
+            "0";
 
     }
 
@@ -4724,7 +4959,7 @@ function cancelRequirementEdit() {
     if (maxPerDayElement) {
 
         maxPerDayElement.value =
-            "";
+            "1";
 
     }
 
@@ -4762,6 +4997,7 @@ async function loadRequirements() {
     if (!container) {
 
         return;
+
     }
 
 
@@ -4774,6 +5010,7 @@ async function loadRequirements() {
         `;
 
         return;
+
     }
 
 
@@ -4785,7 +5022,7 @@ async function loadRequirements() {
 
 
     // ========================================================
-    // LOAD REQUIREMENTS
+    // LOAD REQUIREMENTS + GLOBAL ROOM TYPE
     // ========================================================
 
     const {
@@ -4806,9 +5043,13 @@ async function loadRequirements() {
             lessons_per_week,
             double_lessons_per_week,
             requires_room,
-            room_type,
+            room_type_id,
             max_lessons_per_day,
-            created_at
+            created_at,
+            timetable_room_types (
+                id,
+                type_name
+            )
         `)
 
         .eq(
@@ -4835,7 +5076,9 @@ async function loadRequirements() {
             </div>
         `;
 
+
         return;
+
     }
 
 
@@ -4854,7 +5097,9 @@ async function loadRequirements() {
             </div>
         `;
 
+
         return;
+
     }
 
 
@@ -4889,6 +5134,7 @@ async function loadRequirements() {
         );
 
         return;
+
     }
 
 
@@ -4923,6 +5169,7 @@ async function loadRequirements() {
         );
 
         return;
+
     }
 
 
@@ -4957,6 +5204,7 @@ async function loadRequirements() {
         );
 
         return;
+
     }
 
 
@@ -5028,7 +5276,7 @@ async function loadRequirements() {
 
                     <th>Double / Week</th>
 
-                    <th>Room</th>
+                    <th>Room Type</th>
 
                     <th>Max / Day</th>
 
@@ -5064,14 +5312,14 @@ async function loadRequirements() {
                 ] || "—";
 
 
-            const room =
+            const roomTypeName =
                 requirement.requires_room
-
                     ? (
-                        requirement.room_type ||
+                        requirement
+                            .timetable_room_types
+                            ?.type_name ||
                         "Special room"
                     )
-
                     : "None";
 
 
@@ -5114,7 +5362,7 @@ async function loadRequirements() {
 
                     <td>
                         ${escapeHtml(
-                            room
+                            roomTypeName
                         )}
                     </td>
 
@@ -5181,7 +5429,7 @@ async function loadRequirements() {
 // ============================================================
 
 window.deleteRequirement =
-    async function (
+    async function(
         requirementId
     ) {
 
@@ -5192,6 +5440,7 @@ window.deleteRequirement =
             );
 
             return;
+
         }
 
 
@@ -5204,6 +5453,7 @@ window.deleteRequirement =
         if (!confirmed) {
 
             return;
+
         }
 
 
@@ -5247,7 +5497,9 @@ window.deleteRequirement =
                 error.message
             );
 
+
             return;
+
         }
 
 
@@ -5259,7 +5511,6 @@ window.deleteRequirement =
         await loadRequirements();
 
     };
-
 
 
 // ============================================================
