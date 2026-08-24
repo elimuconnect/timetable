@@ -15368,6 +15368,9 @@ function auditGeneratedTimetable(
 // PART 7 — LOAD AND DISPLAY GENERATED TIMETABLE
 // ============================================================
 
+
+
+```javascript
 // ------------------------------------------------------------
 // LOAD GENERATED TIMETABLE
 // ------------------------------------------------------------
@@ -15384,7 +15387,7 @@ async function loadGeneratedTimetable() {
 
     console.log(
         "School ID:",
-        timetableState.schoolId
+        timetableState?.schoolId
     );
 
     console.log(
@@ -15527,23 +15530,63 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 2. LOAD PERIODS
+        // 2–6. LOAD DISPLAY DATA IN PARALLEL
         // ====================================================
 
-        const periodsResult =
-            await supabaseClient
+        const [
+            periodsResult,
+            streamsResult,
+            subjectsResult,
+            teachersResult,
+            roomsResult
+        ] = await Promise.all([
 
-                .from(
-                    "timetable_periods"
-                )
-
+            supabaseClient
+                .from("timetable_periods")
                 .select("*")
-
                 .eq(
                     "school_id",
                     timetableState.schoolId
-                );
+                ),
 
+            supabaseClient
+                .from("timetable_streams")
+                .select("*")
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                ),
+
+            supabaseClient
+                .from("timetable_subjects")
+                .select("*")
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                ),
+
+            supabaseClient
+                .from("timetable_teachers")
+                .select("*")
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                ),
+
+            supabaseClient
+                .from("timetable_rooms")
+                .select("*")
+                .eq(
+                    "school_id",
+                    timetableState.schoolId
+                )
+
+        ]);
+
+
+        // ====================================================
+        // CHECK PARALLEL LOAD ERRORS
+        // ====================================================
 
         if (
             periodsResult.error
@@ -15555,25 +15598,6 @@ async function loadGeneratedTimetable() {
             );
 
         }
-
-
-        // ====================================================
-        // 3. LOAD STREAMS
-        // ====================================================
-
-        const streamsResult =
-            await supabaseClient
-
-                .from(
-                    "timetable_streams"
-                )
-
-                .select("*")
-
-                .eq(
-                    "school_id",
-                    timetableState.schoolId
-                );
 
 
         if (
@@ -15588,25 +15612,6 @@ async function loadGeneratedTimetable() {
         }
 
 
-        // ====================================================
-        // 4. LOAD SUBJECTS
-        // ====================================================
-
-        const subjectsResult =
-            await supabaseClient
-
-                .from(
-                    "timetable_subjects"
-                )
-
-                .select("*")
-
-                .eq(
-                    "school_id",
-                    timetableState.schoolId
-                );
-
-
         if (
             subjectsResult.error
         ) {
@@ -15619,25 +15624,6 @@ async function loadGeneratedTimetable() {
         }
 
 
-        // ====================================================
-        // 5. LOAD TEACHERS
-        // ====================================================
-
-        const teachersResult =
-            await supabaseClient
-
-                .from(
-                    "timetable_teachers"
-                )
-
-                .select("*")
-
-                .eq(
-                    "school_id",
-                    timetableState.schoolId
-                );
-
-
         if (
             teachersResult.error
         ) {
@@ -15648,25 +15634,6 @@ async function loadGeneratedTimetable() {
             );
 
         }
-
-
-        // ====================================================
-        // 6. LOAD ROOMS
-        // ====================================================
-
-        const roomsResult =
-            await supabaseClient
-
-                .from(
-                    "timetable_rooms"
-                )
-
-                .select("*")
-
-                .eq(
-                    "school_id",
-                    timetableState.schoolId
-                );
 
 
         if (
@@ -15733,7 +15700,41 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 8. SAVE ENTRIES IN GLOBAL STATE
+        // 8. VALIDATE LOADED ENTRIES
+        // ====================================================
+
+        const invalidEntries =
+            entries.filter(
+                entry =>
+                    !entry.id ||
+                    !entry.period_id ||
+                    !entry.stream_id ||
+                    !entry.subject_id ||
+                    !entry.teacher_id
+            );
+
+
+        if (
+            invalidEntries.length > 0
+        ) {
+
+            console.warn(
+                "Invalid timetable entries detected:",
+                invalidEntries
+            );
+
+        }
+
+
+        console.log(
+            "Valid timetable entries:",
+            entries.length -
+            invalidEntries.length
+        );
+
+
+        // ====================================================
+        // 9. SAVE ENTRIES IN GLOBAL STATE
         // ====================================================
 
         generatedTimetableEntries =
@@ -15741,7 +15742,7 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 9. RENDER
+        // 10. RENDER
         // ====================================================
 
         renderGeneratedTimetable(
@@ -15752,6 +15753,10 @@ async function loadGeneratedTimetable() {
 
         console.log(
             "TIMETABLE DISPLAY COMPLETE"
+        );
+
+        console.log(
+            "======================================"
         );
 
 
@@ -15787,9 +15792,11 @@ async function loadGeneratedTimetable() {
     }
 
 }
+```
 
 
 
+```javascript
 // ============================================================
 // RENDER GENERATED TIMETABLE
 // ============================================================
@@ -15816,8 +15823,12 @@ function renderGeneratedTimetable(
     }
 
 
+    // ========================================================
+    // VALIDATE INPUT
+    // ========================================================
+
     if (
-        !entries ||
+        !Array.isArray(entries) ||
         entries.length === 0
     ) {
 
@@ -15838,6 +15849,40 @@ function renderGeneratedTimetable(
     }
 
 
+    if (
+        !lookup ||
+        !lookup.periods ||
+        !lookup.streams ||
+        !lookup.subjects ||
+        !lookup.teachers ||
+        !lookup.rooms
+    ) {
+
+        console.error(
+            "Incomplete timetable lookup maps."
+        );
+
+        container.innerHTML = `
+            <div class="empty-state">
+
+                <div>⚠️</div>
+
+                <h3>
+                    Unable to display timetable.
+                </h3>
+
+                <p>
+                    Timetable reference data is incomplete.
+                </p>
+
+            </div>
+        `;
+
+        return;
+
+    }
+
+
     console.log(
         "Rendering timetable entries:",
         entries.length
@@ -15846,6 +15891,7 @@ function renderGeneratedTimetable(
 
     // ========================================================
     // SORT ENTRIES
+    // DAY → PERIOD ORDER
     // ========================================================
 
     const sortedEntries =
@@ -15881,24 +15927,46 @@ function renderGeneratedTimetable(
                     dayA !== dayB
                 ) {
 
-                    return dayA - dayB;
+                    return (
+                        dayA - dayB
+                    );
 
                 }
 
 
                 const orderA =
                     Number(
-                        periodA?.period_order || 0
+                        periodA?.period_order ||
+                        periodA?.period_number ||
+                        0
                     );
 
                 const orderB =
                     Number(
-                        periodB?.period_order || 0
+                        periodB?.period_order ||
+                        periodB?.period_number ||
+                        0
                     );
 
 
-                return (
-                    orderA - orderB
+                if (
+                    orderA !== orderB
+                ) {
+
+                    return (
+                        orderA - orderB
+                    );
+
+                }
+
+
+                // Stable fallback
+                return String(
+                    a.id || ""
+                ).localeCompare(
+                    String(
+                        b.id || ""
+                    )
                 );
 
             }
@@ -15943,6 +16011,58 @@ function renderGeneratedTimetable(
 
 
     // ========================================================
+    // SORT STREAMS
+    // ========================================================
+
+    const sortedStreamGroups =
+        [...streamGroups.entries()]
+            .sort(
+                (
+                    [streamIdA],
+                    [streamIdB]
+                ) => {
+
+                    const streamA =
+                        lookup.streams.get(
+                            streamIdA
+                        );
+
+                    const streamB =
+                        lookup.streams.get(
+                            streamIdB
+                        );
+
+
+                    const nameA =
+                        getTimetableStreamName(
+                            streamA
+                        );
+
+
+                    const nameB =
+                        getTimetableStreamName(
+                            streamB
+                        );
+
+
+                    return String(
+                        nameA
+                    ).localeCompare(
+                        String(
+                            nameB
+                        ),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: "base"
+                        }
+                    );
+
+                }
+            );
+
+
+    // ========================================================
     // BUILD HTML
     // ========================================================
 
@@ -15971,10 +16091,9 @@ function renderGeneratedTimetable(
     // RENDER EACH STREAM
     // ========================================================
 
-    streamGroups.forEach(
+    sortedStreamGroups.forEach(
         (
-            streamEntries,
-            streamId
+            [streamId, streamEntries]
         ) => {
 
             const stream =
@@ -15986,7 +16105,8 @@ function renderGeneratedTimetable(
             const streamName =
                 getTimetableStreamName(
                     stream
-                );
+                ) ||
+                "Unknown Stream";
 
 
             html += `
@@ -16065,10 +16185,16 @@ function renderGeneratedTimetable(
 
 
                     const room =
-                        lookup.rooms.get(
-                            entry.room_id
-                        );
+                        entry.room_id
+                            ? lookup.rooms.get(
+                                entry.room_id
+                            )
+                            : null;
 
+
+                    // ------------------------------------------------
+                    // DAY
+                    // ------------------------------------------------
 
                     const day =
                         period?.day_name ||
@@ -16079,11 +16205,19 @@ function renderGeneratedTimetable(
                         );
 
 
+                    // ------------------------------------------------
+                    // PERIOD
+                    // ------------------------------------------------
+
                     const periodNumber =
-                        period?.period_number ||
-                        period?.period_order ||
+                        period?.period_number ??
+                        period?.period_order ??
                         "-";
 
+
+                    // ------------------------------------------------
+                    // TIME
+                    // ------------------------------------------------
 
                     const startTime =
                         period?.start_time ||
@@ -16101,6 +16235,39 @@ function renderGeneratedTimetable(
                             ? `${startTime} - ${endTime}`
                             : "-";
 
+
+                    // ------------------------------------------------
+                    // DISPLAY NAMES
+                    // ------------------------------------------------
+
+                    const subjectName =
+                        getTimetableSubjectName(
+                            subject
+                        ) ||
+                        "Unknown Subject";
+
+
+                    const teacherName =
+                        getTimetableTeacherName(
+                            teacher
+                        ) ||
+                        "Unknown Teacher";
+
+
+                    const roomName =
+                        entry.room_id
+                            ? (
+                                getTimetableRoomName(
+                                    room
+                                ) ||
+                                "Unknown Room"
+                            )
+                            : "None";
+
+
+                    // ------------------------------------------------
+                    // RENDER ROW
+                    // ------------------------------------------------
 
                     html += `
                         <tr>
@@ -16128,26 +16295,20 @@ function renderGeneratedTimetable(
                             <td>
                                 <strong>
                                     ${escapeHtml(
-                                        getTimetableSubjectName(
-                                            subject
-                                        )
+                                        subjectName
                                     )}
                                 </strong>
                             </td>
 
                             <td>
                                 ${escapeHtml(
-                                    getTimetableTeacherName(
-                                        teacher
-                                    )
+                                    teacherName
                                 )}
                             </td>
 
                             <td>
                                 ${escapeHtml(
-                                    getTimetableRoomName(
-                                        room
-                                    )
+                                    roomName
                                 )}
                             </td>
 
@@ -16172,6 +16333,10 @@ function renderGeneratedTimetable(
     );
 
 
+    // ========================================================
+    // CLOSE MAIN CONTAINER
+    // ========================================================
+
     html += `
         </div>
     `;
@@ -16189,10 +16354,108 @@ function renderGeneratedTimetable(
         "Timetable rendered successfully."
     );
 
+    console.log(
+        "Streams rendered:",
+        sortedStreamGroups.length
+    );
+
+    console.log(
+        "Entries rendered:",
+        sortedEntries.length
+    );
+
 }
+```
+
+
+
+
 // ============================================================
-// PART 6 — RENDER GENERATED TIMETABLE
+// SHARED TIMETABLE ENTRY SORTER
 // ============================================================
+
+function sortTimetableEntries(
+    entries,
+    lookup
+) {
+
+    return [...entries].sort(
+        (
+            a,
+            b
+        ) => {
+
+            const periodA =
+                lookup.periods.get(
+                    a.period_id
+                );
+
+            const periodB =
+                lookup.periods.get(
+                    b.period_id
+                );
+
+
+            const dayA =
+                Number(
+                    periodA?.day_number || 0
+                );
+
+            const dayB =
+                Number(
+                    periodB?.day_number || 0
+                );
+
+
+            if (
+                dayA !== dayB
+            ) {
+
+                return (
+                    dayA - dayB
+                );
+
+            }
+
+
+            const orderA =
+                Number(
+                    periodA?.period_order ??
+                    periodA?.period_number ??
+                    0
+                );
+
+            const orderB =
+                Number(
+                    periodB?.period_order ??
+                    periodB?.period_number ??
+                    0
+                );
+
+
+            if (
+                orderA !== orderB
+            ) {
+
+                return (
+                    orderA - orderB
+                );
+
+            }
+
+
+            return String(
+                a.id || ""
+            ).localeCompare(
+                String(
+                    b.id || ""
+                )
+            );
+
+        }
+    );
+
+}
 
 
 // ============================================================
@@ -16205,23 +16468,21 @@ function renderTimetableByStream(
     container
 ) {
 
-    // --------------------------------------------------------
-    // SAFETY CHECK
-    // --------------------------------------------------------
-
     if (!container) {
+
         console.warn(
             "renderTimetableByStream: container not found."
         );
 
         return;
+
     }
 
 
-    if (!Array.isArray(entries)) {
-        console.warn(
-            "renderTimetableByStream: entries is not an array."
-        );
+    if (
+        !Array.isArray(entries) ||
+        entries.length === 0
+    ) {
 
         container.innerHTML = `
             <div class="empty-message">
@@ -16230,11 +16491,30 @@ function renderTimetableByStream(
         `;
 
         return;
+
+    }
+
+
+    if (
+        !lookup ||
+        !lookup.streams ||
+        !lookup.periods ||
+        !lookup.subjects ||
+        !lookup.teachers ||
+        !lookup.rooms
+    ) {
+
+        console.error(
+            "renderTimetableByStream: incomplete lookup maps."
+        );
+
+        return;
+
     }
 
 
     // --------------------------------------------------------
-    // GROUP ENTRIES BY STREAM
+    // GROUP BY STREAM
     // --------------------------------------------------------
 
     const streamMap =
@@ -16276,10 +16556,6 @@ function renderTimetableByStream(
     );
 
 
-    // --------------------------------------------------------
-    // NOTHING TO RENDER
-    // --------------------------------------------------------
-
     if (
         streamMap.size === 0
     ) {
@@ -16295,17 +16571,63 @@ function renderTimetableByStream(
     }
 
 
+    // --------------------------------------------------------
+    // SORT STREAMS
+    // --------------------------------------------------------
+
+    const sortedStreams =
+        [...streamMap.entries()]
+            .sort(
+                (
+                    [streamIdA],
+                    [streamIdB]
+                ) => {
+
+                    const streamA =
+                        lookup.streams.get(
+                            streamIdA
+                        );
+
+                    const streamB =
+                        lookup.streams.get(
+                            streamIdB
+                        );
+
+
+                    return String(
+                        getTimetableStreamName(
+                            streamA
+                        ) || ""
+                    ).localeCompare(
+                        String(
+                            getTimetableStreamName(
+                                streamB
+                            ) || ""
+                        ),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: "base"
+                        }
+                    );
+
+                }
+            );
+
+
     let html = "";
 
 
     // --------------------------------------------------------
-    // RENDER EACH STREAM
+    // RENDER STREAMS
     // --------------------------------------------------------
 
-    streamMap.forEach(
+    sortedStreams.forEach(
         (
-            streamEntries,
-            streamId
+            [
+                streamId,
+                rawEntries
+            ]
         ) => {
 
             const stream =
@@ -16317,65 +16639,16 @@ function renderTimetableByStream(
             const streamName =
                 getTimetableStreamName(
                     stream
+                ) ||
+                "Unknown Stream";
+
+
+            const streamEntries =
+                sortTimetableEntries(
+                    rawEntries,
+                    lookup
                 );
 
-
-            // -----------------------------------------------
-            // SORT STREAM ENTRIES
-            // -----------------------------------------------
-
-            streamEntries.sort(
-                (
-                    a,
-                    b
-                ) => {
-
-                    const periodA =
-                        lookup.periods.get(
-                            a.period_id
-                        );
-
-
-                    const periodB =
-                        lookup.periods.get(
-                            b.period_id
-                        );
-
-
-                    const dayDifference =
-                        Number(
-                            periodA?.day_number || 0
-                        ) -
-                        Number(
-                            periodB?.day_number || 0
-                        );
-
-
-                    if (
-                        dayDifference !== 0
-                    ) {
-
-                        return dayDifference;
-
-                    }
-
-
-                    return (
-                        Number(
-                            periodA?.period_order || 0
-                        ) -
-                        Number(
-                            periodB?.period_order || 0
-                        )
-                    );
-
-                }
-            );
-
-
-            // -----------------------------------------------
-            // STREAM HEADER
-            // -----------------------------------------------
 
             html += `
 
@@ -16397,15 +16670,10 @@ function renderTimetableByStream(
                                 <tr>
 
                                     <th>Day</th>
-
                                     <th>Period</th>
-
                                     <th>Time</th>
-
                                     <th>Subject</th>
-
                                     <th>Teacher</th>
-
                                     <th>Room</th>
 
                                 </tr>
@@ -16416,10 +16684,6 @@ function renderTimetableByStream(
 
             `;
 
-
-            // -----------------------------------------------
-            // STREAM ENTRIES
-            // -----------------------------------------------
 
             streamEntries.forEach(
                 entry => {
@@ -16473,11 +16737,7 @@ function renderTimetableByStream(
                             ? formatPeriodTime(
                                 period
                             )
-                            : (
-                                period
-                                    ? `${period.start_time || ""} - ${period.end_time || ""}`
-                                    : "-"
-                            );
+                            : "-";
 
 
                     html += `
@@ -16492,9 +16752,7 @@ function renderTimetableByStream(
 
                             <td>
                                 ${escapeHtml(
-                                    String(
-                                        periodNumber
-                                    )
+                                    String(periodNumber)
                                 )}
                             </td>
 
@@ -16505,22 +16763,22 @@ function renderTimetableByStream(
                             </td>
 
                             <td>
-
                                 <strong>
                                     ${escapeHtml(
                                         getTimetableSubjectName(
                                             subject
-                                        )
+                                        ) ||
+                                        "Unknown Subject"
                                     )}
                                 </strong>
-
                             </td>
 
                             <td>
                                 ${escapeHtml(
                                     getTimetableTeacherName(
                                         teacher
-                                    )
+                                    ) ||
+                                    "Unknown Teacher"
                                 )}
                             </td>
 
@@ -16528,7 +16786,8 @@ function renderTimetableByStream(
                                 ${escapeHtml(
                                     getTimetableRoomName(
                                         room
-                                    )
+                                    ) ||
+                                    "None"
                                 )}
                             </td>
 
@@ -16539,10 +16798,6 @@ function renderTimetableByStream(
                 }
             );
 
-
-            // -----------------------------------------------
-            // CLOSE STREAM TABLE
-            // -----------------------------------------------
 
             html += `
 
@@ -16560,12 +16815,14 @@ function renderTimetableByStream(
     );
 
 
-    // --------------------------------------------------------
-    // INSERT HTML
-    // --------------------------------------------------------
-
     container.innerHTML =
         html;
+
+
+    console.log(
+        "Timetable rendered by stream:",
+        sortedStreams.length
+    );
 
 }
 
@@ -16580,26 +16837,45 @@ function renderTimetableByTeacher(
     container
 ) {
 
-    // --------------------------------------------------------
-    // SAFETY CHECK
-    // --------------------------------------------------------
-
     if (!container) {
+
         console.warn(
             "renderTimetableByTeacher: container not found."
         );
 
         return;
+
     }
 
 
-    if (!Array.isArray(entries)) {
+    if (
+        !Array.isArray(entries) ||
+        entries.length === 0
+    ) {
 
         container.innerHTML = `
             <div class="empty-message">
                 No timetable entries available.
             </div>
         `;
+
+        return;
+
+    }
+
+
+    if (
+        !lookup ||
+        !lookup.teachers ||
+        !lookup.periods ||
+        !lookup.streams ||
+        !lookup.subjects ||
+        !lookup.rooms
+    ) {
+
+        console.error(
+            "renderTimetableByTeacher: incomplete lookup maps."
+        );
 
         return;
 
@@ -16649,10 +16925,6 @@ function renderTimetableByTeacher(
     );
 
 
-    // --------------------------------------------------------
-    // NOTHING TO RENDER
-    // --------------------------------------------------------
-
     if (
         teacherMap.size === 0
     ) {
@@ -16668,17 +16940,59 @@ function renderTimetableByTeacher(
     }
 
 
+    const sortedTeachers =
+        [...teacherMap.entries()]
+            .sort(
+                (
+                    [teacherIdA],
+                    [teacherIdB]
+                ) => {
+
+                    const teacherA =
+                        lookup.teachers.get(
+                            teacherIdA
+                        );
+
+                    const teacherB =
+                        lookup.teachers.get(
+                            teacherIdB
+                        );
+
+
+                    return String(
+                        getTimetableTeacherName(
+                            teacherA
+                        ) || ""
+                    ).localeCompare(
+                        String(
+                            getTimetableTeacherName(
+                                teacherB
+                            ) || ""
+                        ),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: "base"
+                        }
+                    );
+
+                }
+            );
+
+
     let html = "";
 
 
     // --------------------------------------------------------
-    // RENDER EACH TEACHER
+    // RENDER TEACHERS
     // --------------------------------------------------------
 
-    teacherMap.forEach(
+    sortedTeachers.forEach(
         (
-            teacherEntries,
-            teacherId
+            [
+                teacherId,
+                rawEntries
+            ]
         ) => {
 
             const teacher =
@@ -16690,65 +17004,16 @@ function renderTimetableByTeacher(
             const teacherName =
                 getTimetableTeacherName(
                     teacher
+                ) ||
+                "Unassigned";
+
+
+            const teacherEntries =
+                sortTimetableEntries(
+                    rawEntries,
+                    lookup
                 );
 
-
-            // -----------------------------------------------
-            // SORT
-            // -----------------------------------------------
-
-            teacherEntries.sort(
-                (
-                    a,
-                    b
-                ) => {
-
-                    const periodA =
-                        lookup.periods.get(
-                            a.period_id
-                        );
-
-
-                    const periodB =
-                        lookup.periods.get(
-                            b.period_id
-                        );
-
-
-                    const dayDifference =
-                        Number(
-                            periodA?.day_number || 0
-                        ) -
-                        Number(
-                            periodB?.day_number || 0
-                        );
-
-
-                    if (
-                        dayDifference !== 0
-                    ) {
-
-                        return dayDifference;
-
-                    }
-
-
-                    return (
-                        Number(
-                            periodA?.period_order || 0
-                        ) -
-                        Number(
-                            periodB?.period_order || 0
-                        )
-                    );
-
-                }
-            );
-
-
-            // -----------------------------------------------
-            // TEACHER HEADER
-            // -----------------------------------------------
 
             html += `
 
@@ -16770,15 +17035,10 @@ function renderTimetableByTeacher(
                                 <tr>
 
                                     <th>Day</th>
-
                                     <th>Period</th>
-
                                     <th>Time</th>
-
                                     <th>Stream</th>
-
                                     <th>Subject</th>
-
                                     <th>Room</th>
 
                                 </tr>
@@ -16789,10 +17049,6 @@ function renderTimetableByTeacher(
 
             `;
 
-
-            // -----------------------------------------------
-            // TEACHER ENTRIES
-            // -----------------------------------------------
 
             teacherEntries.forEach(
                 entry => {
@@ -16844,11 +17100,7 @@ function renderTimetableByTeacher(
                             ? formatPeriodTime(
                                 period
                             )
-                            : (
-                                period
-                                    ? `${period.start_time || ""} - ${period.end_time || ""}`
-                                    : "-"
-                            );
+                            : "-";
 
 
                     html += `
@@ -16863,9 +17115,7 @@ function renderTimetableByTeacher(
 
                             <td>
                                 ${escapeHtml(
-                                    String(
-                                        periodNumber
-                                    )
+                                    String(periodNumber)
                                 )}
                             </td>
 
@@ -16879,27 +17129,28 @@ function renderTimetableByTeacher(
                                 ${escapeHtml(
                                     getTimetableStreamName(
                                         stream
-                                    )
+                                    ) ||
+                                    "Unknown Stream"
                                 )}
                             </td>
 
                             <td>
-
                                 <strong>
                                     ${escapeHtml(
                                         getTimetableSubjectName(
                                             subject
-                                        )
+                                        ) ||
+                                        "Unknown Subject"
                                     )}
                                 </strong>
-
                             </td>
 
                             <td>
                                 ${escapeHtml(
                                     getTimetableRoomName(
                                         room
-                                    )
+                                    ) ||
+                                    "None"
                                 )}
                             </td>
 
@@ -16910,10 +17161,6 @@ function renderTimetableByTeacher(
                 }
             );
 
-
-            // -----------------------------------------------
-            // CLOSE TABLE
-            // -----------------------------------------------
 
             html += `
 
@@ -16931,12 +17178,14 @@ function renderTimetableByTeacher(
     );
 
 
-    // --------------------------------------------------------
-    // INSERT HTML
-    // --------------------------------------------------------
-
     container.innerHTML =
         html;
+
+
+    console.log(
+        "Timetable rendered by teacher:",
+        sortedTeachers.length
+    );
 
 }
 
@@ -16951,10 +17200,6 @@ function renderTimetableByRoom(
     container
 ) {
 
-    // --------------------------------------------------------
-    // SAFETY CHECK
-    // --------------------------------------------------------
-
     if (!container) {
 
         console.warn(
@@ -16966,13 +17211,34 @@ function renderTimetableByRoom(
     }
 
 
-    if (!Array.isArray(entries)) {
+    if (
+        !Array.isArray(entries) ||
+        entries.length === 0
+    ) {
 
         container.innerHTML = `
             <div class="empty-message">
                 No timetable entries available.
             </div>
         `;
+
+        return;
+
+    }
+
+
+    if (
+        !lookup ||
+        !lookup.rooms ||
+        !lookup.periods ||
+        !lookup.streams ||
+        !lookup.subjects ||
+        !lookup.teachers
+    ) {
+
+        console.error(
+            "renderTimetableByRoom: incomplete lookup maps."
+        );
 
         return;
 
@@ -17022,10 +17288,6 @@ function renderTimetableByRoom(
     );
 
 
-    // --------------------------------------------------------
-    // NOTHING TO RENDER
-    // --------------------------------------------------------
-
     if (
         roomMap.size === 0
     ) {
@@ -17041,17 +17303,63 @@ function renderTimetableByRoom(
     }
 
 
+    // --------------------------------------------------------
+    // SORT ROOMS
+    // --------------------------------------------------------
+
+    const sortedRooms =
+        [...roomMap.entries()]
+            .sort(
+                (
+                    [roomIdA],
+                    [roomIdB]
+                ) => {
+
+                    const roomA =
+                        lookup.rooms.get(
+                            roomIdA
+                        );
+
+                    const roomB =
+                        lookup.rooms.get(
+                            roomIdB
+                        );
+
+
+                    return String(
+                        getTimetableRoomName(
+                            roomA
+                        ) || "No Room"
+                    ).localeCompare(
+                        String(
+                            getTimetableRoomName(
+                                roomB
+                            ) || "No Room"
+                        ),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: "base"
+                        }
+                    );
+
+                }
+            );
+
+
     let html = "";
 
 
     // --------------------------------------------------------
-    // RENDER EACH ROOM
+    // RENDER ROOMS
     // --------------------------------------------------------
 
-    roomMap.forEach(
+    sortedRooms.forEach(
         (
-            roomEntries,
-            roomId
+            [
+                roomId,
+                rawEntries
+            ]
         ) => {
 
             const room =
@@ -17063,65 +17371,16 @@ function renderTimetableByRoom(
             const roomName =
                 getTimetableRoomName(
                     room
+                ) ||
+                "No Room";
+
+
+            const roomEntries =
+                sortTimetableEntries(
+                    rawEntries,
+                    lookup
                 );
 
-
-            // -----------------------------------------------
-            // SORT
-            // -----------------------------------------------
-
-            roomEntries.sort(
-                (
-                    a,
-                    b
-                ) => {
-
-                    const periodA =
-                        lookup.periods.get(
-                            a.period_id
-                        );
-
-
-                    const periodB =
-                        lookup.periods.get(
-                            b.period_id
-                        );
-
-
-                    const dayDifference =
-                        Number(
-                            periodA?.day_number || 0
-                        ) -
-                        Number(
-                            periodB?.day_number || 0
-                        );
-
-
-                    if (
-                        dayDifference !== 0
-                    ) {
-
-                        return dayDifference;
-
-                    }
-
-
-                    return (
-                        Number(
-                            periodA?.period_order || 0
-                        ) -
-                        Number(
-                            periodB?.period_order || 0
-                        )
-                    );
-
-                }
-            );
-
-
-            // -----------------------------------------------
-            // ROOM HEADER
-            // -----------------------------------------------
 
             html += `
 
@@ -17143,15 +17402,10 @@ function renderTimetableByRoom(
                                 <tr>
 
                                     <th>Day</th>
-
                                     <th>Period</th>
-
                                     <th>Time</th>
-
                                     <th>Stream</th>
-
                                     <th>Subject</th>
-
                                     <th>Teacher</th>
 
                                 </tr>
@@ -17162,10 +17416,6 @@ function renderTimetableByRoom(
 
             `;
 
-
-            // -----------------------------------------------
-            // ROOM ENTRIES
-            // -----------------------------------------------
 
             roomEntries.forEach(
                 entry => {
@@ -17217,11 +17467,7 @@ function renderTimetableByRoom(
                             ? formatPeriodTime(
                                 period
                             )
-                            : (
-                                period
-                                    ? `${period.start_time || ""} - ${period.end_time || ""}`
-                                    : "-"
-                            );
+                            : "-";
 
 
                     html += `
@@ -17236,9 +17482,7 @@ function renderTimetableByRoom(
 
                             <td>
                                 ${escapeHtml(
-                                    String(
-                                        periodNumber
-                                    )
+                                    String(periodNumber)
                                 )}
                             </td>
 
@@ -17252,27 +17496,28 @@ function renderTimetableByRoom(
                                 ${escapeHtml(
                                     getTimetableStreamName(
                                         stream
-                                    )
+                                    ) ||
+                                    "Unknown Stream"
                                 )}
                             </td>
 
                             <td>
-
                                 <strong>
                                     ${escapeHtml(
                                         getTimetableSubjectName(
                                             subject
-                                        )
+                                        ) ||
+                                        "Unknown Subject"
                                     )}
                                 </strong>
-
                             </td>
 
                             <td>
                                 ${escapeHtml(
                                     getTimetableTeacherName(
                                         teacher
-                                    )
+                                    ) ||
+                                    "Unknown Teacher"
                                 )}
                             </td>
 
@@ -17283,10 +17528,6 @@ function renderTimetableByRoom(
                 }
             );
 
-
-            // -----------------------------------------------
-            // CLOSE TABLE
-            // -----------------------------------------------
 
             html += `
 
@@ -17304,18 +17545,20 @@ function renderTimetableByRoom(
     );
 
 
-    // --------------------------------------------------------
-    // INSERT HTML
-    // --------------------------------------------------------
-
     container.innerHTML =
         html;
+
+
+    console.log(
+        "Timetable rendered by room:",
+        sortedRooms.length
+    );
 
 }
 
 
-// ============================================================
-// END PART 6
+
+```javascript
 // ============================================================
 // ============================================================
 // PART 7 — FILTERS, SUMMARY, CONFLICTS, CLEAR & REGENERATE
@@ -17411,6 +17654,41 @@ async function loadTimetableFilters(
                 timetableStreamFilter.value;
 
 
+            const streams =
+                Array.isArray(
+                    data.streams
+                )
+                    ? [...data.streams]
+                    : [];
+
+
+            streams.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    return String(
+                        getTimetableStreamName(
+                            a
+                        ) || ""
+                    ).localeCompare(
+                        String(
+                            getTimetableStreamName(
+                                b
+                            ) || ""
+                        ),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: "base"
+                        }
+                    );
+
+                }
+            );
+
+
             let html = `
 
                 <option value="">
@@ -17420,46 +17698,24 @@ async function loadTimetableFilters(
             `;
 
 
-            const streams =
-                Array.isArray(
-                    data.streams
-                )
-                    ? [...data.streams]
-                    : [];
-
-
-            // ------------------------------------------------
-            // SORT STREAMS
-            // ------------------------------------------------
-
-            streams.sort(
-                (
-                    a,
-                    b
-                ) => {
-
-                    return getTimetableStreamName(
-                        a
-                    ).localeCompare(
-                        getTimetableStreamName(
-                            b
-                        )
-                    );
-
-                }
-            );
-
-
-            // ------------------------------------------------
-            // CREATE OPTIONS
-            // ------------------------------------------------
-
             streams.forEach(
                 stream => {
 
-                    if (!stream) {
+                    if (
+                        !stream ||
+                        !stream.id
+                    ) {
+
                         return;
+
                     }
+
+
+                    const streamName =
+                        getTimetableStreamName(
+                            stream
+                        ) ||
+                        "Unknown Stream";
 
 
                     html += `
@@ -17473,9 +17729,7 @@ async function loadTimetableFilters(
                         >
 
                             ${escapeHtml(
-                                getTimetableStreamName(
-                                    stream
-                                )
+                                streamName
                             )}
 
                         </option>
@@ -17490,16 +17744,12 @@ async function loadTimetableFilters(
                 html;
 
 
-            // ------------------------------------------------
-            // RESTORE PREVIOUS VALUE
-            // ------------------------------------------------
-
             if (
                 currentValue &&
                 streams.some(
                     stream =>
                         String(
-                            stream.id
+                            stream?.id
                         ) ===
                         String(
                             currentValue
@@ -17527,23 +17777,6 @@ async function loadTimetableFilters(
                 timetableDayFilter.value;
 
 
-            let html = `
-
-                <option value="">
-                    All Days
-                </option>
-
-            `;
-
-
-            // ------------------------------------------------
-            // GET UNIQUE DAYS
-            // ------------------------------------------------
-
-            const daysMap =
-                new Map();
-
-
             const periods =
                 Array.isArray(
                     data.periods
@@ -17552,21 +17785,27 @@ async function loadTimetableFilters(
                     : [];
 
 
+            const daysMap =
+                new Map();
+
+
             periods.forEach(
                 period => {
 
-                    if (!period) {
+                    if (
+                        !period ||
+                        !period.day_name
+                    ) {
+
                         return;
+
                     }
 
 
                     const dayName =
-                        period.day_name;
-
-
-                    if (!dayName) {
-                        return;
-                    }
+                        String(
+                            period.day_name
+                        );
 
 
                     const dayNumber =
@@ -17592,38 +17831,55 @@ async function loadTimetableFilters(
             );
 
 
-            // ------------------------------------------------
-            // SORT DAYS
-            // ------------------------------------------------
-
             const days =
-                Array.from(
-                    daysMap.entries()
-                );
+                [...daysMap.entries()]
+                    .sort(
+                        (
+                            a,
+                            b
+                        ) => {
+
+                            const numberDifference =
+                                Number(a[1]) -
+                                Number(b[1]);
 
 
-            days.sort(
-                (
-                    a,
-                    b
-                ) => {
+                            if (
+                                numberDifference !== 0
+                            ) {
 
-                    return (
-                        Number(a[1]) -
-                        Number(b[1])
+                                return numberDifference;
+
+                            }
+
+
+                            return String(
+                                a[0]
+                            ).localeCompare(
+                                String(
+                                    b[0]
+                                )
+                            );
+
+                        }
                     );
 
-                }
-            );
 
+            let html = `
 
-            // ------------------------------------------------
-            // CREATE DAY OPTIONS
-            // ------------------------------------------------
+                <option value="">
+                    All Days
+                </option>
+
+            `;
+
 
             days.forEach(
                 (
-                    [dayName, dayNumber]
+                    [
+                        dayName,
+                        dayNumber
+                    ]
                 ) => {
 
                     html += `
@@ -17654,10 +17910,6 @@ async function loadTimetableFilters(
                 html;
 
 
-            // ------------------------------------------------
-            // RESTORE PREVIOUS DAY
-            // ------------------------------------------------
-
             if (
                 currentDay &&
                 days.some(
@@ -17687,9 +17939,6 @@ async function loadTimetableFilters(
             timetableViewMode
         ) {
 
-            // Keep existing selection.
-            // If empty, default to stream.
-
             if (
                 !timetableViewMode.value
             ) {
@@ -17707,7 +17956,6 @@ async function loadTimetableFilters(
         );
 
     }
-
     catch (error) {
 
         console.error(
@@ -17756,31 +18004,32 @@ function showTimetableSummary(
     }
 
 
-    // --------------------------------------------------------
-    // NORMALIZE VALUES
-    // --------------------------------------------------------
-
     const tasks =
-        Number(
-            totalTasks
-        ) || 0;
+        Math.max(
+            0,
+            Number(
+                totalTasks
+            ) || 0
+        );
 
 
     const entries =
-        Number(
-            generatedEntries
-        ) || 0;
+        Math.max(
+            0,
+            Number(
+                generatedEntries
+            ) || 0
+        );
 
 
     const conflicts =
-        Number(
-            conflictCount
-        ) || 0;
+        Math.max(
+            0,
+            Number(
+                conflictCount
+            ) || 0
+        );
 
-
-    // --------------------------------------------------------
-    // SHOW SUMMARY
-    // --------------------------------------------------------
 
     summary.style.display =
         "block";
@@ -17867,21 +18116,33 @@ function showTimetableConflicts(
 
 
     // --------------------------------------------------------
+    // NORMALIZE CONFLICTS
+    // --------------------------------------------------------
+
+    const conflictList =
+        Array.isArray(
+            conflicts
+        )
+            ? conflicts.filter(
+                conflict =>
+                    conflict
+            )
+            : [];
+
+
+    // --------------------------------------------------------
     // NO CONFLICTS
     // --------------------------------------------------------
 
     if (
-        !Array.isArray(conflicts) ||
-        conflicts.length === 0
+        conflictList.length === 0
     ) {
 
         container.style.display =
             "none";
 
-
         content.innerHTML =
             "";
-
 
         return;
 
@@ -17901,7 +18162,7 @@ function showTimetableConflicts(
         <div class="empty-message">
 
             <strong>
-                ${conflicts.length}
+                ${conflictList.length}
                 lesson task(s) could not be placed.
             </strong>
 
@@ -17936,33 +18197,11 @@ function showTimetableConflicts(
 
 
     // --------------------------------------------------------
-    // RENDER EACH CONFLICT
+    // RENDER CONFLICTS
     // --------------------------------------------------------
 
-    conflicts.forEach(
+    conflictList.forEach(
         conflict => {
-
-            if (!conflict) {
-                return;
-            }
-
-
-            // ------------------------------------------------
-            // SUPPORT BOTH CONFLICT FORMATS
-            // ------------------------------------------------
-            //
-            // Part 5 creates:
-            //
-            // conflict.streamId
-            // conflict.subjectId
-            // conflict.teacherId
-            //
-            // Older code may create:
-            //
-            // conflict.task.streamId
-            //
-            // We support both.
-            // ------------------------------------------------
 
             const task =
                 conflict.task ||
@@ -17990,25 +18229,30 @@ function showTimetableConflicts(
             const stream =
                 lookup?.streams?.get(
                     streamId
-                );
+                ) ||
+                null;
 
 
             const subject =
                 lookup?.subjects?.get(
                     subjectId
-                );
+                ) ||
+                null;
 
 
             const teacher =
                 teacherId
-                    ? lookup?.teachers?.get(
-                        teacherId
+                    ? (
+                        lookup?.teachers?.get(
+                            teacherId
+                        ) ||
+                        null
                     )
                     : null;
 
 
             // ------------------------------------------------
-            // LESSON TYPE
+            // DETERMINE LESSON TYPE
             // ------------------------------------------------
 
             let lessonType =
@@ -18016,8 +18260,8 @@ function showTimetableConflicts(
 
 
             if (
-                task &&
-                task.isDouble
+                task?.isDouble === true ||
+                task?.type === "double"
             ) {
 
                 lessonType =
@@ -18026,14 +18270,27 @@ function showTimetableConflicts(
             }
 
 
-            // If Part 5 only provides taskId,
-            // detect double from taskId.
+            const taskId =
+                String(
+                    conflict.taskId ||
+                    task?.taskId ||
+                    task?.id ||
+                    ""
+                );
+
+
+            // Current generator format:
+            // UUID-D1
+            // UUID-S1
+            //
+            // Older format:
+            // -double-
 
             if (
-                conflict.taskId &&
-                String(
-                    conflict.taskId
-                ).includes(
+                /-D\d+$/i.test(
+                    taskId
+                ) ||
+                taskId.includes(
                     "-double-"
                 )
             ) {
@@ -18044,31 +18301,56 @@ function showTimetableConflicts(
             }
 
 
+            // ------------------------------------------------
+            // DISPLAY VALUES
+            // ------------------------------------------------
+
+            const streamName =
+                getTimetableStreamName(
+                    stream
+                ) ||
+                "Unknown Stream";
+
+
+            const subjectName =
+                getTimetableSubjectName(
+                    subject
+                ) ||
+                "Unknown Subject";
+
+
+            const teacherName =
+                getTimetableTeacherName(
+                    teacher
+                ) ||
+                "Unassigned";
+
+
+            const reason =
+                conflict.reason ||
+                conflict.message ||
+                "Unknown conflict";
+
+
             html += `
 
                 <tr>
 
                     <td>
                         ${escapeHtml(
-                            getTimetableStreamName(
-                                stream
-                            )
+                            streamName
                         )}
                     </td>
 
                     <td>
                         ${escapeHtml(
-                            getTimetableSubjectName(
-                                subject
-                            )
+                            subjectName
                         )}
                     </td>
 
                     <td>
                         ${escapeHtml(
-                            getTimetableTeacherName(
-                                teacher
-                            )
+                            teacherName
                         )}
                     </td>
 
@@ -18080,8 +18362,9 @@ function showTimetableConflicts(
 
                     <td>
                         ${escapeHtml(
-                            conflict.reason ||
-                            "Unknown conflict"
+                            String(
+                                reason
+                            )
                         )}
                     </td>
 
@@ -18111,7 +18394,19 @@ function showTimetableConflicts(
     content.innerHTML =
         html;
 
+
+    console.log(
+        "Timetable conflicts displayed:",
+        conflictList.length
+    );
+
 }
+```
+
+
+// ============================================================
+// PART 7 — CLEAR & REGENERATE
+// ============================================================
 
 
 // ============================================================
@@ -18125,11 +18420,34 @@ async function clearGeneratedTimetable() {
     // --------------------------------------------------------
 
     if (
+        !timetableState ||
         !timetableState.schoolId
     ) {
 
         setTimetableGenerationStatus(
             "Please select a school first.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // PREVENT ACTION WHILE GENERATING
+    // --------------------------------------------------------
+
+    if (
+        timetableGenerationRunning
+    ) {
+
+        console.warn(
+            "Cannot clear timetable while generation is running."
+        );
+
+        setTimetableGenerationStatus(
+            "Please wait for timetable generation to finish.",
             "error"
         );
 
@@ -18148,9 +18466,7 @@ async function clearGeneratedTimetable() {
         );
 
 
-    if (
-        !confirmed
-    ) {
+    if (!confirmed) {
 
         return;
 
@@ -18159,45 +18475,41 @@ async function clearGeneratedTimetable() {
 
     try {
 
-        // ----------------------------------------------------
-        // STATUS
-        // ----------------------------------------------------
-
         setTimetableGenerationStatus(
             "Clearing timetable...",
             "info"
         );
 
 
+        const schoolId =
+            timetableState.schoolId;
+
+
         console.log(
             "Clearing timetable for school:",
-            timetableState.schoolId
+            schoolId
         );
 
 
         // ----------------------------------------------------
-        // DELETE
+        // DELETE GENERATED ENTRIES ONLY
         // ----------------------------------------------------
 
         const {
             error
-        } = await supabaseClient
-
-            .from(
-                "timetable_entries"
-            )
-
-            .delete()
-
-            .eq(
-                "school_id",
-                timetableState.schoolId
-            );
+        } =
+            await supabaseClient
+                .from(
+                    "timetable_entries"
+                )
+                .delete()
+                .eq(
+                    "school_id",
+                    schoolId
+                );
 
 
-        if (
-            error
-        ) {
+        if (error) {
 
             throw new Error(
                 error.message
@@ -18210,8 +18522,42 @@ async function clearGeneratedTimetable() {
         // CLEAR LOCAL STATE
         // ----------------------------------------------------
 
-        generatedTimetableEntries =
-            [];
+        generatedTimetableEntries = [];
+
+
+        // ----------------------------------------------------
+        // CLEAR DISPLAY
+        // ----------------------------------------------------
+
+        const container =
+            document.getElementById(
+                "timetableContent"
+            );
+
+
+        if (container) {
+
+            container.innerHTML = `
+                <div class="empty-state">
+
+                    <div>📅</div>
+
+                    <h3>
+                        No timetable generated yet
+                    </h3>
+
+                    <p>
+                        Click
+                        <strong>
+                            Generate Timetable
+                        </strong>
+                        to create one.
+                    </p>
+
+                </div>
+            `;
+
+        }
 
 
         // ----------------------------------------------------
@@ -18232,10 +18578,6 @@ async function clearGeneratedTimetable() {
         }
 
 
-        // ----------------------------------------------------
-        // CLEAR SUMMARY CONTENT
-        // ----------------------------------------------------
-
         const summaryContent =
             document.getElementById(
                 "timetableSummaryContent"
@@ -18254,15 +18596,15 @@ async function clearGeneratedTimetable() {
         // HIDE CONFLICTS
         // ----------------------------------------------------
 
-        const conflictsContainer =
+        const conflicts =
             document.getElementById(
                 "timetableConflicts"
             );
 
 
-        if (conflictsContainer) {
+        if (conflicts) {
 
-            conflictsContainer.style.display =
+            conflicts.style.display =
                 "none";
 
         }
@@ -18283,13 +18625,6 @@ async function clearGeneratedTimetable() {
 
 
         // ----------------------------------------------------
-        // RELOAD DISPLAY
-        // ----------------------------------------------------
-
-        await loadGeneratedTimetable();
-
-
-        // ----------------------------------------------------
         // SUCCESS
         // ----------------------------------------------------
 
@@ -18300,7 +18635,7 @@ async function clearGeneratedTimetable() {
 
 
         console.log(
-            "Timetable cleared successfully."
+            "TIMETABLE CLEARED SUCCESSFULLY"
         );
 
     }
@@ -18308,14 +18643,17 @@ async function clearGeneratedTimetable() {
     catch (error) {
 
         console.error(
-            "Failed to clear timetable:",
+            "FAILED TO CLEAR TIMETABLE:",
             error
         );
 
 
         setTimetableGenerationStatus(
             "Failed to clear timetable: " +
-            error.message,
+            (
+                error.message ||
+                "Unknown error"
+            ),
             "error"
         );
 
@@ -18335,6 +18673,7 @@ async function regenerateTimetable() {
     // --------------------------------------------------------
 
     if (
+        !timetableState ||
         !timetableState.schoolId
     ) {
 
@@ -18349,7 +18688,7 @@ async function regenerateTimetable() {
 
 
     // --------------------------------------------------------
-    // PREVENT REGENERATION WHILE RUNNING
+    // PREVENT DUPLICATE GENERATION
     // --------------------------------------------------------
 
     if (
@@ -18375,31 +18714,53 @@ async function regenerateTimetable() {
         );
 
 
-    if (
-        !confirmed
-    ) {
+    if (!confirmed) {
 
         return;
 
     }
 
 
-    // --------------------------------------------------------
-    // GENERATE
-    // --------------------------------------------------------
+    try {
 
-    await generateTimetable();
+        console.log(
+            "REGENERATING TIMETABLE..."
+        );
+
+
+        await generateTimetable();
+
+
+        console.log(
+            "TIMETABLE REGENERATION COMPLETE"
+        );
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "TIMETABLE REGENERATION FAILED:",
+            error
+        );
+
+
+        setTimetableGenerationStatus(
+            "Regeneration failed: " +
+            (
+                error.message ||
+                "Unknown error"
+            ),
+            "error"
+        );
+
+    }
 
 }
 
 
 // ============================================================
-// END PART 7
-// ============================================================
-
-
-// ============================================================
-// PART 8 — PRINT, EVENTS & INITIALIZATION
+// PART 8 — PRINT
 // ============================================================
 
 
@@ -18416,12 +18777,28 @@ function printGeneratedTimetable() {
 
 
     if (
-        !timetableContent ||
-        !timetableContent.innerHTML.trim()
+        !timetableContent
     ) {
 
         alert(
-            "There is no timetable to print."
+            "Timetable display was not found."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        !generatedTimetableEntries ||
+        !Array.isArray(
+            generatedTimetableEntries
+        ) ||
+        generatedTimetableEntries.length === 0
+    ) {
+
+        alert(
+            "There is no generated timetable to print."
         );
 
         return;
@@ -18510,16 +18887,26 @@ function printGeneratedTimetable() {
                 }
 
 
-                .timetable-stream-block {
+                .generated-timetable {
 
-                    margin-bottom: 35px;
-
-                    page-break-inside: avoid;
+                    width: 100%;
 
                 }
 
 
-                .table-responsive {
+                .timetable-stream-block,
+                .timetable-stream {
+
+                    margin-bottom: 30px;
+
+                    page-break-inside:
+                        avoid;
+
+                }
+
+
+                .table-responsive,
+                .timetable-table-wrapper {
 
                     width: 100%;
 
@@ -18537,8 +18924,12 @@ function printGeneratedTimetable() {
 
                     margin-bottom: 25px;
 
-                    page-break-inside:
-                        auto;
+                }
+
+
+                thead {
+
+                    display: table-header-group;
 
                 }
 
@@ -18547,9 +18938,6 @@ function printGeneratedTimetable() {
 
                     page-break-inside:
                         avoid;
-
-                    page-break-after:
-                        auto;
 
                 }
 
@@ -18570,7 +18958,7 @@ function printGeneratedTimetable() {
                         middle;
 
                     font-size:
-                        12px;
+                        11px;
 
                 }
 
@@ -18590,19 +18978,6 @@ function printGeneratedTimetable() {
 
                     font-weight:
                         bold;
-
-                }
-
-
-                .empty-message,
-                .empty-state,
-                .loading-message {
-
-                    padding:
-                        20px;
-
-                    text-align:
-                        center;
 
                 }
 
@@ -18634,18 +19009,11 @@ function printGeneratedTimetable() {
 
                     }
 
-
-                    .timetable-stream-block {
+                    .timetable-stream-block,
+                    .timetable-stream {
 
                         page-break-inside:
                             avoid;
-
-                    }
-
-
-                    table {
-
-                        width: 100%;
 
                     }
 
@@ -18678,7 +19046,7 @@ function printGeneratedTimetable() {
 
 
     setTimeout(
-        function () {
+        () => {
 
             printWindow.print();
 
@@ -18690,8 +19058,13 @@ function printGeneratedTimetable() {
 
 
 // ============================================================
-// EVENT — GENERATE TIMETABLE
+// PART 9 — EVENTS
 // ============================================================
+
+
+// ------------------------------------------------------------
+// GENERATE
+// ------------------------------------------------------------
 
 document.addEventListener(
     "click",
@@ -18704,46 +19077,24 @@ document.addEventListener(
 
 
         if (!button) {
+
             return;
+
         }
 
 
         event.preventDefault();
 
-        event.stopPropagation();
-
-
-        console.log(
-            "🚀 GENERATE TIMETABLE BUTTON CLICKED"
-        );
-
-
-        console.log(
-            "Generate button:",
-            button
-        );
-
-
-        console.log(
-            "School ID:",
-            timetableState.schoolId
-        );
-
 
         if (
+            !timetableState ||
             !timetableState.schoolId
         ) {
-
-            console.error(
-                "NO SCHOOL SELECTED"
-            );
-
 
             setTimetableGenerationStatus(
                 "Please select a school first.",
                 "error"
             );
-
 
             return;
 
@@ -18755,35 +19106,29 @@ document.addEventListener(
         ) {
 
             console.warn(
-                "Generation is already running."
+                "Generation already running."
             );
-
 
             return;
 
         }
 
 
+        console.log(
+            "🚀 GENERATE TIMETABLE BUTTON CLICKED"
+        );
+
+
         try {
 
-            console.log(
-                "CALLING generateTimetable()..."
-            );
-
-
             await generateTimetable();
-
-
-            console.log(
-                "generateTimetable() FINISHED"
-            );
 
         }
 
         catch (error) {
 
             console.error(
-                "GENERATE TIMETABLE CLICK ERROR:",
+                "GENERATE TIMETABLE ERROR:",
                 error
             );
 
@@ -18792,7 +19137,7 @@ document.addEventListener(
                 "Generation failed: " +
                 (
                     error.message ||
-                    error
+                    "Unknown error"
                 ),
                 "error"
             );
@@ -18804,9 +19149,9 @@ document.addEventListener(
 );
 
 
-// ============================================================
-// EVENT — REGENERATE TIMETABLE
-// ============================================================
+// ------------------------------------------------------------
+// REGENERATE
+// ------------------------------------------------------------
 
 document.addEventListener(
     "click",
@@ -18819,16 +19164,13 @@ document.addEventListener(
 
 
         if (!button) {
+
             return;
+
         }
 
 
         event.preventDefault();
-
-
-        console.log(
-            "🔄 REGENERATE TIMETABLE BUTTON CLICKED"
-        );
 
 
         try {
@@ -18850,9 +19192,9 @@ document.addEventListener(
 );
 
 
-// ============================================================
-// EVENT — CLEAR TIMETABLE
-// ============================================================
+// ------------------------------------------------------------
+// CLEAR
+// ------------------------------------------------------------
 
 document.addEventListener(
     "click",
@@ -18865,16 +19207,13 @@ document.addEventListener(
 
 
         if (!button) {
+
             return;
+
         }
 
 
         event.preventDefault();
-
-
-        console.log(
-            "🗑️ CLEAR TIMETABLE BUTTON CLICKED"
-        );
 
 
         try {
@@ -18896,9 +19235,9 @@ document.addEventListener(
 );
 
 
-// ============================================================
-// EVENT — PRINT TIMETABLE
-// ============================================================
+// ------------------------------------------------------------
+// PRINT
+// ------------------------------------------------------------
 
 document.addEventListener(
     "click",
@@ -18911,16 +19250,13 @@ document.addEventListener(
 
 
         if (!button) {
+
             return;
+
         }
 
 
         event.preventDefault();
-
-
-        console.log(
-            "🖨️ PRINT TIMETABLE BUTTON CLICKED"
-        );
 
 
         printGeneratedTimetable();
@@ -18929,9 +19265,9 @@ document.addEventListener(
 );
 
 
-// ============================================================
-// EVENT — STREAM FILTER
-// ============================================================
+// ------------------------------------------------------------
+// STREAM FILTER
+// ------------------------------------------------------------
 
 document.addEventListener(
     "change",
@@ -18948,20 +19284,15 @@ document.addEventListener(
         }
 
 
-        console.log(
-            "STREAM FILTER CHANGED"
-        );
-
-
         await loadGeneratedTimetable();
 
     }
 );
 
 
-// ============================================================
-// EVENT — DAY FILTER
-// ============================================================
+// ------------------------------------------------------------
+// DAY FILTER
+// ------------------------------------------------------------
 
 document.addEventListener(
     "change",
@@ -18978,20 +19309,15 @@ document.addEventListener(
         }
 
 
-        console.log(
-            "DAY FILTER CHANGED"
-        );
-
-
         await loadGeneratedTimetable();
 
     }
 );
 
 
-// ============================================================
-// EVENT — VIEW MODE
-// ============================================================
+// ------------------------------------------------------------
+// VIEW MODE
+// ------------------------------------------------------------
 
 document.addEventListener(
     "change",
@@ -19008,11 +19334,6 @@ document.addEventListener(
         }
 
 
-        console.log(
-            "VIEW MODE CHANGED"
-        );
-
-
         await loadGeneratedTimetable();
 
     }
@@ -19020,7 +19341,7 @@ document.addEventListener(
 
 
 // ============================================================
-// INITIALIZE TIMETABLE GENERATOR
+// PART 10 — INITIALIZATION
 // ============================================================
 
 async function initializeTimetableGenerator() {
@@ -19029,17 +19350,9 @@ async function initializeTimetableGenerator() {
         "======================================"
     );
 
-
     console.log(
         "INITIALIZING TIMETABLE GENERATOR"
     );
-
-
-    console.log(
-        "School ID:",
-        timetableState.schoolId
-    );
-
 
     console.log(
         "======================================"
@@ -19047,13 +19360,13 @@ async function initializeTimetableGenerator() {
 
 
     if (
+        !timetableState ||
         !timetableState.schoolId
     ) {
 
         console.warn(
             "No school selected. Generator initialization skipped."
         );
-
 
         return;
 
@@ -19063,21 +19376,29 @@ async function initializeTimetableGenerator() {
     try {
 
         // ----------------------------------------------------
-        // LOAD FILTER OPTIONS
+        // LOAD FILTERS
         // ----------------------------------------------------
 
         await loadTimetableFilters();
 
 
         // ----------------------------------------------------
-        // LOAD EXISTING GENERATED TIMETABLE
+        // LOAD EXISTING TIMETABLE
         // ----------------------------------------------------
 
         await loadGeneratedTimetable();
 
 
         console.log(
-            "TIMETABLE GENERATOR INITIALIZED"
+            "======================================"
+        );
+
+        console.log(
+            "✅ TIMETABLE GENERATOR INITIALIZED"
+        );
+
+        console.log(
+            "======================================"
         );
 
     }
@@ -19094,7 +19415,7 @@ async function initializeTimetableGenerator() {
             "Failed to initialize timetable generator: " +
             (
                 error.message ||
-                error
+                "Unknown error"
             ),
             "error"
         );
@@ -19105,36 +19426,29 @@ async function initializeTimetableGenerator() {
 
 
 // ============================================================
-// EXPOSE FUNCTIONS GLOBALLY
+// GLOBAL API
 // ============================================================
 
 window.generateTimetable =
     generateTimetable;
 
-
 window.regenerateTimetable =
     regenerateTimetable;
-
 
 window.clearGeneratedTimetable =
     clearGeneratedTimetable;
 
-
 window.loadGeneratedTimetable =
     loadGeneratedTimetable;
-
 
 window.renderGeneratedTimetable =
     renderGeneratedTimetable;
 
-
 window.printGeneratedTimetable =
     printGeneratedTimetable;
 
-
 window.loadTimetableFilters =
     loadTimetableFilters;
-
 
 window.initializeTimetableGenerator =
     initializeTimetableGenerator;
@@ -19148,11 +19462,9 @@ console.log(
     "======================================"
 );
 
-
 console.log(
     "✅ TIMETABLE GENERATOR READY"
 );
-
 
 console.log(
     "======================================"
