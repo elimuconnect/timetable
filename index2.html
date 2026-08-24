@@ -879,26 +879,57 @@
         <input id="requirementDoubleLessons" min="0" type="number" value="0"/>
        </div>
        <!-- MAX PER DAY -->
-       <div class="form-group">
-        <label>
-         Maximum Lessons per Day
-        </label>
-        <input id="requirementMaxPerDay" min="1" type="number" value="1"/>
-       </div>
-       <!-- ROOM REQUIRED -->
-       <div class="form-group">
-        <label>
-         Requires Special Room?
-        </label>
-        <select id="requirementRequiresRoom">
-         <option value="false">
-          No
-         </option>
-         <option value="true">
-          Yes
-         </option>
-        </select>
-       </div>
+
+<!-- MAX PER DAY -->
+<div class="form-group">
+    <label>
+        Maximum Lessons per Day
+    </label>
+
+    <input
+        id="requirementMaxPerDay"
+        min="1"
+        type="number"
+        value="1"
+    />
+</div>
+
+<!-- PARALLEL GROUP -->
+<div class="form-group">
+    <label>
+        Parallel Group
+    </label>
+
+    <input
+        id="requirementParallelGroup"
+        type="text"
+        placeholder="e.g. SCIENCE-A"
+    />
+
+    <small>
+        Use the same group name for subjects taught
+        simultaneously within the same stream.
+    </small>
+</div>
+
+<!-- ROOM REQUIRED -->
+<div class="form-group">
+    <label>
+        Requires Special Room?
+    </label>
+
+    <select id="requirementRequiresRoom">
+        <option value="false">
+            No
+        </option>
+
+        <option value="true">
+            Yes
+        </option>
+    </select>
+</div>
+
+      
        <!-- ROOM TYPE -->
        <div class="form-group">
         <label>
