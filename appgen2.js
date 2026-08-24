@@ -11842,6 +11842,11 @@ function generateSmartTimetable(
 //
 // ============================================================
 
+
+// ============================================================
+// GENERATE TIMETABLE — APPLICATION ENTRY POINT
+// ============================================================
+
 async function generateTimetable() {
 
     console.log(
@@ -11862,13 +11867,6 @@ async function generateTimetable() {
         // ====================================================
         // PREPARE GENERATOR DATA
         // ====================================================
-        //
-        // LOAD
-        // NORMALIZE
-        // VALIDATE
-        // CREATE TASKS
-        //
-        // ====================================================
 
         const generatorData =
             await prepareTimetableGeneratorData();
@@ -11884,7 +11882,7 @@ async function generateTimetable() {
 
 
         // ====================================================
-        // RUN SMART GENERATOR
+        // RUN SMART GENERATOR — STAGE 6F
         // ====================================================
 
         const result =
@@ -11893,20 +11891,70 @@ async function generateTimetable() {
             );
 
 
-const audit =
-    auditGeneratedTimetable(
-        generatorData,
-        result
-    );
+        // ====================================================
+        // RUN FINAL AUDIT — STAGE 6G
+        // ====================================================
+
+        const audit =
+            auditGeneratedTimetable(
+                generatorData,
+                result
+            );
 
 
-generatorData.generationAudit =
-    audit;
+        // ====================================================
+        // STORE AUDIT RESULT
+        // ====================================================
+
+        generatorData.generationAudit =
+            audit;
+
+        result.audit =
+            audit;
 
 
-result.audit =
-    audit;
-        
+        // ====================================================
+        // BLOCK INVALID TIMETABLE
+        // ====================================================
+
+        if (
+            !audit.valid
+        ) {
+
+            console.error(
+                "TIMETABLE GENERATION BLOCKED:",
+                "Stage 6G audit failed."
+            );
+
+
+            console.error(
+                "Audit errors:",
+                audit.errors
+            );
+
+
+            return {
+
+                ...result,
+
+                audit,
+
+                saved:
+                    false
+
+            };
+
+        }
+
+
+        // ====================================================
+        // AUDIT PASSED
+        // ====================================================
+
+        console.log(
+            "✅ 6G AUDIT PASSED"
+        );
+
 
         // ====================================================
         // STORE GENERATION RESULT
@@ -11963,7 +12011,7 @@ result.audit =
 
 
         // ====================================================
-        // RETURN RESULT
+        // RETURN VALID GENERATED TIMETABLE
         // ====================================================
 
         return result;
@@ -11984,6 +12032,7 @@ result.audit =
     }
 
 }
+
 
 
 // ============================================================
@@ -15260,8 +15309,63 @@ function auditGeneratedTimetable(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================
-// PART 5 — LOAD AND DISPLAY GENERATED TIMETABLE
+// PART 7 — LOAD AND DISPLAY GENERATED TIMETABLE
 // ============================================================
 
 // ------------------------------------------------------------
