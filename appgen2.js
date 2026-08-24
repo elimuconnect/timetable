@@ -19222,7 +19222,7 @@ function renderTimetableByRoom(
 
 
 
-```javascript
+
 // ============================================================
 // ============================================================
 // PART 7 — FILTERS, SUMMARY, CONFLICTS, CLEAR & REGENERATE
