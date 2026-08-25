@@ -401,14 +401,29 @@
          Requires Special Room
         </label>
        </div>
-       <!-- ROOM TYPE -->
-       <div class="form-group">
-        <label for="roomType">
-         Required Room Type
-        </label>
-        <input id="roomType" placeholder="e.g. Laboratory" type="text"/>
-       </div>
-      </div>
+
+
+<!-- ROOM TYPE -->
+<div class="form-group">
+    <label for="requirementRoomType">
+        Room Type
+    </label>
+
+    <select id="requirementRoomType">
+        <option value="">
+            Select room type
+        </option>
+    </select>
+
+    <small>
+        Select the type of room required for this subject.
+        The timetable generator will choose an available
+        room of this type.
+    </small>
+</div>
+
+
+       
       <!-- FORM BUTTONS -->
       <div class="form-actions">
        <button aria-label="Cancel" class="secondary-btn" id="cancelSubjectBtn" type="button">
