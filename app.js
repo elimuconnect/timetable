@@ -3819,6 +3819,80 @@ async function loadRequirementOptions() {
     }
 
 
+
+// --------------------------------------------------------
+// ROOM TYPES
+// GLOBAL — NO SCHOOL FILTER
+// --------------------------------------------------------
+
+const {
+    data: roomTypes,
+    error: roomTypesError
+} = await supabaseClient
+
+    .from("timetable_room_types")
+
+    .select(
+        "id, type_name"
+    )
+
+    .order(
+        "type_name"
+    );
+
+
+if (roomTypesError) {
+
+    console.error(
+        "Failed to load room types:",
+        roomTypesError
+    );
+
+    return false;
+}
+
+
+const roomTypeSelect =
+    document.getElementById(
+        "requirementRoomType"
+    );
+
+
+if (roomTypeSelect) {
+
+    roomTypeSelect.innerHTML = `
+        <option value="">
+            Select room type
+        </option>
+    `;
+
+
+    (roomTypes || []).forEach(
+        roomType => {
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+            option.value =
+                roomType.id;
+
+            option.textContent =
+                roomType.type_name;
+
+            roomTypeSelect.appendChild(
+                option
+            );
+
+        }
+    );
+
+}
+
+
+
+    
     // ========================================================
     // GLOBAL ROOM TYPES
     // ========================================================
@@ -4068,9 +4142,9 @@ async function saveRequirement() {
         "true";
 
 
-    const roomTypeId =
-        roomTypeElement.value.trim();
-
+    
+const roomTypeId =
+    roomTypeElement.value.trim();
 
     const parallelGroup =
         parallelGroupElement
@@ -4229,10 +4303,12 @@ async function saveRequirement() {
         requires_room:
             requiresRoom,
 
-        room_type_id:
-            requiresRoom
-                ? roomTypeId
-                : null
+       room_type_id:
+    requiresRoom
+        ? (
+            roomTypeId || null
+        )
+        : null,
 
     };
 
