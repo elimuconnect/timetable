@@ -401,29 +401,14 @@
          Requires Special Room
         </label>
        </div>
-
-
-<!-- ROOM TYPE -->
-<div class="form-group">
-    <label for="requirementRoomType">
-        Room Type
-    </label>
-
-    <select id="requirementRoomType">
-        <option value="">
-            Select room type
-        </option>
-    </select>
-
-    <small>
-        Select the type of room required for this subject.
-        The timetable generator will choose an available
-        room of this type.
-    </small>
-</div>
-
-
-       
+       <!-- ROOM TYPE -->
+       <div class="form-group">
+        <label for="roomType">
+         Required Room Type
+        </label>
+        <input id="roomType" placeholder="e.g. Laboratory" type="text"/>
+       </div>
+      </div>
       <!-- FORM BUTTONS -->
       <div class="form-actions">
        <button aria-label="Cancel" class="secondary-btn" id="cancelSubjectBtn" type="button">
@@ -1056,9 +1041,7 @@
 
 </div>
 
-
-
-<!-- REQUIREMENTS -->
+   <!-- REQUIREMENTS -->
 <div
     aria-labelledby="requirements-section-title"
     class="section"
@@ -1084,7 +1067,9 @@
     </div>
 
 
+    <!-- ===================================================== -->
     <!-- REQUIREMENT FORM -->
+    <!-- ===================================================== -->
 
     <div class="card">
 
@@ -1092,10 +1077,11 @@
             ➕ Add Subject Requirement
         </h3>
 
+
         <div class="form-grid">
 
-            <!-- STREAM -->
 
+            <!-- STREAM -->
             <div class="form-group">
 
                 <label for="requirementStream">
@@ -1114,7 +1100,6 @@
 
 
             <!-- SUBJECT -->
-
             <div class="form-group">
 
                 <label for="requirementSubject">
@@ -1133,7 +1118,6 @@
 
 
             <!-- TEACHER -->
-
             <div class="form-group">
 
                 <label for="requirementTeacher">
@@ -1152,7 +1136,6 @@
 
 
             <!-- LESSONS PER WEEK -->
-
             <div class="form-group">
 
                 <label for="requirementLessons">
@@ -1170,7 +1153,6 @@
 
 
             <!-- DOUBLE LESSONS -->
-
             <div class="form-group">
 
                 <label for="requirementDoubleLessons">
@@ -1188,7 +1170,6 @@
 
 
             <!-- MAXIMUM LESSONS PER DAY -->
-
             <div class="form-group">
 
                 <label for="requirementMaxPerDay">
@@ -1205,7 +1186,9 @@
             </div>
 
 
+            <!-- ================================================= -->
             <!-- PARALLEL GROUP -->
+            <!-- ================================================= -->
 
             <div class="form-group">
 
@@ -1227,7 +1210,9 @@
             </div>
 
 
+            <!-- ================================================= -->
             <!-- ROOM REQUIRED -->
+            <!-- ================================================= -->
 
             <div class="form-group">
 
@@ -1250,13 +1235,18 @@
             </div>
 
 
-            <!-- ROOM TYPE -->
+            <!-- ================================================= -->
+            <!-- GLOBAL ROOM TYPE -->
+            <!-- ================================================= -->
 
             <div class="form-group">
 
                 <label for="requirementRoomType">
+
                     Required Room Type
+
                 </label>
+
 
                 <select id="requirementRoomType">
 
@@ -1266,13 +1256,18 @@
 
                 </select>
 
+
                 <small>
-                    Select the required room type.
-                    The timetable generator will find
-                    an available room of this type.
+
+                    Select a room type from the global
+                    room-type list. The timetable generator
+                    will automatically find an available
+                    room of this type at the school.
+
                 </small>
 
             </div>
+
 
         </div>
 
@@ -1287,7 +1282,9 @@
                 id="saveRequirementBtn"
                 type="button"
             >
+
                 💾 Save Requirement
+
             </button>
 
         </div>
@@ -1295,13 +1292,16 @@
     </div>
 
 
+    <!-- ===================================================== -->
     <!-- EXISTING REQUIREMENTS -->
+    <!-- ===================================================== -->
 
     <div class="card">
 
         <h3>
             📚 Current Requirements
         </h3>
+
 
         <div
             aria-atomic="false"
@@ -1313,7 +1313,9 @@
                 class="empty-message"
                 role="status"
             >
+
                 Select a school to view requirements.
+
             </div>
 
         </div>
@@ -1321,10 +1323,6 @@
     </div>
 
 </div>
-
-
-
-     
     <!-- TIMETABLE -->
     <!-- ============================================================
      TIMETABLE GENERATOR
