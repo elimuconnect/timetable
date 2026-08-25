@@ -3561,6 +3561,12 @@ let editingRequirementId = null;
 // LOAD REQUIREMENT OPTIONS
 // ============================================================
 
+
+
+// ============================================================
+// LOAD REQUIREMENT OPTIONS
+// ============================================================
+
 async function loadRequirementOptions() {
 
     if (!timetableState.schoolId) {
@@ -3636,14 +3642,11 @@ async function loadRequirementOptions() {
                         "option"
                     );
 
-
                 option.value =
                     stream.id;
 
-
                 option.textContent =
                     stream.stream_name;
-
 
                 streamSelect.appendChild(
                     option
@@ -3717,14 +3720,11 @@ async function loadRequirementOptions() {
                         "option"
                     );
 
-
                 option.value =
                     subject.id;
 
-
                 option.textContent =
                     subject.subject_name;
-
 
                 subjectSelect.appendChild(
                     option
@@ -3798,16 +3798,13 @@ async function loadRequirementOptions() {
                         "option"
                     );
 
-
                 option.value =
                     teacher.id;
-
 
                 option.textContent =
                     teacher.teacher_code
                         ? `${teacher.teacher_name} (${teacher.teacher_code})`
                         : teacher.teacher_name;
-
 
                 teacherSelect.appendChild(
                     option
@@ -3819,82 +3816,10 @@ async function loadRequirementOptions() {
     }
 
 
-
-// --------------------------------------------------------
-// ROOM TYPES
-// GLOBAL — NO SCHOOL FILTER
-// --------------------------------------------------------
-
-const {
-    data: roomTypes,
-    error: roomTypesError
-} = await supabaseClient
-
-    .from("timetable_room_types")
-
-    .select(
-        "id, type_name"
-    )
-
-    .order(
-        "type_name"
-    );
-
-
-if (roomTypesError) {
-
-    console.error(
-        "Failed to load room types:",
-        roomTypesError
-    );
-
-    return false;
-}
-
-
-const roomTypeSelect =
-    document.getElementById(
-        "requirementRoomType"
-    );
-
-
-if (roomTypeSelect) {
-
-    roomTypeSelect.innerHTML = `
-        <option value="">
-            Select room type
-        </option>
-    `;
-
-
-    (roomTypes || []).forEach(
-        roomType => {
-
-            const option =
-                document.createElement(
-                    "option"
-                );
-
-            option.value =
-                roomType.id;
-
-            option.textContent =
-                roomType.type_name;
-
-            roomTypeSelect.appendChild(
-                option
-            );
-
-        }
-    );
-
-}
-
-
-
-    
     // ========================================================
     // GLOBAL ROOM TYPES
+    // IMPORTANT:
+    // NO school_id FILTER
     // ========================================================
 
     const {
@@ -3918,7 +3843,7 @@ if (roomTypeSelect) {
     if (roomTypesError) {
 
         console.error(
-            "Failed to load room types:",
+            "Failed to load global room types:",
             roomTypesError
         );
 
@@ -3950,14 +3875,11 @@ if (roomTypeSelect) {
                         "option"
                     );
 
-
                 option.value =
                     roomType.id;
 
-
                 option.textContent =
                     roomType.type_name;
-
 
                 roomTypeSelect.appendChild(
                     option
@@ -3968,6 +3890,10 @@ if (roomTypeSelect) {
 
     }
 
+
+    // ========================================================
+    // SUCCESS
+    // ========================================================
 
     return true;
 
