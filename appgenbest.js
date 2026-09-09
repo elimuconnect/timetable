@@ -17576,6 +17576,12 @@ function buildStage7PeriodCandidates(
 // BUILD STAGE 7 ROOM CANDIDATES
 // ============================================================
 
+
+
+// ============================================================
+// STAGE 7 — BUILD ROOM CANDIDATES
+// ============================================================
+
 function buildStage7RoomCandidates(
     task,
     rooms
@@ -17591,12 +17597,16 @@ function buildStage7RoomCandidates(
 
 
     // --------------------------------------------------------
-    // Subjects that do not require rooms
+    // Task does not require a room
     // --------------------------------------------------------
 
+    const requiresRoom =
+        task?.requiresRoom === true ||
+        task?.requires_room === true;
+
+
     if (
-        task.requiresRoom !== true &&
-        task.requires_room !== true
+        !requiresRoom
     ) {
 
         return [null];
@@ -17604,13 +17614,46 @@ function buildStage7RoomCandidates(
     }
 
 
+    // --------------------------------------------------------
+    // FILTER VALID ROOMS
+    // --------------------------------------------------------
+
     const validRooms =
         rooms.filter(
-            room =>
-                room &&
-                room.id
+            room => {
+
+                if (
+                    !room ||
+                    !room.id
+                ) {
+
+                    return false;
+
+                }
+
+
+                // --------------------------------------------
+                // ROOM AVAILABILITY
+                // --------------------------------------------
+
+                if (
+                    room.available === false
+                ) {
+
+                    return false;
+
+                }
+
+
+                return true;
+
+            }
         );
 
+
+    // --------------------------------------------------------
+    // NO VALID ROOMS
+    // --------------------------------------------------------
 
     if (
         validRooms.length === 0
@@ -17624,6 +17667,9 @@ function buildStage7RoomCandidates(
     return validRooms;
 
 }
+
+
+
 
 // ============================================================
 // STAGE 7 TASK PLACEMENT ADAPTER
@@ -17812,13 +17858,15 @@ function attemptStage7Relocation(
         // MOVE EXISTING TASK
         // ----------------------------------------------------
 
-        const moved =
-            moveStage7Task(
-                existingTask,
-                alternative.period,
-                alternative.room,
-                generatorData
-            );
+      const moved =
+    moveStage7Task(
+        existingTask,
+        alternative.period,
+        alternative.room,
+        generatorData,
+        alternative.oldPeriod,
+        alternative.oldRoom
+    );
 
 
         if (
@@ -17880,19 +17928,6 @@ function attemptStage7Relocation(
             };
 
         }
-
-
-        // ----------------------------------------------------
-        // FAILED TO PLACE FAILED TASK
-        // ROLLBACK
-        // ----------------------------------------------------
-
-        moveStage7Task(
-            existingTask,
-            alternative.oldPeriod,
-            alternative.oldRoom,
-            generatorData
-        );
 
     }
 
@@ -18003,23 +18038,52 @@ function findAlternativeSlotForExistingTask(
                 );
 
 
-            if (
-                conflict &&
-                conflict.valid === true
-            ) {
+           if (
+    !conflict ||
+    conflict.valid !== true
+) {
 
-                return {
+    continue;
 
-                    period,
+}
 
-                    room,
 
-                    oldPeriod,
+// --------------------------------------------------------
+// IMPORTANT:
+// Make sure the FAILED task can use the existing task's
+// original slot after the existing task moves.
+// --------------------------------------------------------
 
-                    oldRoom
+const failedTaskConflict =
+    checkSingleSlotConflict(
+        failedTask,
+        oldPeriod,
+        oldRoom,
+        indexes
+    );
 
-                };
 
+if (
+    !failedTaskConflict ||
+    failedTaskConflict.valid !== true
+) {
+
+    continue;
+
+}
+
+
+return {
+
+    period,
+
+    room,
+
+    oldPeriod,
+
+    oldRoom
+
+};
             }
 
         }
@@ -18117,16 +18181,25 @@ function findTaskRoom(
 // STAGE 7 — MOVE TASK
 // ============================================================
 
+
+
+// ============================================================
+// STAGE 7 — MOVE TASK
+// ============================================================
+
 function moveStage7Task(
     task,
     newPeriod,
     newRoom,
-    generatorData
+    generatorData,
+    rollbackPeriod = null,
+    rollbackRoom = null
 ) {
 
     if (
         !task ||
-        !newPeriod
+        !newPeriod ||
+        !generatorData
     ) {
 
         return false;
@@ -18156,7 +18229,7 @@ function moveStage7Task(
 
 
     // --------------------------------------------------------
-    // OTHERWISE USE EXISTING REMOVE + PLACE
+    // FALLBACK: REMOVE + PLACE
     // --------------------------------------------------------
 
     if (
@@ -18203,19 +18276,65 @@ function moveStage7Task(
         // ----------------------------------------------------
         // ROLLBACK
         // ----------------------------------------------------
+        //
+        // IMPORTANT:
+        //
+        // Do NOT attempt to rediscover the old slot from
+        // the task after removal.
+        //
+        // The caller already knows the original location.
+        //
+        // ----------------------------------------------------
 
-        placeTaskInSlot(
-            task,
-            findTaskPeriod(
-                task,
-                generatorData
-            ),
-            findTaskRoom(
-                task,
-                generatorData
-            ),
-            generatorData
-        );
+        if (
+            rollbackPeriod
+        ) {
+
+            const restored =
+                placeTaskInSlot(
+                    task,
+                    rollbackPeriod,
+                    rollbackRoom,
+                    generatorData
+                );
+
+
+            if (
+                !restored
+            ) {
+
+                console.error(
+                    "STAGE 7: CRITICAL — task rollback failed.",
+                    {
+                        taskId:
+                            task?.taskId ||
+                            task?.id,
+
+                        rollbackPeriod:
+                            rollbackPeriod?.id,
+
+                        rollbackRoom:
+                            rollbackRoom?.id ||
+                            null
+
+                    }
+                );
+
+            }
+
+        }
+        else {
+
+            console.error(
+                "STAGE 7: Cannot rollback task movement because original period was not supplied.",
+                {
+                    taskId:
+                        task?.taskId ||
+                        task?.id
+                }
+            );
+
+        }
 
 
         return false;
@@ -18231,12 +18350,6 @@ function moveStage7Task(
     return false;
 
 }
-
-
-
-
-
-
 
 
 
