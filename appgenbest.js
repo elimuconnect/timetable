@@ -17937,6 +17937,7 @@ function attemptStage7Relocation(
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
 // ============================================================
 
+```js
 function findAlternativeSlotForExistingTask(
     existingTask,
     failedTask,
@@ -18026,53 +18027,52 @@ function findAlternativeSlotForExistingTask(
                 );
 
 
-           if (
-    !conflict ||
-    conflict.valid !== true
-) {
+            if (
+                !conflict ||
+                conflict.valid !== true
+            ) {
 
-    continue;
+                continue;
 
-}
-
-
-// --------------------------------------------------------
-// IMPORTANT:
-// Make sure the FAILED task can use the existing task's
-// original slot after the existing task moves.
-// --------------------------------------------------------
-
-const failedTaskConflict =
-    checkSingleSlotConflict(
-        failedTask,
-        oldPeriod,
-        oldRoom,
-        indexes
-    );
-
-
-if (
-    !failedTaskConflict ||
-    failedTaskConflict.valid !== true
-) {
-
-    continue;
-
-}
-
-
-return {
-
-    period,
-
-    room,
-
-    oldPeriod,
-
-    oldRoom
-
-};
             }
+
+
+            // ------------------------------------------------
+            // IMPORTANT:
+            // Make sure the FAILED task can use the existing
+            // task's original slot after the existing task moves.
+            // ------------------------------------------------
+
+            const failedTaskConflict =
+                checkSingleSlotConflict(
+                    failedTask,
+                    oldPeriod,
+                    oldRoom,
+                    indexes
+                );
+
+
+            if (
+                !failedTaskConflict ||
+                failedTaskConflict.valid !== true
+            ) {
+
+                continue;
+
+            }
+
+
+            return {
+
+                period,
+
+                room,
+
+                oldPeriod,
+
+                oldRoom
+
+            };
 
         }
 
@@ -18082,6 +18082,7 @@ return {
     return null;
 
 }
+```
 
 // ============================================================
 // FIND CURRENT PERIOD OF TASK
