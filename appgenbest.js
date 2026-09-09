@@ -11439,7 +11439,6 @@ function placeSelectedDoubleTask(
 // This is required so failed double-lesson attempts do not
 // leave stale conflict reservations behind.
 //
-// ============================================================
 
 function releaseReservedSlot(
     task,
@@ -17937,7 +17936,7 @@ function attemptStage7Relocation(
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
 // ============================================================
 
-```js
+
 function findAlternativeSlotForExistingTask(
     existingTask,
     failedTask,
@@ -18082,7 +18081,7 @@ function findAlternativeSlotForExistingTask(
     return null;
 
 }
-```
+
 
 // ============================================================
 // FIND CURRENT PERIOD OF TASK
