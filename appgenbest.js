@@ -13603,6 +13603,23 @@ function addTimetableAuditWarning(
 // NORMALIZE GENERATED ENTRY
 // ============================================================
 
+
+
+// ============================================================
+// NORMALIZE GENERATED ENTRY
+// ============================================================
+//
+// Accepts BOTH:
+//
+//     camelCase
+//     snake_case
+//
+// This keeps Stage 6F and Stage 6G independent of whether
+// generated entries are still in generator format or have
+// already been converted to database format.
+//
+// ============================================================
+
 function normalizeGeneratedTimetableEntry(
     entry
 ) {
@@ -13621,31 +13638,37 @@ function normalizeGeneratedTimetableEntry(
 
         schoolId:
             normalizeTimetableId(
+                entry.schoolId ??
                 entry.school_id
             ),
 
         periodId:
             normalizeTimetableId(
+                entry.periodId ??
                 entry.period_id
             ),
 
         streamId:
             normalizeTimetableId(
+                entry.streamId ??
                 entry.stream_id
             ),
 
         subjectId:
             normalizeTimetableId(
+                entry.subjectId ??
                 entry.subject_id
             ),
 
         teacherId:
             normalizeTimetableId(
+                entry.teacherId ??
                 entry.teacher_id
             ),
 
         roomId:
             normalizeTimetableId(
+                entry.roomId ??
                 entry.room_id
             ),
 
@@ -13658,6 +13681,8 @@ function normalizeGeneratedTimetableEntry(
     };
 
 }
+
+
 // ============================================================
 // BUILD AUDIT LOOKUPS
 // ============================================================
@@ -15430,13 +15455,14 @@ function auditDoubleLessonStructure(
 
 
             const key =
-                [
-                    normalized.periodId,
-                    normalized.streamId,
-                    normalized.subjectId,
-                    normalized.teacherId || "",
-                    normalized.roomId || ""
-                ].join("__");
+    [
+        normalized.requirementId || "",
+        normalized.periodId,
+        normalized.streamId,
+        normalized.subjectId,
+        normalized.teacherId || "",
+        normalized.roomId || ""
+    ].join("__");
 
 
             masterEntryKeys.add(
@@ -15543,25 +15569,32 @@ function auditDoubleLessonStructure(
             // BOTH ENTRIES MUST EXIST IN MASTER RESULT
             // ------------------------------------------------
 
-            const firstKey =
-                [
-                    first.periodId,
-                    first.streamId,
-                    first.subjectId,
-                    first.teacherId || "",
-                    first.roomId || ""
-                ].join("__");
+
+const firstKey =
+    [
+        first.requirementId || "",
+        first.periodId,
+        first.streamId,
+        first.subjectId,
+        first.teacherId || "",
+        first.roomId || ""
+    ].join("__");
 
 
-            const secondKey =
-                [
-                    second.periodId,
-                    second.streamId,
-                    second.subjectId,
-                    second.teacherId || "",
-                    second.roomId || ""
-                ].join("__");
+const secondKey =
+    [
+        second.requirementId || "",
+        second.periodId,
+        second.streamId,
+        second.subjectId,
+        second.teacherId || "",
+        second.roomId || ""
+    ].join("__");
 
+
+
+
+            
 
             if (
                 !masterEntryKeys.has(
