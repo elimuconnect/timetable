@@ -18736,6 +18736,7 @@ function buildStage7RoomCandidates(
 // STAGE 7 TASK PLACEMENT ADAPTER
 // ============================================================
 
+```javascript
 function placeStage7Task(
     task,
     period,
@@ -18806,10 +18807,6 @@ function placeStage7Task(
 // STAGE 7 — RELOCATION
 // ============================================================
 
-// ============================================================
-// STAGE 7 — RELOCATION
-// ============================================================
-
 function attemptStage7Relocation(
     failedTask,
     candidatePeriods,
@@ -18827,6 +18824,9 @@ function attemptStage7Relocation(
 
             repaired:
                 false,
+
+            entries:
+                [],
 
             moved:
                 []
@@ -18850,6 +18850,9 @@ function attemptStage7Relocation(
 
             repaired:
                 false,
+
+            entries:
+                [],
 
             moved:
                 []
@@ -18958,103 +18961,217 @@ function attemptStage7Relocation(
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // TRY FAILED TASK IN FREED ORIGINAL SLOT
-        // ----------------------------------------------------
+        // ====================================================
         //
         // IMPORTANT:
         //
-        // The original slot must still be validated after the
-        // existing task has moved because the indexes have now
-        // changed.
+        // The existing task has now been removed from its
+        // original slot.
         //
-        // ----------------------------------------------------
+        // Therefore the occupancy indexes should now reflect
+        // the freed period/room.
+        //
+        // ====================================================
 
-        const failedTaskConflict =
-            checkSingleSlotConflict(
+        const failedTaskRoomCandidates =
+            buildStage7RoomCandidates(
                 failedTask,
-                alternative.oldPeriod,
-                alternative.oldRoom,
-                generatorData.indexes
+                rooms
             );
 
 
         if (
-            !failedTaskConflict ||
-            failedTaskConflict.valid !== true
+            !Array.isArray(
+                failedTaskRoomCandidates
+            ) ||
+            failedTaskRoomCandidates.length === 0
         ) {
 
             // ------------------------------------------------
-            // FAILED TASK CANNOT USE FREED SLOT
+            // FAILED TASK HAS NO VALID ROOM OPTION.
             //
-            // Restore the existing task immediately.
+            // Restore the existing task before continuing.
             // ------------------------------------------------
 
-            moveStage7Task(
-                existingTask,
-                alternative.oldPeriod,
-                alternative.oldRoom,
-                generatorData,
-                alternative.period,
-                alternative.room
-            );
+            const restored =
+                moveStage7Task(
+                    existingTask,
+                    alternative.oldPeriod,
+                    alternative.oldRoom,
+                    generatorData,
+                    alternative.period,
+                    alternative.room
+                );
+
+
+            if (
+                !restored
+            ) {
+
+                console.error(
+                    "STAGE 7: CRITICAL — failed to restore existing task after room candidate failure.",
+                    {
+                        taskId:
+                            existingTask?.taskId ||
+                            existingTask?.id
+                    }
+                );
+
+                return {
+
+                    repaired:
+                        false,
+
+                    entries:
+                        [],
+
+                    moved:
+                        []
+
+                };
+
+            }
+
 
             continue;
 
         }
 
 
-        const placed =
-            placeStage7Task(
-                failedTask,
-                alternative.oldPeriod,
-                alternative.oldRoom,
-                generatorData
-            );
+        let failedTaskPlaced =
+            false;
 
+
+        let selectedFailedRoom =
+            null;
+
+
+        // ----------------------------------------------------
+        // TEST THE FREED ORIGINAL SLOT
+        // ----------------------------------------------------
+
+        for (
+            const failedRoom of failedTaskRoomCandidates
+        ) {
+
+            const failedTaskConflict =
+                checkSingleSlotConflict(
+                    failedTask,
+                    alternative.oldPeriod,
+                    failedRoom,
+                    generatorData.indexes
+                );
+
+
+            if (
+                !failedTaskConflict ||
+                failedTaskConflict.valid !== true
+            ) {
+
+                continue;
+
+            }
+
+
+            // ------------------------------------------------
+            // THE FAILED TASK CAN USE THE FREED SLOT.
+            // ------------------------------------------------
+
+            const placed =
+                placeStage7Task(
+                    failedTask,
+                    alternative.oldPeriod,
+                    failedRoom,
+                    generatorData
+                );
+
+
+            if (
+                placed
+            ) {
+
+                failedTaskPlaced =
+                    true;
+
+                selectedFailedRoom =
+                    failedRoom;
+
+                break;
+
+            }
+
+        }
+
+
+        // ====================================================
+        // SUCCESS
+        // ====================================================
 
         if (
-            placed
+            failedTaskPlaced
         ) {
+
+            const repairedEntry =
+                createGeneratedEntry(
+                    failedTask,
+                    alternative.oldPeriod,
+                    selectedFailedRoom
+                );
+
+
+            const movedRecord = {
+
+                task:
+                    existingTask,
+
+                from:
+                    {
+                        period:
+                            alternative.oldPeriod,
+
+                        room:
+                            alternative.oldRoom
+                    },
+
+                to:
+                    {
+                        period:
+                            alternative.period,
+
+                        room:
+                            alternative.room
+                    }
+
+            };
+
 
             return {
 
                 repaired:
                     true,
 
-                moved: [
-                    {
-                        task:
-                            existingTask,
+                entries:
+                    repairedEntry
+                        ? [
+                            repairedEntry
+                        ]
+                        : [],
 
-                        from:
-                            {
-                                period:
-                                    alternative.oldPeriod,
-
-                                room:
-                                    alternative.oldRoom
-                            },
-
-                        to:
-                            {
-                                period:
-                                    alternative.period,
-
-                                room:
-                                    alternative.room
-                            }
-                    }
-                ]
+                moved:
+                    [
+                        movedRecord
+                    ]
 
             };
 
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // CRITICAL ROLLBACK
-        // ----------------------------------------------------
+        // ====================================================
         //
         // The existing task was moved successfully, but the
         // failed task could not use the freed slot.
@@ -19062,7 +19179,7 @@ function attemptStage7Relocation(
         // Restore the existing task before trying another
         // relocation candidate.
         //
-        // ----------------------------------------------------
+        // ====================================================
 
         const restored =
             moveStage7Task(
@@ -19107,6 +19224,9 @@ function attemptStage7Relocation(
                 repaired:
                     false,
 
+                entries:
+                    [],
+
                 moved:
                     []
 
@@ -19122,6 +19242,9 @@ function attemptStage7Relocation(
         repaired:
             false,
 
+        entries:
+            [],
+
         moved:
             []
 
@@ -19129,9 +19252,6 @@ function attemptStage7Relocation(
 
 }
 
-// ============================================================
-// FIND ALTERNATIVE SLOT FOR EXISTING TASK
-// ============================================================
 
 // ============================================================
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
@@ -19204,15 +19324,35 @@ function findAlternativeSlotForExistingTask(
         );
 
 
+    if (
+        !Array.isArray(
+            existingTaskRooms
+        ) ||
+        existingTaskRooms.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
     // ========================================================
     // BUILD ROOMS FOR FAILED TASK
     // ========================================================
-
-    const failedTaskRooms =
-        buildStage7RoomCandidates(
-            failedTask,
-            rooms
-        );
+    //
+    // IMPORTANT:
+    //
+    // We intentionally DO NOT check the failed task here.
+    //
+    // The existing task is still occupying oldPeriod/oldRoom
+    // at this stage, so checking the failed task now can
+    // incorrectly reject a relocation that becomes valid once
+    // the existing task is moved.
+    //
+    // The definitive failed-task check happens inside
+    // attemptStage7Relocation() after the move.
+    //
+    // ========================================================
 
 
     for (
@@ -19261,76 +19401,22 @@ function findAlternativeSlotForExistingTask(
 
 
             // ------------------------------------------------
-            // CHECK WHETHER FAILED TASK CAN USE THE
-            // EXISTING TASK'S ORIGINAL PERIOD
+            // A VALID NEW LOCATION HAS BEEN FOUND.
             //
-            // Room compatibility must also be checked.
+            // Do not check the failed task yet.
             // ------------------------------------------------
 
-            for (
-                const failedRoom of failedTaskRooms
-            ) {
+            return {
 
-                const sameRoomAsOriginal =
-                    (
-                        oldRoom?.id &&
-                        failedRoom?.id &&
-                        String(
-                            oldRoom.id
-                        ) ===
-                        String(
-                            failedRoom.id
-                        )
-                    );
+                period,
 
+                room,
 
-                const noRoomRequired =
-                    !oldRoom &&
-                    !failedRoom;
+                oldPeriod,
 
+                oldRoom
 
-                if (
-                    !sameRoomAsOriginal &&
-                    !noRoomRequired
-                ) {
-
-                    continue;
-
-                }
-
-
-                const failedTaskConflict =
-                    checkSingleSlotConflict(
-                        failedTask,
-                        oldPeriod,
-                        failedRoom,
-                        indexes
-                    );
-
-
-                if (
-                    !failedTaskConflict ||
-                    failedTaskConflict.valid !== true
-                ) {
-
-                    continue;
-
-                }
-
-
-                return {
-
-                    period,
-
-                    room,
-
-                    oldPeriod,
-
-                    oldRoom
-
-                };
-
-            }
+            };
 
         }
 
@@ -19351,10 +19437,59 @@ function findTaskPeriod(
     generatorData
 ) {
 
+    if (
+        !task ||
+        !generatorData
+    ) {
+
+        return null;
+
+    }
+
+
     const periods =
         generatorData.periods ||
         [];
 
+
+    // --------------------------------------------------------
+    // PERIOD IDS ARRAY
+    // --------------------------------------------------------
+
+    if (
+        Array.isArray(
+            task.periodIds
+        ) &&
+        task.periodIds.length > 0 &&
+        task.periodIds[0]
+    ) {
+
+        const periodId =
+            task.periodIds[0];
+
+
+        const period =
+            periods.find(
+                candidate =>
+                    String(candidate.id) ===
+                    String(periodId)
+            );
+
+
+        if (
+            period
+        ) {
+
+            return period;
+
+        }
+
+    }
+
+
+    // --------------------------------------------------------
+    // SINGLE PERIOD ID
+    // --------------------------------------------------------
 
     if (
         task.periodId
@@ -19368,6 +19503,10 @@ function findTaskPeriod(
 
     }
 
+
+    // --------------------------------------------------------
+    // SNAKE_CASE PERIOD ID
+    // --------------------------------------------------------
 
     if (
         task.period_id
@@ -19395,6 +19534,16 @@ function findTaskRoom(
     task,
     generatorData
 ) {
+
+    if (
+        !task ||
+        !generatorData
+    ) {
+
+        return null;
+
+    }
+
 
     const rooms =
         generatorData.rooms ||
@@ -19424,15 +19573,6 @@ function findTaskRoom(
 
 }
 
-// ============================================================
-// STAGE 7 — MOVE TASK
-// ============================================================
-
-
-
-// ============================================================
-// STAGE 7 — MOVE TASK
-// ============================================================
 
 // ============================================================
 // STAGE 7 — MOVE TASK
@@ -19591,7 +19731,7 @@ function moveStage7Task(
     return false;
 
 }
-
+```
 
 
 
