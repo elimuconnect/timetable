@@ -18501,6 +18501,10 @@ function placeStage7Task(
 // STAGE 7 — RELOCATION
 // ============================================================
 
+// ============================================================
+// STAGE 7 — RELOCATION
+// ============================================================
+
 function attemptStage7Relocation(
     failedTask,
     candidatePeriods,
@@ -18510,7 +18514,8 @@ function attemptStage7Relocation(
 
     if (
         !failedTask ||
-        !Array.isArray(candidatePeriods)
+        !Array.isArray(candidatePeriods) ||
+        !generatorData
     ) {
 
         return {
@@ -18570,12 +18575,26 @@ function attemptStage7Relocation(
         }
 
 
+        if (
+            !existingTask
+        ) {
+
+            continue;
+
+        }
+
+
         // ----------------------------------------------------
-        // NEVER MOVE A DOUBLE LESSON IN THIS PASS
+        // NEVER MOVE DOUBLE LESSONS IN THIS PASS
         // ----------------------------------------------------
 
+        const existingTaskType =
+            existingTask.taskType ||
+            existingTask.type;
+
+
         if (
-            existingTask.type === "double" ||
+            existingTaskType === "double" ||
             existingTask.isDouble === true
         ) {
 
@@ -18588,7 +18607,7 @@ function attemptStage7Relocation(
 
 
         // ----------------------------------------------------
-        // FIND A NEW LOCATION FOR EXISTING TASK
+        // FIND A SAFE NEW LOCATION
         // ----------------------------------------------------
 
         const alternative =
@@ -18614,15 +18633,15 @@ function attemptStage7Relocation(
         // MOVE EXISTING TASK
         // ----------------------------------------------------
 
-      const moved =
-    moveStage7Task(
-        existingTask,
-        alternative.period,
-        alternative.room,
-        generatorData,
-        alternative.oldPeriod,
-        alternative.oldRoom
-    );
+        const moved =
+            moveStage7Task(
+                existingTask,
+                alternative.period,
+                alternative.room,
+                generatorData,
+                alternative.oldPeriod,
+                alternative.oldRoom
+            );
 
 
         if (
@@ -18635,8 +18654,50 @@ function attemptStage7Relocation(
 
 
         // ----------------------------------------------------
-        // NOW TRY FAILED TASK
+        // TRY FAILED TASK IN FREED ORIGINAL SLOT
         // ----------------------------------------------------
+        //
+        // IMPORTANT:
+        //
+        // The original slot must still be validated after the
+        // existing task has moved because the indexes have now
+        // changed.
+        //
+        // ----------------------------------------------------
+
+        const failedTaskConflict =
+            checkSingleSlotConflict(
+                failedTask,
+                alternative.oldPeriod,
+                alternative.oldRoom,
+                generatorData.indexes
+            );
+
+
+        if (
+            !failedTaskConflict ||
+            failedTaskConflict.valid !== true
+        ) {
+
+            // ------------------------------------------------
+            // FAILED TASK CANNOT USE FREED SLOT
+            //
+            // Restore the existing task immediately.
+            // ------------------------------------------------
+
+            moveStage7Task(
+                existingTask,
+                alternative.oldPeriod,
+                alternative.oldRoom,
+                generatorData,
+                alternative.period,
+                alternative.room
+            );
+
+            continue;
+
+        }
+
 
         const placed =
             placeStage7Task(
@@ -18685,6 +18746,69 @@ function attemptStage7Relocation(
 
         }
 
+
+        // ----------------------------------------------------
+        // CRITICAL ROLLBACK
+        // ----------------------------------------------------
+        //
+        // The existing task was moved successfully, but the
+        // failed task could not use the freed slot.
+        //
+        // Restore the existing task before trying another
+        // relocation candidate.
+        //
+        // ----------------------------------------------------
+
+        const restored =
+            moveStage7Task(
+                existingTask,
+                alternative.oldPeriod,
+                alternative.oldRoom,
+                generatorData,
+                alternative.period,
+                alternative.room
+            );
+
+
+        if (
+            !restored
+        ) {
+
+            console.error(
+                "STAGE 7: CRITICAL — failed to restore existing task after relocation failure.",
+                {
+                    taskId:
+                        existingTask?.taskId ||
+                        existingTask?.id,
+
+                    originalPeriod:
+                        alternative.oldPeriod?.id,
+
+                    originalRoom:
+                        alternative.oldRoom?.id ||
+                        null,
+
+                    attemptedPeriod:
+                        alternative.period?.id,
+
+                    attemptedRoom:
+                        alternative.room?.id ||
+                        null
+                }
+            );
+
+            return {
+
+                repaired:
+                    false,
+
+                moved:
+                    []
+
+            };
+
+        }
+
     }
 
 
@@ -18700,11 +18824,13 @@ function attemptStage7Relocation(
 
 }
 
-
 // ============================================================
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
 // ============================================================
 
+// ============================================================
+// FIND ALTERNATIVE SLOT FOR EXISTING TASK
+// ============================================================
 
 function findAlternativeSlotForExistingTask(
     existingTask,
@@ -18716,7 +18842,9 @@ function findAlternativeSlotForExistingTask(
 
     if (
         !existingTask ||
-        !failedTask
+        !failedTask ||
+        !Array.isArray(candidatePeriods) ||
+        !generatorData
     ) {
 
         return null;
@@ -18760,11 +18888,36 @@ function findAlternativeSlotForExistingTask(
     }
 
 
+    // ========================================================
+    // BUILD ROOMS FOR EXISTING TASK
+    // ========================================================
+
+    const existingTaskRooms =
+        buildStage7RoomCandidates(
+            existingTask,
+            rooms
+        );
+
+
+    // ========================================================
+    // BUILD ROOMS FOR FAILED TASK
+    // ========================================================
+
+    const failedTaskRooms =
+        buildStage7RoomCandidates(
+            failedTask,
+            rooms
+        );
+
+
     for (
         const period of candidatePeriods
     ) {
 
-        // Do not return the same slot.
+        // ----------------------------------------------------
+        // DO NOT RETURN THE SAME PERIOD
+        // ----------------------------------------------------
+
         if (
             String(period.id) ===
             String(oldPeriod.id)
@@ -18775,18 +18928,15 @@ function findAlternativeSlotForExistingTask(
         }
 
 
-        const candidateRooms =
-            buildStage7RoomCandidates(
-                existingTask,
-                rooms
-            );
-
-
         for (
-            const room of candidateRooms
+            const room of existingTaskRooms
         ) {
 
-            const conflict =
+            // ------------------------------------------------
+            // CHECK EXISTING TASK AT NEW LOCATION
+            // ------------------------------------------------
+
+            const existingTaskConflict =
                 checkSingleSlotConflict(
                     existingTask,
                     period,
@@ -18796,8 +18946,8 @@ function findAlternativeSlotForExistingTask(
 
 
             if (
-                !conflict ||
-                conflict.valid !== true
+                !existingTaskConflict ||
+                existingTaskConflict.valid !== true
             ) {
 
                 continue;
@@ -18806,41 +18956,76 @@ function findAlternativeSlotForExistingTask(
 
 
             // ------------------------------------------------
-            // IMPORTANT:
-            // Make sure the FAILED task can use the existing
-            // task's original slot after the existing task moves.
+            // CHECK WHETHER FAILED TASK CAN USE THE
+            // EXISTING TASK'S ORIGINAL PERIOD
+            //
+            // Room compatibility must also be checked.
             // ------------------------------------------------
 
-            const failedTaskConflict =
-                checkSingleSlotConflict(
-                    failedTask,
+            for (
+                const failedRoom of failedTaskRooms
+            ) {
+
+                const sameRoomAsOriginal =
+                    (
+                        oldRoom?.id &&
+                        failedRoom?.id &&
+                        String(
+                            oldRoom.id
+                        ) ===
+                        String(
+                            failedRoom.id
+                        )
+                    );
+
+
+                const noRoomRequired =
+                    !oldRoom &&
+                    !failedRoom;
+
+
+                if (
+                    !sameRoomAsOriginal &&
+                    !noRoomRequired
+                ) {
+
+                    continue;
+
+                }
+
+
+                const failedTaskConflict =
+                    checkSingleSlotConflict(
+                        failedTask,
+                        oldPeriod,
+                        failedRoom,
+                        indexes
+                    );
+
+
+                if (
+                    !failedTaskConflict ||
+                    failedTaskConflict.valid !== true
+                ) {
+
+                    continue;
+
+                }
+
+
+                return {
+
+                    period,
+
+                    room,
+
                     oldPeriod,
-                    oldRoom,
-                    indexes
-                );
 
+                    oldRoom
 
-            if (
-                !failedTaskConflict ||
-                failedTaskConflict.valid !== true
-            ) {
-
-                continue;
+                };
 
             }
-
-
-            return {
-
-                period,
-
-                room,
-
-                oldPeriod,
-
-                oldRoom
-
-            };
 
         }
 
@@ -18944,6 +19129,10 @@ function findTaskRoom(
 // STAGE 7 — MOVE TASK
 // ============================================================
 
+// ============================================================
+// STAGE 7 — MOVE TASK
+// ============================================================
+
 function moveStage7Task(
     task,
     newPeriod,
@@ -19030,18 +19219,9 @@ function moveStage7Task(
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // ROLLBACK
-        // ----------------------------------------------------
-        //
-        // IMPORTANT:
-        //
-        // Do NOT attempt to rediscover the old slot from
-        // the task after removal.
-        //
-        // The caller already knows the original location.
-        //
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             rollbackPeriod
@@ -19073,7 +19253,6 @@ function moveStage7Task(
                         rollbackRoom:
                             rollbackRoom?.id ||
                             null
-
                     }
                 );
 
@@ -19107,8 +19286,6 @@ function moveStage7Task(
     return false;
 
 }
-
-
 
 
 
