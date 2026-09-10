@@ -18649,86 +18649,152 @@ function buildStage7RoomCandidates(
 ) {
 
     if (
-        !Array.isArray(rooms)
+        !task
     ) {
 
-        return [null];
+        return [];
 
     }
 
 
-    // --------------------------------------------------------
-    // Task does not require a room
-    // --------------------------------------------------------
+    // ========================================================
+    // DETERMINE WHETHER A ROOM IS REQUIRED
+    // ========================================================
 
     const requiresRoom =
-        task?.requiresRoom === true ||
-        task?.requires_room === true;
+        task.requiresRoom === true ||
+        task.requires_room === true;
 
+
+    // ========================================================
+    // SUBJECTS / LESSONS THAT DO NOT REQUIRE ROOMS
+    // ========================================================
+    //
+    // A roomless task must use null.
+    //
+    // This does NOT mean "try every room".
+    //
+    // ========================================================
 
     if (
         !requiresRoom
     ) {
 
-        return [null];
+        return [
+            null
+        ];
 
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
+    // ROOM IS REQUIRED
+    // ========================================================
+    //
+    // A room-required task cannot be placed without a room.
+    //
+    // Therefore:
+    //
+    //     invalid room list -> []
+    //     no compatible room -> []
+    //
+    // Never return [null] here.
+    //
+    // ========================================================
+
+    if (
+        !Array.isArray(rooms) ||
+        rooms.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
     // FILTER VALID ROOMS
-    // --------------------------------------------------------
+    // ========================================================
 
     const validRooms =
         rooms.filter(
-            room => {
-
-                if (
-                    !room ||
-                    !room.id
-                ) {
-
-                    return false;
-
-                }
-
-
-                // --------------------------------------------
-                // ROOM AVAILABILITY
-                // --------------------------------------------
-
-                if (
-                    room.available === false
-                ) {
-
-                    return false;
-
-                }
-
-
-                return true;
-
-            }
+            room =>
+                room &&
+                room.id
         );
 
-
-    // --------------------------------------------------------
-    // NO VALID ROOMS
-    // --------------------------------------------------------
 
     if (
         validRooms.length === 0
     ) {
 
-        return [null];
+        return [];
 
     }
 
 
+    // ========================================================
+    // ROOM TYPE / REQUIREMENT MATCHING
+    // ========================================================
+    //
+    // Stage 7 must respect the same room requirements used by
+    // the normal timetable generator.
+    //
+    // Only apply filtering when the task actually specifies
+    // a room-type requirement.
+    //
+    // ========================================================
+
+    const requiredRoomType =
+        task.roomTypeId ||
+        task.room_type_id ||
+        task.requiredRoomTypeId ||
+        task.required_room_type_id ||
+        null;
+
+
+    if (
+        requiredRoomType
+    ) {
+
+        const compatibleRooms =
+            validRooms.filter(
+                room => {
+
+                    const roomTypeId =
+                        room.roomTypeId ||
+                        room.room_type_id ||
+                        room.typeId ||
+                        room.type_id ||
+                        null;
+
+
+                    return (
+                        roomTypeId &&
+                        String(roomTypeId) ===
+                        String(requiredRoomType)
+                    );
+
+                }
+            );
+
+
+        return compatibleRooms;
+
+    }
+
+
+    // ========================================================
+    // NO SPECIFIC ROOM TYPE
+    // ========================================================
+    //
+    // Any valid room may be used.
+    //
+    // ========================================================
+
     return validRooms;
 
 }
-
 
 
 
