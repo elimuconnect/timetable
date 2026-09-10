@@ -18614,26 +18614,6 @@ function repairSingleFailedTask(
 }
 
 
-
-
-
-        
-        return {
-
-            repaired:
-                false,
-
-            entries:
-                [],
-
-            moved:
-                []
-
-        };
-
-    }
-
-
     // ========================================================
     // BUILD PERIOD CANDIDATES
     // ========================================================
