@@ -17974,6 +17974,45 @@ function runStage7Repair(
     }
 
 
+    // ========================================================
+    // IMPORTANT:
+    // STAGE 7 RELOCATION NEEDS THE ACTUAL STAGE 6
+    // PLACED-TASK LIST.
+    //
+    // runStage7Repair() already receives placedTasks as an
+    // argument, so make that list available through
+    // generatorData.
+    //
+    // Previously attemptStage7Relocation() looked for:
+    //
+    //     generatorData.placedTasks
+    //
+    // but runStage7Repair() never populated it.
+    //
+    // This caused relocation to silently stop whenever a
+    // direct empty-slot repair was not possible.
+    //
+    // ========================================================
+
+    generatorData.placedTasks =
+        Array.isArray(
+            placedTasks
+        )
+            ? placedTasks
+            : [];
+
+
+    console.log(
+        "STAGE 7: Failed tasks:",
+        failedTasks.length
+    );
+
+    console.log(
+        "STAGE 7: Existing placed tasks available for relocation:",
+        generatorData.placedTasks.length
+    );
+
+
     const repaired = [];
 
     const entries = [];
@@ -18187,16 +18226,24 @@ function runStage7Repair(
 }
 
 
+    const periods =
+        generatorData.periods ||
+        [];
 
 
-// ============================================================
-// REPAIR ONE FAILED TASK
-// ============================================================
+    const rooms =
+        generatorData.rooms ||
+        [];
 
 
-// ============================================================
-// REPAIR ONE FAILED TASK
-// ============================================================
+    const indexes =
+        generatorData.indexes;
+
+
+    if (
+        !indexes
+    ) {
+
 
 
 function repairSingleFailedTask(
@@ -18226,6 +18273,16 @@ function repairSingleFailedTask(
 
 
     // ========================================================
+    // NORMALIZE TASK TYPE
+    // ========================================================
+
+    const taskType =
+        task.taskType ||
+        task.type ||
+        null;
+
+
+    // ========================================================
     // DOUBLE LESSONS
     // ========================================================
     //
@@ -18240,7 +18297,10 @@ function repairSingleFailedTask(
     // ========================================================
 
     if (
-        task.taskType === "double" &&
+        (
+            taskType === "double" ||
+            task.isDouble === true
+        ) &&
         !STAGE7_CONFIG.allowMovingDoubleLessons
     ) {
 
@@ -18284,6 +18344,280 @@ function repairSingleFailedTask(
         !indexes
     ) {
 
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    // ========================================================
+    // BUILD PERIOD CANDIDATES
+    // ========================================================
+
+    const candidatePeriods =
+        buildStage7PeriodCandidates(
+            task,
+            periods
+        );
+
+
+    if (
+        candidatePeriods.length === 0
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    let attempts = 0;
+
+
+    // ========================================================
+    // TRY EMPTY / VALID SINGLE SLOTS FIRST
+    // ========================================================
+    //
+    // This path is intentionally for single lessons.
+    //
+    // Double lessons are handled separately above.
+    //
+    // ========================================================
+
+    if (
+        taskType !== "double" &&
+        task.isDouble !== true
+    ) {
+
+        const candidateRooms =
+            buildStage7RoomCandidates(
+                task,
+                rooms
+            );
+
+
+        for (
+            const period of candidatePeriods
+        ) {
+
+            if (
+                attempts >=
+                STAGE7_CONFIG.maxCandidatesPerTask
+            ) {
+
+                break;
+
+            }
+
+
+            for (
+                const room of candidateRooms
+            ) {
+
+                if (
+                    attempts >=
+                    STAGE7_CONFIG.maxCandidatesPerTask
+                ) {
+
+                    break;
+
+                }
+
+
+                attempts++;
+
+
+                const conflict =
+                    checkSingleSlotConflict(
+                        task,
+                        period,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    conflict &&
+                    conflict.valid === true
+                ) {
+
+                    const placed =
+                        placeStage7Task(
+                            task,
+                            period,
+                            room,
+                            generatorData
+                        );
+
+
+                    if (
+                        placed
+                    ) {
+
+                        const repairedEntries = [];
+
+
+                        // ------------------------------------------------
+                        // Recover the period assigned by the placement
+                        // ------------------------------------------------
+
+                        const repairedPeriodId =
+                            task.periodIds?.[0] ||
+                            task.periodId ||
+                            task.period_id ||
+                            period.id;
+
+
+                        const repairedPeriod =
+                            periods.find(
+                                candidate =>
+                                    candidate &&
+                                    candidate.id ===
+                                    repairedPeriodId
+                            ) ||
+                            period;
+
+
+                        if (
+                            repairedPeriod
+                        ) {
+
+                            const repairedEntry =
+                                createGeneratedEntry(
+                                    task,
+                                    repairedPeriod,
+                                    room
+                                );
+
+
+                            if (
+                                repairedEntry
+                            ) {
+
+                                repairedEntries.push(
+                                    repairedEntry
+                                );
+
+                            }
+
+                        }
+
+
+                        return {
+
+                            repaired:
+                                true,
+
+                            entries:
+                                repairedEntries,
+
+                            moved:
+                                []
+
+                        };
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NO DIRECT SLOT
+    // TRY MOVING AN EXISTING SINGLE LESSON
+    // ========================================================
+
+    if (
+        taskType !== "double" &&
+        task.isDouble !== true &&
+        STAGE7_CONFIG.allowMovingSingleLessons
+    ) {
+
+        const moveResult =
+            attemptStage7Relocation(
+                task,
+                candidatePeriods,
+                rooms,
+                generatorData
+            );
+
+
+        if (
+            moveResult &&
+            moveResult.repaired
+        ) {
+
+            return {
+
+                repaired:
+                    true,
+
+                entries:
+                    Array.isArray(
+                        moveResult.entries
+                    )
+                        ? moveResult.entries
+                        : [],
+
+                moved:
+                    Array.isArray(
+                        moveResult.moved
+                    )
+                        ? moveResult.moved
+                        : []
+
+            };
+
+        }
+
+    }
+
+
+    return {
+
+        repaired:
+            false,
+
+        entries:
+            [],
+
+        moved:
+            []
+
+    };
+
+}
+
+
+
+
+
+        
         return {
 
             repaired:
