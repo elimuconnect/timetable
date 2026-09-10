@@ -11846,317 +11846,352 @@ function placeSelectedDoubleTask(
 
 
 function releaseReservedSlot(
-task,
-period,
-room,
-indexes
+    task,
+    period,
+    room,
+    indexes
 ) {
 
+    if (
+        !task ||
+        !period ||
+        !indexes
+    ) {
 
-if (
-    !task ||
-    !period ||
-    !indexes
-) {
+        return false;
 
-    return false;
-
-}
-
-
-const streamId =
-    normalizeTimetableId(
-        task.streamId
-    );
+    }
 
 
-const periodId =
-    normalizeTimetableId(
-        period.id
-    );
-
-
-// ========================================================
-// STREAM
-// ========================================================
-//
-// Keep this legacy index because other generator code may
-// still reference it.
-//
-// Actual student conflict detection is handled through
-// studentGroupPeriod.
-//
-// ========================================================
-
-if (
-    indexes.streamPeriod
-) {
-
-    indexes.streamPeriod.delete(
-        `${streamId}__${periodId}`
-    );
-
-}
-
-
-// ========================================================
-// STUDENT GROUPS
-// ========================================================
-
-if (
-    indexes.studentGroupPeriod
-) {
-
-    const studentGroups =
-        getTaskStudentGroups(
-            task
+    const streamId =
+        normalizeTimetableId(
+            task.streamId
         );
 
 
-    studentGroups.forEach(
-        groupId => {
+    const periodId =
+        normalizeTimetableId(
+            period.id
+        );
 
-            const normalizedGroupId =
+
+    // ========================================================
+    // REQUIRED PERIOD ID
+    // ========================================================
+
+    if (
+        !periodId
+    ) {
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // STREAM
+    // ========================================================
+    //
+    // Keep this legacy index because other generator code may
+    // still reference it.
+    //
+    // Actual student conflict detection is handled through
+    // studentGroupPeriod.
+    //
+    // ========================================================
+
+    if (
+        streamId &&
+        indexes.streamPeriod
+    ) {
+
+        indexes.streamPeriod.delete(
+            `${streamId}__${periodId}`
+        );
+
+    }
+
+
+    // ========================================================
+    // STUDENT GROUPS
+    // ========================================================
+
+    if (
+        indexes.studentGroupPeriod
+    ) {
+
+        const studentGroups =
+            getTaskStudentGroups(
+                task
+            );
+
+
+        studentGroups.forEach(
+            groupId => {
+
+                const normalizedGroupId =
+                    normalizeTimetableId(
+                        groupId
+                    );
+
+
+                if (
+                    normalizedGroupId
+                ) {
+
+                    indexes.studentGroupPeriod.delete(
+                        `${normalizedGroupId}__${periodId}`
+                    );
+
+                }
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // TEACHER
+    // ========================================================
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId
+        );
+
+
+    // ========================================================
+    // TEACHER PERIOD LESSON TRACKING
+    // ========================================================
+    //
+    // Remove only this task's lesson record.
+    //
+    // IMPORTANT:
+    //
+    // Do NOT immediately delete teacherPeriod.
+    //
+    // Another lesson may still legitimately occupy the same
+    // teacher + period, for example a shared same-subject
+    // concurrent lesson.
+    //
+    // ========================================================
+
+    if (
+        teacherId &&
+        indexes.teacherPeriodLessons
+    ) {
+
+        const teacherKey =
+            `${teacherId}__${periodId}`;
+
+
+        const teacherLessons =
+            indexes.teacherPeriodLessons.get(
+                teacherKey
+            );
+
+
+        if (
+            Array.isArray(
+                teacherLessons
+            )
+        ) {
+
+            const taskId =
                 normalizeTimetableId(
-                    groupId
+                    task.taskId
+                );
+
+
+            const remainingLessons =
+                teacherLessons.filter(
+                    lesson => {
+
+                        const lessonTaskId =
+                            normalizeTimetableId(
+                                lesson?.taskId
+                            );
+
+
+                        // ------------------------------------------------
+                        // If this task has a valid ID, remove only the
+                        // matching task.
+                        //
+                        // If it does not, do NOT remove unrelated
+                        // lessons with missing IDs.
+                        // ------------------------------------------------
+
+                        if (
+                            taskId
+                        ) {
+
+                            return (
+                                lessonTaskId !==
+                                taskId
+                            );
+
+                        }
+
+
+                        return true;
+
+                    }
                 );
 
 
             if (
-                normalizedGroupId
+                remainingLessons.length > 0
             ) {
 
-                indexes.studentGroupPeriod.delete(
-                    `${normalizedGroupId}__${periodId}`
+                indexes.teacherPeriodLessons.set(
+                    teacherKey,
+                    remainingLessons
+                );
+
+            }
+            else {
+
+                indexes.teacherPeriodLessons.delete(
+                    teacherKey
                 );
 
             }
 
         }
-    );
 
-}
-
-
-// ========================================================
-// TEACHER
-// ========================================================
-
-const teacherId =
-    normalizeTimetableId(
-        task.teacherId
-    );
+    }
 
 
-// ========================================================
-// TEACHER PERIOD LESSON TRACKING
-// ========================================================
-//
-// Remove only this task's lesson record.
-//
-// IMPORTANT:
-//
-// Do NOT immediately delete teacherPeriod.
-//
-// Another lesson may still legitimately occupy the same
-// teacher + period, for example a shared same-subject
-// concurrent lesson.
-//
-// ========================================================
-
-if (
-    teacherId &&
-    indexes.teacherPeriodLessons
-) {
-
-    const teacherKey =
-        `${teacherId}__${periodId}`;
-
-
-    const teacherLessons =
-        indexes.teacherPeriodLessons.get(
-            teacherKey
-        );
-
+    // ========================================================
+    // TEACHER / PERIOD
+    // ========================================================
+    //
+    // Remove the teacher-period occupancy ONLY when there are
+    // no remaining lesson records for that teacher + period.
+    //
+    // ========================================================
 
     if (
-        Array.isArray(
-            teacherLessons
-        )
+        teacherId &&
+        indexes.teacherPeriod
     ) {
 
-        const taskId =
-            normalizeTimetableId(
-                task.taskId
+        const teacherKey =
+            `${teacherId}__${periodId}`;
+
+
+        const remainingTeacherLessons =
+            indexes.teacherPeriodLessons
+                ?.get(
+                    teacherKey
+                );
+
+
+        if (
+            !Array.isArray(
+                remainingTeacherLessons
+            ) ||
+            remainingTeacherLessons.length === 0
+        ) {
+
+            indexes.teacherPeriod.delete(
+                teacherKey
             );
 
+        }
 
-        const remainingLessons =
-            teacherLessons.filter(
-                lesson => {
-
-                    const lessonTaskId =
-                        normalizeTimetableId(
-                            lesson?.taskId
-                        );
+    }
 
 
-                    return (
-                        lessonTaskId !==
-                        taskId
-                    );
+    // ========================================================
+    // ROOM
+    // ========================================================
 
-                }
+    if (
+        room &&
+        room.id &&
+        indexes.roomPeriod
+    ) {
+
+        const roomId =
+            normalizeTimetableId(
+                room.id
             );
 
 
         if (
-            remainingLessons.length > 0
+            roomId
         ) {
 
-            indexes.teacherPeriodLessons.set(
-                teacherKey,
-                remainingLessons
+            indexes.roomPeriod.delete(
+                `${roomId}__${periodId}`
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // REQUIREMENT / DAY
+    // ========================================================
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId
+        );
+
+
+    const dayNumber =
+        Number(
+            period.dayNumber
+        );
+
+
+    if (
+        requirementId &&
+        Number.isFinite(dayNumber) &&
+        indexes.dailyRequirementLessons
+    ) {
+
+        const key =
+            getDailyRequirementKey(
+                requirementId,
+                dayNumber
+            );
+
+
+        const currentCount =
+            getDailyRequirementLessonCount(
+                indexes,
+                requirementId,
+                dayNumber
+            );
+
+
+        if (
+            currentCount <= 1
+        ) {
+
+            indexes.dailyRequirementLessons.delete(
+                key
             );
 
         }
         else {
 
-            indexes.teacherPeriodLessons.delete(
-                teacherKey
+            indexes.dailyRequirementLessons.set(
+                key,
+                currentCount - 1
             );
 
         }
 
     }
 
-}
 
-
-// ========================================================
-// TEACHER / PERIOD
-// ========================================================
-//
-// Remove the teacher-period occupancy ONLY when there are
-// no remaining lesson records for that teacher + period.
-//
-// ========================================================
-
-if (
-    teacherId &&
-    indexes.teacherPeriod
-) {
-
-    const teacherKey =
-        `${teacherId}__${periodId}`;
-
-
-    const remainingTeacherLessons =
-        indexes.teacherPeriodLessons
-            ?.get(
-                teacherKey
-            );
-
-
-    if (
-        !Array.isArray(
-            remainingTeacherLessons
-        ) ||
-        remainingTeacherLessons.length === 0
-    ) {
-
-        indexes.teacherPeriod.delete(
-            teacherKey
-        );
-
-    }
-
-}
-
-
-// ========================================================
-// ROOM
-// ========================================================
-
-if (
-    room &&
-    room.id &&
-    indexes.roomPeriod
-) {
-
-    const roomId =
-        normalizeTimetableId(
-            room.id
-        );
-
-
-    indexes.roomPeriod.delete(
-        `${roomId}__${periodId}`
-    );
-
-}
-
-
-// ========================================================
-// REQUIREMENT / DAY
-// ========================================================
-
-const requirementId =
-    normalizeTimetableId(
-        task.requirementId
-    );
-
-
-const dayNumber =
-    Number(
-        period.dayNumber
-    );
-
-
-if (
-    requirementId &&
-    Number.isFinite(dayNumber) &&
-    indexes.dailyRequirementLessons
-) {
-
-    const key =
-        getDailyRequirementKey(
-            requirementId,
-            dayNumber
-        );
-
-
-    const currentCount =
-        getDailyRequirementLessonCount(
-            indexes,
-            requirementId,
-            dayNumber
-        );
-
-
-    if (
-        currentCount <= 1
-    ) {
-
-        indexes.dailyRequirementLessons.delete(
-            key
-        );
-
-    }
-    else {
-
-        indexes.dailyRequirementLessons.set(
-            key,
-            currentCount - 1
-        );
-
-    }
-
-}
-
-
-return true;
-
+    return true;
 
 }
 
@@ -14040,7 +14075,17 @@ function addTimetableAuditWarning(
 // ============================================================
 // NORMALIZE GENERATED ENTRY
 // ============================================================
-
+//
+// Accepts BOTH:
+//
+//     camelCase
+//     snake_case
+//
+// This keeps Stage 6F and Stage 6G independent of whether
+// generated entries are still in generator format or have
+// already been converted to database format.
+//
+// ============================================================
 
 
 // ============================================================
@@ -14114,11 +14159,18 @@ function normalizeGeneratedTimetableEntry(
             normalizeTimetableId(
                 entry.requirementId ??
                 entry.requirement_id
+            ),
+
+        taskId:
+            normalizeTimetableId(
+                entry.taskId ??
+                entry.task_id
             )
 
     };
 
 }
+
 
 
 // ============================================================
@@ -15090,6 +15142,19 @@ function auditRequirementWeeklyTotals(
 // ============================================================
 // AUDIT DAILY REQUIREMENT LIMITS
 // ============================================================
+//
+// Requirement daily limits count LESSONS, not timetable
+// periods.
+//
+// Therefore:
+//
+//     single lesson = 1 lesson
+//     double lesson = 1 lesson
+//
+// A double lesson creates TWO generated entries, but both
+// entries share the same taskId.
+//
+// ============================================================
 
 function auditDailyRequirementLimits(
     data,
@@ -15103,7 +15168,15 @@ function auditDailyRequirementLimits(
 
 
     // ========================================================
-    // COUNT GENERATED ENTRIES BY REQUIREMENT + DAY
+    // TRACK TASKS ALREADY COUNTED
+    // ========================================================
+
+    const countedTasks =
+        new Set();
+
+
+    // ========================================================
+    // COUNT GENERATED LESSONS BY REQUIREMENT + DAY
     // ========================================================
 
     entries.forEach(
@@ -15125,7 +15198,7 @@ function auditDailyRequirementLimits(
 
 
             // ------------------------------------------------
-            // REQUIREMENT ID IS NOW AUTHORITATIVE
+            // REQUIREMENT ID IS AUTHORITATIVE
             // ------------------------------------------------
 
             const requirementId =
@@ -15215,7 +15288,7 @@ function auditDailyRequirementLimits(
 
 
             // ------------------------------------------------
-            // REQUIREMENT + DAY KEY
+            // DAY NUMBER
             // ------------------------------------------------
 
             const dayNumber =
@@ -15223,6 +15296,54 @@ function auditDailyRequirementLimits(
                     period.dayNumber
                 );
 
+
+            // ------------------------------------------------
+            // DOUBLE LESSON HANDLING
+            // ------------------------------------------------
+            //
+            // Both entries of a double lesson have the same
+            // taskId.
+            //
+            // Count that task only once for the requirement/day.
+            //
+            // ------------------------------------------------
+
+            if (
+                normalized.taskId
+            ) {
+
+                const taskKey =
+                    [
+                        normalized.taskId,
+                        requirementId,
+                        dayNumber
+                    ]
+                    .join(
+                        "__"
+                    );
+
+
+                if (
+                    countedTasks.has(
+                        taskKey
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                countedTasks.add(
+                    taskKey
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // REQUIREMENT + DAY KEY
+            // ------------------------------------------------
 
             const key =
                 `${requirementId}__${dayNumber}`;
@@ -15327,7 +15448,6 @@ function auditDailyRequirementLimits(
     );
 
 }
-
 
 
 
@@ -15823,6 +15943,10 @@ function auditTeacherConsecutiveLimits(
 }
 
 
+
+
+
+
 // ============================================================
 // AUDIT DOUBLE LESSON STRUCTURE
 // ============================================================
@@ -15830,12 +15954,10 @@ function auditTeacherConsecutiveLimits(
 // Uses the original lessonTasks and the generated entries.
 //
 // Each double task must have exactly TWO entries belonging
-// to the same requirement, same teacher/stream/subject and
-// consecutive teaching periods.
+// to the same task and requirement, using the same
+// teacher/stream/subject/room and consecutive teaching periods.
 //
 // ============================================================
-
-
 
 function auditDoubleLessonStructure(
     data,
@@ -15863,12 +15985,6 @@ function auditDoubleLessonStructure(
     // ========================================================
     // BUILD MASTER ENTRY SET
     // ========================================================
-    //
-    // This prevents a malformed placedTasks relationship from
-    // being treated as valid when its entries are not actually
-    // present in result.entries.
-    //
-    // ========================================================
 
     const masterEntryKeys =
         new Set();
@@ -15893,14 +16009,18 @@ function auditDoubleLessonStructure(
 
 
             const key =
-    [
-        normalized.requirementId || "",
-        normalized.periodId,
-        normalized.streamId,
-        normalized.subjectId,
-        normalized.teacherId || "",
-        normalized.roomId || ""
-    ].join("__");
+                [
+                    normalized.taskId || "",
+                    normalized.requirementId || "",
+                    normalized.periodId,
+                    normalized.streamId,
+                    normalized.subjectId,
+                    normalized.teacherId || "",
+                    normalized.roomId || ""
+                ]
+                .join(
+                    "__"
+                );
 
 
             masterEntryKeys.add(
@@ -15933,9 +16053,16 @@ function auditDoubleLessonStructure(
 
 
             const taskId =
-                task.taskId ||
-                task.id ||
-                null;
+                normalizeTimetableId(
+                    task.taskId ??
+                    task.id
+                );
+
+
+            const expectedRequirementId =
+                normalizeTimetableId(
+                    task.requirementId
+                );
 
 
             const taskEntries =
@@ -16004,35 +16131,144 @@ function auditDoubleLessonStructure(
 
 
             // ------------------------------------------------
+            // TASK ID
+            // ------------------------------------------------
+
+            if (
+                taskId
+            ) {
+
+                if (
+                    first.taskId !== taskId
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "doubleLessons",
+                        "First double-lesson entry has an incorrect task ID.",
+                        {
+                            taskId,
+
+                            firstTaskId:
+                                first.taskId
+
+                        }
+                    );
+
+                }
+
+
+                if (
+                    second.taskId !== taskId
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "doubleLessons",
+                        "Second double-lesson entry has an incorrect task ID.",
+                        {
+                            taskId,
+
+                            secondTaskId:
+                                second.taskId
+
+                        }
+                    );
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
+            // REQUIREMENT MUST MATCH ORIGINAL TASK
+            // ------------------------------------------------
+
+            if (
+                expectedRequirementId
+            ) {
+
+                if (
+                    first.requirementId !==
+                    expectedRequirementId
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "doubleLessons",
+                        "First double-lesson entry has an incorrect requirement ID.",
+                        {
+                            taskId,
+
+                            expectedRequirementId,
+
+                            firstRequirementId:
+                                first.requirementId
+
+                        }
+                    );
+
+                }
+
+
+                if (
+                    second.requirementId !==
+                    expectedRequirementId
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "doubleLessons",
+                        "Second double-lesson entry has an incorrect requirement ID.",
+                        {
+                            taskId,
+
+                            expectedRequirementId,
+
+                            secondRequirementId:
+                                second.requirementId
+
+                        }
+                    );
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
             // BOTH ENTRIES MUST EXIST IN MASTER RESULT
             // ------------------------------------------------
 
-
-const firstKey =
-    [
-        first.requirementId || "",
-        first.periodId,
-        first.streamId,
-        first.subjectId,
-        first.teacherId || "",
-        first.roomId || ""
-    ].join("__");
-
-
-const secondKey =
-    [
-        second.requirementId || "",
-        second.periodId,
-        second.streamId,
-        second.subjectId,
-        second.teacherId || "",
-        second.roomId || ""
-    ].join("__");
+            const firstKey =
+                [
+                    first.taskId || "",
+                    first.requirementId || "",
+                    first.periodId,
+                    first.streamId,
+                    first.subjectId,
+                    first.teacherId || "",
+                    first.roomId || ""
+                ]
+                .join(
+                    "__"
+                );
 
 
+            const secondKey =
+                [
+                    second.taskId || "",
+                    second.requirementId || "",
+                    second.periodId,
+                    second.streamId,
+                    second.subjectId,
+                    second.teacherId || "",
+                    second.roomId || ""
+                ]
+                .join(
+                    "__"
+                );
 
-
-            
 
             if (
                 !masterEntryKeys.has(
@@ -16046,6 +16282,7 @@ const secondKey =
                     "First double-lesson entry is not present in the master generated entry list.",
                     {
                         taskId,
+
                         periodId:
                             first.periodId
                     }
@@ -16066,6 +16303,7 @@ const secondKey =
                     "Second double-lesson entry is not present in the master generated entry list.",
                     {
                         taskId,
+
                         periodId:
                             second.periodId
                     }
@@ -16168,6 +16406,34 @@ const secondKey =
 
                         secondPeriodId:
                             second.periodId
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SAME REQUIREMENT
+            // ------------------------------------------------
+
+            if (
+                first.requirementId !==
+                second.requirementId
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson changes requirement between its two periods.",
+                    {
+                        taskId,
+
+                        firstRequirementId:
+                            first.requirementId,
+
+                        secondRequirementId:
+                            second.requirementId
 
                     }
                 );
@@ -16292,10 +16558,6 @@ const secondKey =
 }
 
 
-
-// ============================================================
-// AUDIT ROOM TYPE REQUIREMENTS
-// ============================================================
 
 // ============================================================
 // AUDIT ROOM TYPE REQUIREMENTS
@@ -16682,65 +16944,60 @@ function auditGeneratedEntityReferences(
             }
 
 
-            // ------------------------------------------------
+                      // ------------------------------------------------
             // ROOM
             // ------------------------------------------------
 
-          // ------------------------------------------------
-// ROOM
-// ------------------------------------------------
+            if (
+                normalized.roomId &&
+                !lookups.rooms.has(
+                    normalized.roomId
+                )
+            ) {
 
-if (
-    normalized.roomId &&
-    !lookups.rooms.has(
-        normalized.roomId
-    )
-) {
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references an invalid room.",
+                    {
+                        entryIndex:
+                            index,
 
-    addTimetableAuditError(
-        audit,
-        "periodReferences",
-        "Generated entry references an invalid room.",
-        {
-            entryIndex:
-                index,
+                        roomId:
+                            normalized.roomId
 
-            roomId:
-                normalized.roomId
+                    }
+                );
 
-        }
-    );
-
-}
+            }
 
 
-// ------------------------------------------------
-// REQUIREMENT
-// ------------------------------------------------
+            // ------------------------------------------------
+            // REQUIREMENT
+            // ------------------------------------------------
 
-if (
-    !normalized.requirementId ||
-    !lookups.requirements.has(
-        normalized.requirementId
-    )
-) {
+            if (
+                !normalized.requirementId ||
+                !lookups.requirements.has(
+                    normalized.requirementId
+                )
+            ) {
 
-    addTimetableAuditError(
-        audit,
-        "periodReferences",
-        "Generated entry references an invalid or missing requirement.",
-        {
-            entryIndex:
-                index,
+                addTimetableAuditError(
+                    audit,
+                    "periodReferences",
+                    "Generated entry references an invalid or missing requirement.",
+                    {
+                        entryIndex:
+                            index,
 
-            requirementId:
-                normalized.requirementId
+                        requirementId:
+                            normalized.requirementId
 
-        }
-    );
+                    }
+                );
 
-}
-
+            }
         }
     );
 
@@ -17389,35 +17646,6 @@ function auditGeneratedTimetable(
 
 
 // ============================================================
-// STAGE 7 — REPAIR / BACKTRACKING ENGINE
-// ============================================================
-//
-// PURPOSE:
-//
-// Stage 6 performs normal placement.
-//
-// Stage 7 handles tasks that Stage 6 could not place.
-//
-// It will:
-//
-// 1. Take failed tasks.
-// 2. Search alternative periods.
-// 3. Search alternative rooms.
-// 4. Try to move an already placed lesson if necessary.
-// 5. Re-attempt the failed task.
-// 6. Repeat for a limited number of repair passes.
-//
-// IMPORTANT:
-//
-// This stage does NOT generate new tasks.
-// This stage does NOT create timetable periods.
-// This stage does NOT render the timetable.
-//
-// It only repairs the scheduling result.
-// ============================================================
-
-
-// ============================================================
 // STAGE 7 CONFIGURATION
 // ============================================================
 
@@ -17744,6 +17972,11 @@ function runStage7Repair(
 // REPAIR ONE FAILED TASK
 // ============================================================
 
+
+// ============================================================
+// REPAIR ONE FAILED TASK
+// ============================================================
+
 function repairSingleFailedTask(
     task,
     generatorData
@@ -17753,6 +17986,44 @@ function repairSingleFailedTask(
         !task ||
         !generatorData
     ) {
+
+        return {
+
+            repaired:
+                false,
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    // ========================================================
+    // DOUBLE LESSONS
+    // ========================================================
+    //
+    // Stage 7 currently does NOT move or directly repair
+    // double lessons.
+    //
+    // They must remain two consecutive periods and therefore
+    // require a dedicated double-lesson relocation strategy.
+    //
+    // Do NOT attempt to place a double lesson as a single.
+    //
+    // ========================================================
+
+    if (
+        task.taskType === "double" &&
+        !STAGE7_CONFIG.allowMovingDoubleLessons
+    ) {
+
+        console.log(
+            "STAGE 7: Double lesson repair is disabled:",
+            task?.taskId ||
+            task?.id
+        );
 
         return {
 
@@ -17830,25 +18101,18 @@ function repairSingleFailedTask(
 
 
     // ========================================================
-    // TRY EMPTY / VALID SLOTS FIRST
+    // TRY EMPTY / VALID SINGLE SLOTS FIRST
+    // ========================================================
+    //
+    // This path is intentionally for single lessons.
+    //
+    // Double lessons are handled separately above.
+    //
     // ========================================================
 
-    for (
-        const period of candidatePeriods
+    if (
+        task.taskType !== "double"
     ) {
-
-        if (
-            attempts >=
-            STAGE7_CONFIG.maxCandidatesPerTask
-        ) {
-
-            break;
-
-        }
-
-
-        attempts++;
-
 
         const candidateRooms =
             buildStage7RoomCandidates(
@@ -17858,45 +18122,74 @@ function repairSingleFailedTask(
 
 
         for (
-            const room of candidateRooms
+            const period of candidatePeriods
         ) {
 
-            const conflict =
-                checkSingleSlotConflict(
-                    task,
-                    period,
-                    room,
-                    indexes
-                );
-
-
             if (
-                conflict &&
-                conflict.valid === true
+                attempts >=
+                STAGE7_CONFIG.maxCandidatesPerTask
             ) {
 
-                const placed =
-                    placeStage7Task(
+                break;
+
+            }
+
+
+            for (
+                const room of candidateRooms
+            ) {
+
+                if (
+                    attempts >=
+                    STAGE7_CONFIG.maxCandidatesPerTask
+                ) {
+
+                    break;
+
+                }
+
+
+                attempts++;
+
+
+                const conflict =
+                    checkSingleSlotConflict(
                         task,
                         period,
                         room,
-                        generatorData
+                        indexes
                     );
 
 
                 if (
-                    placed
+                    conflict &&
+                    conflict.valid === true
                 ) {
 
-                    return {
+                    const placed =
+                        placeStage7Task(
+                            task,
+                            period,
+                            room,
+                            generatorData
+                        );
 
-                        repaired:
-                            true,
 
-                        moved:
-                            []
+                    if (
+                        placed
+                    ) {
 
-                    };
+                        return {
+
+                            repaired:
+                                true,
+
+                            moved:
+                                []
+
+                        };
+
+                    }
 
                 }
 
@@ -17913,6 +18206,7 @@ function repairSingleFailedTask(
     // ========================================================
 
     if (
+        task.taskType !== "double" &&
         STAGE7_CONFIG.allowMovingSingleLessons
     ) {
 
@@ -17948,6 +18242,10 @@ function repairSingleFailedTask(
     };
 
 }
+
+
+
+
 
 // ============================================================
 // BUILD STAGE 7 PERIOD CANDIDATES
