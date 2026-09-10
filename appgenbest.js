@@ -13297,6 +13297,7 @@ function generateSmartTimetable(
 //
 // ============================================================
 
+
 async function generateTimetable() {
 
     console.log(
@@ -13419,9 +13420,187 @@ async function generateTimetable() {
         }
 
 
+        // ----------------------------------------------------
+        // PRESERVE OCCUPANCY INDEXES FOR STAGE 7
+        // ----------------------------------------------------
+
+        if (
+            result.indexes
+        ) {
+
+            generatorData.indexes =
+                result.indexes;
+
+        }
+
+
+        // ====================================================
+        // STAGE 7 — REPAIR / BACKTRACKING
+        // ====================================================
+        //
+        // Stage 6F performs normal placement.
+        //
+        // Any tasks that could not be placed are passed to
+        // Stage 7 before the final audit.
+        //
+        // Stage 7 may:
+        //
+        //     - find another valid period
+        //     - find another valid room
+        //     - move an existing single lesson
+        //     - place the failed lesson
+        //
+        // Repaired entries are merged into result.entries.
+        //
+        // ====================================================
+
+        setTimetableGenerationStatus(
+            "Repairing unplaced timetable lessons...",
+            "info"
+        );
+
+
+        const failedTasks =
+            Array.isArray(
+                result.failedTasks
+            )
+                ? result.failedTasks
+                : [];
+
+
+        const repairResult =
+            runStage7Repair(
+                failedTasks,
+                result.placedTasks || [],
+                generatorData
+            );
+
+
+        // ----------------------------------------------------
+        // PRESERVE STAGE 7 RESULT
+        // ----------------------------------------------------
+
+        result.stage7 =
+            repairResult;
+
+
+        // ----------------------------------------------------
+        // MERGE REPAIRED ENTRIES
+        // ----------------------------------------------------
+
+        if (
+            repairResult &&
+            Array.isArray(
+                repairResult.entries
+            ) &&
+            repairResult.entries.length > 0
+        ) {
+
+            result.entries.push(
+                ...repairResult.entries
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // UPDATE FAILED TASKS
+        // ----------------------------------------------------
+
+        result.failedTasks =
+            repairResult &&
+            Array.isArray(
+                repairResult.stillFailed
+            )
+                ? repairResult.stillFailed
+                : failedTasks;
+
+
+        // ----------------------------------------------------
+        // UPDATE GENERATION STATISTICS
+        // ----------------------------------------------------
+
+        if (
+            result.statistics
+        ) {
+
+            result.statistics.failedTasks =
+                result.failedTasks.length;
+
+
+            result.statistics.placedTasks =
+                (
+                    result.statistics.placedTasks ||
+                    0
+                ) +
+                (
+                    repairResult?.repairedCount ||
+                    0
+                );
+
+
+            result.statistics.totalPeriodsPlaced =
+                result.entries.length;
+
+        }
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "STAGE 7 REPAIR RESULT"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "Originally failed tasks:",
+            failedTasks.length
+        );
+
+        console.log(
+            "Repaired tasks:",
+            repairResult?.repairedCount || 0
+        );
+
+        console.log(
+            "Still failed tasks:",
+            result.failedTasks.length
+        );
+
+        console.log(
+            "Repair entries:",
+            repairResult?.entries?.length || 0
+        );
+
+        console.log(
+            "Moved lessons:",
+            repairResult?.moved?.length || 0
+        );
+
+        console.log(
+            "Total generated entries:",
+            result.entries.length
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
         // ====================================================
         // STAGE 6G — FINAL AUDIT
         // ====================================================
+
+        setTimetableGenerationStatus(
+            "Running final timetable audit...",
+            "info"
+        );
+
 
         const audit =
             auditGeneratedTimetable(
@@ -13442,7 +13621,8 @@ async function generateTimetable() {
         // ====================================================
 
         if (
-            !audit.valid
+            !audit ||
+            audit.valid !== true
         ) {
 
             console.error(
@@ -13455,12 +13635,12 @@ async function generateTimetable() {
 
             console.error(
                 "Audit errors:",
-                audit.errors
+                audit?.errors || []
             );
 
 
             showTimetableConflicts(
-                audit.errors || [],
+                audit?.errors || [],
                 generatorData.lookup ||
                 generatorData
             );
@@ -13560,11 +13740,11 @@ async function generateTimetable() {
         // IMPORTANT:
         // Do not duplicate the scheduling logic here.
         //
-        // Stage 6 has already produced:
+        // Stage 6 + Stage 7 have already produced:
         //
         //     result.entries
         //
-        // Stage 7 only persists those entries.
+        // Stage 7 persistence only saves those entries.
         //
         // ====================================================
 
@@ -13745,14 +13925,16 @@ async function generateTimetable() {
             result.entries?.length || 0;
 
 
-        const failedTasks =
-            result.statistics?.failedTasks || 0;
+        const failedTasksCount =
+            result.failedTasks?.length ||
+            result.statistics?.failedTasks ||
+            0;
 
 
         showTimetableSummary(
             totalTasks,
             generatedEntries,
-            failedTasks
+            failedTasksCount
         );
 
 
@@ -13879,9 +14061,6 @@ async function generateTimetable() {
     }
 
 }
-
-
-
 
 // ============================================================
 // STAGE 6G — FINAL TIMETABLE CONSTRAINT AUDIT
@@ -17668,6 +17847,8 @@ const STAGE7_CONFIG = {
 // STAGE 7 — MAIN ENTRY POINT
 // ============================================================
 
+
+
 function runStage7Repair(
     failedTasks,
     placedTasks,
@@ -17703,6 +17884,9 @@ function runStage7Repair(
             repaired:
                 [],
 
+            entries:
+                [],
+
             stillFailed:
                 [],
 
@@ -17731,6 +17915,9 @@ function runStage7Repair(
         return {
 
             repaired:
+                [],
+
+            entries:
                 [],
 
             stillFailed:
@@ -17767,6 +17954,9 @@ function runStage7Repair(
             repaired:
                 [],
 
+            entries:
+                [],
+
             stillFailed:
                 failedTasks,
 
@@ -17785,6 +17975,8 @@ function runStage7Repair(
 
 
     const repaired = [];
+
+    const entries = [];
 
     const stillFailed = [];
 
@@ -17854,6 +18046,23 @@ function runStage7Repair(
                 );
 
 
+                // ------------------------------------------------
+                // PRESERVE GENERATED ENTRIES
+                // ------------------------------------------------
+
+                if (
+                    Array.isArray(
+                        result.entries
+                    )
+                ) {
+
+                    entries.push(
+                        ...result.entries
+                    );
+
+                }
+
+
                 if (
                     Array.isArray(
                         result.moved
@@ -17894,6 +18103,9 @@ function runStage7Repair(
             {
                 repaired:
                     repaired.length,
+
+                entries:
+                    entries.length,
 
                 remaining:
                     remainingTasks.length,
@@ -17939,6 +18151,11 @@ function runStage7Repair(
     );
 
     console.log(
+        "Generated repair entries:",
+        entries.length
+    );
+
+    console.log(
         "Moved:",
         moved.length
     );
@@ -17952,6 +18169,8 @@ function runStage7Repair(
     return {
 
         repaired,
+
+        entries,
 
         stillFailed,
 
@@ -17968,6 +18187,8 @@ function runStage7Repair(
 }
 
 
+
+
 // ============================================================
 // REPAIR ONE FAILED TASK
 // ============================================================
@@ -17976,6 +18197,7 @@ function runStage7Repair(
 // ============================================================
 // REPAIR ONE FAILED TASK
 // ============================================================
+
 
 function repairSingleFailedTask(
     task,
@@ -17991,6 +18213,9 @@ function repairSingleFailedTask(
 
             repaired:
                 false,
+
+            entries:
+                [],
 
             moved:
                 []
@@ -18030,6 +18255,9 @@ function repairSingleFailedTask(
             repaired:
                 false,
 
+            entries:
+                [],
+
             moved:
                 []
 
@@ -18061,6 +18289,9 @@ function repairSingleFailedTask(
             repaired:
                 false,
 
+            entries:
+                [],
+
             moved:
                 []
 
@@ -18088,6 +18319,9 @@ function repairSingleFailedTask(
 
             repaired:
                 false,
+
+            entries:
+                [],
 
             moved:
                 []
@@ -18179,10 +18413,62 @@ function repairSingleFailedTask(
                         placed
                     ) {
 
+                        const repairedEntries = [];
+
+
+                        // ------------------------------------------------
+                        // Recover the period assigned by the placement
+                        // ------------------------------------------------
+
+                        const repairedPeriodId =
+                            task.periodIds?.[0] ||
+                            task.periodId ||
+                            task.period_id ||
+                            period.id;
+
+
+                        const repairedPeriod =
+                            periods.find(
+                                candidate =>
+                                    candidate &&
+                                    candidate.id ===
+                                    repairedPeriodId
+                            ) ||
+                            period;
+
+
+                        if (
+                            repairedPeriod
+                        ) {
+
+                            const repairedEntry =
+                                createGeneratedEntry(
+                                    task,
+                                    repairedPeriod,
+                                    room
+                                );
+
+
+                            if (
+                                repairedEntry
+                            ) {
+
+                                repairedEntries.push(
+                                    repairedEntry
+                                );
+
+                            }
+
+                        }
+
+
                         return {
 
                             repaired:
                                 true,
+
+                            entries:
+                                repairedEntries,
 
                             moved:
                                 []
@@ -18224,7 +18510,26 @@ function repairSingleFailedTask(
             moveResult.repaired
         ) {
 
-            return moveResult;
+            return {
+
+                repaired:
+                    true,
+
+                entries:
+                    Array.isArray(
+                        moveResult.entries
+                    )
+                        ? moveResult.entries
+                        : [],
+
+                moved:
+                    Array.isArray(
+                        moveResult.moved
+                    )
+                        ? moveResult.moved
+                        : []
+
+            };
 
         }
 
@@ -18236,15 +18541,15 @@ function repairSingleFailedTask(
         repaired:
             false,
 
+        entries:
+            [],
+
         moved:
             []
 
     };
 
 }
-
-
-
 
 
 // ============================================================
