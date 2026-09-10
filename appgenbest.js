@@ -18226,26 +18226,6 @@ function runStage7Repair(
 }
 
 
-    const periods =
-        generatorData.periods ||
-        [];
-
-
-    const rooms =
-        generatorData.rooms ||
-        [];
-
-
-    const indexes =
-        generatorData.indexes;
-
-
-    if (
-        !indexes
-    ) {
-
-
-
 
 function repairSingleFailedTask(
     task,
