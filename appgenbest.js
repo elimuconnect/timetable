@@ -18736,7 +18736,7 @@ function buildStage7RoomCandidates(
 // STAGE 7 TASK PLACEMENT ADAPTER
 // ============================================================
 
-```javascript
+
 function placeStage7Task(
     task,
     period,
@@ -19731,7 +19731,7 @@ function moveStage7Task(
     return false;
 
 }
-```
+
 
 
 
