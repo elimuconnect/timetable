@@ -92,21 +92,27 @@ const generatorData = {
 
     lookup: {
 
-        streams:
-            new Map(),
+      lookup: {
 
-        subjects:
-            new Map(),
+    streams:
+        new Map(),
 
-        teachers:
-            new Map(),
+    subjects:
+        new Map(),
 
-        rooms:
-            new Map(),
+    teachers:
+        new Map(),
 
-        periods:
-            new Map()
+    rooms:
+        new Map(),
 
+    periods:
+        new Map(),
+
+    requirements:
+        new Map()
+
+}
     }
 
 };
@@ -2501,12 +2507,30 @@ async function prepareTimetableGeneratorData() {
 
 
     // ========================================================
-    // STEP 3 — BASIC VALIDATION
-    // ========================================================
+// STEP 3 — BASIC VALIDATION
+// ========================================================
 
+const basicValidationResult =
     validateTimetableGeneratorData(
         normalizedData
     );
+
+
+if (
+    !basicValidationResult.valid
+) {
+
+    throw new Error(
+
+        "Timetable generator data validation failed:\n\n" +
+
+        basicValidationResult.errors.join(
+            "\n"
+        )
+
+    );
+
+}
 
 
     // ========================================================
@@ -3178,17 +3202,21 @@ function validateLessonTasks(
 ) {
 
     const errors = [];
+const warnings = [];
 
+   if (!Array.isArray(tasks)) {
 
-    if (
-        !Array.isArray(tasks)
-    ) {
+    errors.push(
+        "Lesson tasks must be an array."
+    );
 
-        errors.push(
-            "Lesson tasks are not an array."
-        );
+    return {
+        valid: false,
+        errors,
+        warnings
+    };
 
-    }
+}
 
 
     if (
@@ -3934,8 +3962,8 @@ function incrementDailyRequirementLessonCount(
 
 
 
-
 function createOccupancyIndexes(data) {
+
     // ============================================================
     // OCCUPANCY INDEXES
     // ============================================================
@@ -3965,28 +3993,20 @@ function createOccupancyIndexes(data) {
     //
     // ============================================================
 
+
     const occupancy = {
 
         // --------------------------------------------------------
         // TEACHER / PERIOD
         // --------------------------------------------------------
-        //
-        // Used to detect a teacher being assigned to incompatible
-        // lessons at the same time.
-        //
-        // Shared/concurrent teaching is handled separately by the
-        // teacher + subject + period logic.
-        //
+
         teacherPeriod: new Set(),
 
 
         // --------------------------------------------------------
         // ROOM / PERIOD
         // --------------------------------------------------------
-        //
-        // A physical room cannot normally host two incompatible
-        // lessons at the same time.
-        //
+
         roomPeriod: new Set(),
 
 
@@ -3994,16 +4014,9 @@ function createOccupancyIndexes(data) {
         // STREAM / PERIOD
         // --------------------------------------------------------
         //
-        // LEGACY / SUPPORT INDEX ONLY.
+        // SUPPORT INDEX ONLY.
         //
         // DO NOT use this index alone to declare a conflict.
-        //
-        // A stream can legitimately contain parallel lessons:
-        //
-        //     10E Biology  -> Group BIO
-        //     10E Physics  -> Group PHY
-        //
-        // at the same period.
         //
         streamPeriod: new Set(),
 
@@ -4014,19 +4027,13 @@ function createOccupancyIndexes(data) {
         //
         // AUTHORITATIVE STUDENT OCCUPANCY INDEX.
         //
-        // This is what determines whether two lessons compete
-        // for the same students.
-        //
         studentGroupPeriod: new Set(),
 
 
         // --------------------------------------------------------
         // TASK / PERIOD
         // --------------------------------------------------------
-        //
-        // Prevents the exact same task from accidentally being
-        // placed more than once in the same period.
-        //
+
         taskPeriod: new Set(),
 
 
@@ -4034,18 +4041,7 @@ function createOccupancyIndexes(data) {
         // TEACHER / SUBJECT / PERIOD
         // --------------------------------------------------------
         //
-        // Allows legitimate concurrent/shared teaching.
-        //
-        // Example:
-        //
-        // TR James + Mathematics + Monday P3
-        //
-        // can teach:
-        //
-        //     10E Mathematics
-        //     10M Mathematics
-        //
-        // simultaneously when the lesson structure permits it.
+        // Used to identify legitimate concurrent/shared teaching.
         //
         teacherSubjectPeriod: new Set(),
 
@@ -4053,57 +4049,44 @@ function createOccupancyIndexes(data) {
         // --------------------------------------------------------
         // TEACHER / DAY
         // --------------------------------------------------------
-        //
-        // Kept for daily teacher-load constraints.
-        //
+
         teacherDay: new Map(),
 
 
         // --------------------------------------------------------
         // STREAM / DAY
         // --------------------------------------------------------
-        //
-        // Kept for daily stream constraints and distribution
-        // rules. This is NOT a period-conflict detector.
-        //
+
         streamDay: new Map(),
 
 
         // --------------------------------------------------------
         // STUDENT GROUP / DAY
         // --------------------------------------------------------
-        //
-        // Useful for daily student-group distribution constraints.
-        //
+
         studentGroupDay: new Map(),
 
 
         // --------------------------------------------------------
         // ROOM / DAY
         // --------------------------------------------------------
-        //
-        // Kept for room/day usage constraints.
-        //
+
         roomDay: new Map(),
 
 
         // --------------------------------------------------------
         // DAILY REQUIREMENT COUNTS
         // --------------------------------------------------------
-        //
-        // Tracks how many lessons belonging to each requirement
-        // have already been placed on a given day.
-        //
+
         requirementDay: new Map(),
 
 
         // --------------------------------------------------------
         // LESSON / DAY
         // --------------------------------------------------------
-        //
-        // Tracks placement of a lesson/task across days.
-        //
+
         lessonDay: new Map()
+
     };
 
 
@@ -4112,11 +4095,19 @@ function createOccupancyIndexes(data) {
     // ============================================================
 
     const normalizeKey = value => {
-        if (value === null || value === undefined) {
+
+        if (
+            value === null ||
+            value === undefined
+        ) {
+
             return '';
+
         }
 
+
         return String(value).trim();
+
     };
 
 
@@ -4124,8 +4115,16 @@ function createOccupancyIndexes(data) {
     // HELPER: CREATE PERIOD KEY
     // ============================================================
 
-    const periodKey = (day, period) => {
-        return `${normalizeKey(day)}:${normalizeKey(period)}`;
+    const periodKey = (
+        day,
+        period
+    ) => {
+
+        return [
+            normalizeKey(day),
+            normalizeKey(period)
+        ].join(':');
+
     };
 
 
@@ -4133,12 +4132,18 @@ function createOccupancyIndexes(data) {
     // HELPER: CREATE TEACHER/PERIOD KEY
     // ============================================================
 
-    const teacherPeriodKey = (teacher, day, period) => {
+    const teacherPeriodKey = (
+        teacher,
+        day,
+        period
+    ) => {
+
         return [
             normalizeKey(teacher),
             normalizeKey(day),
             normalizeKey(period)
         ].join('|');
+
     };
 
 
@@ -4146,12 +4151,18 @@ function createOccupancyIndexes(data) {
     // HELPER: CREATE ROOM/PERIOD KEY
     // ============================================================
 
-    const roomPeriodKey = (room, day, period) => {
+    const roomPeriodKey = (
+        room,
+        day,
+        period
+    ) => {
+
         return [
             normalizeKey(room),
             normalizeKey(day),
             normalizeKey(period)
         ].join('|');
+
     };
 
 
@@ -4159,12 +4170,18 @@ function createOccupancyIndexes(data) {
     // HELPER: CREATE STREAM/PERIOD KEY
     // ============================================================
 
-    const streamPeriodKey = (stream, day, period) => {
+    const streamPeriodKey = (
+        stream,
+        day,
+        period
+    ) => {
+
         return [
             normalizeKey(stream),
             normalizeKey(day),
             normalizeKey(period)
         ].join('|');
+
     };
 
 
@@ -4172,12 +4189,18 @@ function createOccupancyIndexes(data) {
     // HELPER: CREATE STUDENT-GROUP/PERIOD KEY
     // ============================================================
 
-    const studentGroupPeriodKey = (studentGroup, day, period) => {
+    const studentGroupPeriodKey = (
+        studentGroup,
+        day,
+        period
+    ) => {
+
         return [
             normalizeKey(studentGroup),
             normalizeKey(day),
             normalizeKey(period)
         ].join('|');
+
     };
 
 
@@ -4185,12 +4208,18 @@ function createOccupancyIndexes(data) {
     // HELPER: CREATE TASK/PERIOD KEY
     // ============================================================
 
-    const taskPeriodKey = (taskId, day, period) => {
+    const taskPeriodKey = (
+        taskId,
+        day,
+        period
+    ) => {
+
         return [
             normalizeKey(taskId),
             normalizeKey(day),
             normalizeKey(period)
         ].join('|');
+
     };
 
 
@@ -4204,12 +4233,14 @@ function createOccupancyIndexes(data) {
         day,
         period
     ) => {
+
         return [
             normalizeKey(teacher),
             normalizeKey(subject),
             normalizeKey(day),
             normalizeKey(period)
         ].join('|');
+
     };
 
 
@@ -4217,16 +4248,29 @@ function createOccupancyIndexes(data) {
     // HELPER: ADD TO DAY MAP
     // ============================================================
 
-    const addToDayMap = (map, key, value) => {
+    const addToDayMap = (
+        map,
+        key,
+        value
+    ) => {
+
         if (!key) {
             return;
         }
 
+
         if (!map.has(key)) {
-            map.set(key, new Set());
+
+            map.set(
+                key,
+                new Set()
+            );
+
         }
 
+
         map.get(key).add(value);
+
     };
 
 
@@ -4234,24 +4278,25 @@ function createOccupancyIndexes(data) {
     // HELPER: EXTRACT STUDENT GROUPS
     // ============================================================
     //
-    // The generator may encounter different field names depending
-    // on where a task originated.
+    // Student groups may come from several possible fields.
     //
-    // We preserve the original task and only read the available
-    // student-group information.
+    // IMPORTANT:
     //
-    // If no explicit group exists, the stream itself is treated
-    // as the student group.
+    // Prefer explicit student-group information.
     //
-    // This fallback preserves existing behaviour for ordinary
-    // single-group lessons.
+    // If no explicit student group exists, fall back to streamId.
+    //
+    // This preserves normal single-stream behaviour without making
+    // streamPeriod the authoritative conflict detector.
     //
     // ============================================================
 
     const getStudentGroups = task => {
+
         if (!task) {
             return [];
         }
+
 
         const possibleGroups =
             task.studentGroupIds ??
@@ -4261,31 +4306,73 @@ function createOccupancyIndexes(data) {
             task.groupId ??
             task.groups;
 
-        if (Array.isArray(possibleGroups)) {
-            const groups = possibleGroups
-                .map(normalizeKey)
-                .filter(Boolean);
+
+        // --------------------------------------------------------
+        // ARRAY OF GROUPS
+        // --------------------------------------------------------
+
+        if (
+            Array.isArray(
+                possibleGroups
+            )
+        ) {
+
+            const groups =
+                possibleGroups
+                    .map(normalizeKey)
+                    .filter(Boolean);
+
 
             if (groups.length) {
-                return [...new Set(groups)];
+
+                return [
+                    ...new Set(groups)
+                ];
+
             }
+
         }
 
-        if (possibleGroups !== null &&
+
+        // --------------------------------------------------------
+        // SINGLE GROUP
+        // --------------------------------------------------------
+
+        if (
+            possibleGroups !== null &&
             possibleGroups !== undefined &&
-            String(possibleGroups).trim() !== '') {
+            String(
+                possibleGroups
+            ).trim() !== ''
+        ) {
 
-            return [normalizeKey(possibleGroups)];
+            return [
+                normalizeKey(
+                    possibleGroups
+                )
+            ];
+
         }
 
-        const stream = normalizeKey(
-            task.stream ??
-            task.className ??
-            task.class ??
-            task.gradeStream
-        );
 
-        return stream ? [stream] : [];
+        // --------------------------------------------------------
+        // FALLBACK TO NORMALIZED STREAM ID
+        // --------------------------------------------------------
+
+        const stream =
+            normalizeKey(
+                task.streamId ??
+                task.stream ??
+                task.className ??
+                task.class ??
+                task.gradeStream
+            );
+
+
+        return stream
+            ? [stream]
+            : [];
+
     };
 
 
@@ -4294,24 +4381,62 @@ function createOccupancyIndexes(data) {
     // ============================================================
 
     const entries =
-        Array.isArray(data?.generatedTimetableEntries)
+        Array.isArray(
+            data?.generatedTimetableEntries
+        )
             ? data.generatedTimetableEntries
-            : Array.isArray(data?.timetableEntries)
+
+            : Array.isArray(
+                data?.timetableEntries
+            )
                 ? data.timetableEntries
-                : Array.isArray(data?.entries)
+
+                : Array.isArray(
+                    data?.entries
+                )
                     ? data.entries
+
                     : [];
 
 
-    for (const task of entries) {
+    // ============================================================
+    // PROCESS EXISTING ENTRIES
+    // ============================================================
+
+    for (
+        const task of entries
+    ) {
 
         if (!task) {
             continue;
         }
 
 
-        const day = task.day;
-        const period = task.period;
+        // --------------------------------------------------------
+        // DAY
+        // --------------------------------------------------------
+
+        const day =
+            task.day ??
+            task.dayNumber ??
+            task.day_number;
+
+
+        // --------------------------------------------------------
+        // PERIOD
+        // --------------------------------------------------------
+
+        const period =
+            task.period ??
+            task.periodNumber ??
+            task.period_number ??
+            task.periodOrder ??
+            task.period_order;
+
+
+        // --------------------------------------------------------
+        // INVALID ENTRY
+        // --------------------------------------------------------
 
         if (
             day === undefined ||
@@ -4319,98 +4444,193 @@ function createOccupancyIndexes(data) {
             period === undefined ||
             period === null
         ) {
+
             continue;
+
         }
 
 
-        const stream = normalizeKey(
-            task.stream ??
-            task.className ??
-            task.class ??
-            task.gradeStream
-        );
-
-
-        const teacher = normalizeKey(
-            task.teacher ??
-            task.teacherName
-        );
-
-
-        const subject = normalizeKey(
-            task.subject ??
-            task.subjectName
-        );
-
-
-        const room = normalizeKey(
-            task.room ??
-            task.roomName
-        );
-
-
-        const taskId = normalizeKey(
-            task.taskId ??
-            task.id
-        );
+        // ========================================================
+        // IMPORTANT:
+        //
+        // USE NORMALIZED IDs FIRST.
+        //
+        // Older/display fields remain as fallbacks.
+        // ========================================================
 
 
         // --------------------------------------------------------
+        // STREAM
+        // --------------------------------------------------------
+
+        const stream =
+            normalizeKey(
+                task.streamId ??
+                task.stream ??
+                task.className ??
+                task.class ??
+                task.gradeStream
+            );
+
+
+        // --------------------------------------------------------
+        // TEACHER
+        // --------------------------------------------------------
+
+        const teacher =
+            normalizeKey(
+                task.teacherId ??
+                task.teacher ??
+                task.teacherName
+            );
+
+
+        // --------------------------------------------------------
+        // SUBJECT
+        // --------------------------------------------------------
+
+        const subject =
+            normalizeKey(
+                task.subjectId ??
+                task.subject ??
+                task.subjectName
+            );
+
+
+        // --------------------------------------------------------
+        // ROOM
+        // --------------------------------------------------------
+
+        const room =
+            normalizeKey(
+                task.roomId ??
+                task.room ??
+                task.roomName
+            );
+
+
+        // --------------------------------------------------------
+        // TASK ID
+        // --------------------------------------------------------
+
+        const taskId =
+            normalizeKey(
+                task.taskId ??
+                task.id
+            );
+
+
+        // --------------------------------------------------------
+        // REQUIREMENT ID
+        // --------------------------------------------------------
+
+        const requirementId =
+            normalizeKey(
+                task.requirementId ??
+                task.requirement?.id
+            );
+
+
+        // --------------------------------------------------------
+        // LESSON ID
+        // --------------------------------------------------------
+
+        const lessonId =
+            normalizeKey(
+                task.lessonId ??
+                task.requirementId ??
+                task.taskId ??
+                task.id
+            );
+
+
+        // ========================================================
         // TEACHER / PERIOD
-        // --------------------------------------------------------
+        // ========================================================
 
         if (teacher) {
+
             occupancy.teacherPeriod.add(
-                teacherPeriodKey(teacher, day, period)
+                teacherPeriodKey(
+                    teacher,
+                    day,
+                    period
+                )
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // ROOM / PERIOD
-        // --------------------------------------------------------
+        // ========================================================
 
-        if (room && room.toLowerCase() !== 'none') {
+        if (
+            room &&
+            room.toLowerCase() !== 'none'
+        ) {
+
             occupancy.roomPeriod.add(
-                roomPeriodKey(room, day, period)
+                roomPeriodKey(
+                    room,
+                    day,
+                    period
+                )
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // STREAM / PERIOD
         //
         // SUPPORT INDEX ONLY.
-        // --------------------------------------------------------
+        // ========================================================
 
         if (stream) {
+
             occupancy.streamPeriod.add(
-                streamPeriodKey(stream, day, period)
+                streamPeriodKey(
+                    stream,
+                    day,
+                    period
+                )
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // TASK / PERIOD
-        // --------------------------------------------------------
+        // ========================================================
 
         if (taskId) {
+
             occupancy.taskPeriod.add(
-                taskPeriodKey(taskId, day, period)
+                taskPeriodKey(
+                    taskId,
+                    day,
+                    period
+                )
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // TEACHER / SUBJECT / PERIOD
-        // --------------------------------------------------------
+        // ========================================================
         //
-        // This allows the scheduler to distinguish a legitimate
-        // concurrent/shared lesson from an unrelated teacher clash.
+        // This allows the scheduler to identify a shared/concurrent
+        // lesson when the same teacher and subject occur together.
         //
-        // --------------------------------------------------------
+        // ========================================================
 
-        if (teacher && subject) {
+        if (
+            teacher &&
+            subject
+        ) {
+
             occupancy.teacherSubjectPeriod.add(
                 teacherSubjectPeriodKey(
                     teacher,
@@ -4419,27 +4639,32 @@ function createOccupancyIndexes(data) {
                     period
                 )
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // STUDENT GROUP / PERIOD
-        // --------------------------------------------------------
+        // ========================================================
         //
-        // THIS is the real student conflict index.
+        // THIS is the authoritative student conflict index.
         //
-        // Parallel lessons in the same stream are therefore allowed
-        // when they have different student groups.
-        //
-        // --------------------------------------------------------
+        // ========================================================
 
-        const studentGroups = getStudentGroups(task);
+        const studentGroups =
+            getStudentGroups(
+                task
+            );
 
-        for (const group of studentGroups) {
+
+        for (
+            const group of studentGroups
+        ) {
 
             if (!group) {
                 continue;
             }
+
 
             occupancy.studentGroupPeriod.add(
                 studentGroupPeriodKey(
@@ -4449,89 +4674,93 @@ function createOccupancyIndexes(data) {
                 )
             );
 
+
             addToDayMap(
                 occupancy.studentGroupDay,
                 group,
                 day
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // TEACHER / DAY
-        // --------------------------------------------------------
+        // ========================================================
 
         if (teacher) {
+
             addToDayMap(
                 occupancy.teacherDay,
                 teacher,
                 day
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // STREAM / DAY
-        // --------------------------------------------------------
+        // ========================================================
 
         if (stream) {
+
             addToDayMap(
                 occupancy.streamDay,
                 stream,
                 day
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // ROOM / DAY
-        // --------------------------------------------------------
+        // ========================================================
 
-        if (room && room.toLowerCase() !== 'none') {
+        if (
+            room &&
+            room.toLowerCase() !== 'none'
+        ) {
+
             addToDayMap(
                 occupancy.roomDay,
                 room,
                 day
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // REQUIREMENT / DAY
-        // --------------------------------------------------------
-
-        const requirementId = normalizeKey(
-            task.requirementId ??
-            task.requirement?.id
-        );
+        // ========================================================
 
         if (requirementId) {
+
             addToDayMap(
                 occupancy.requirementDay,
                 requirementId,
                 day
             );
+
         }
 
 
-        // --------------------------------------------------------
+        // ========================================================
         // LESSON / DAY
-        // --------------------------------------------------------
-
-        const lessonId = normalizeKey(
-            task.lessonId ??
-            task.requirementId ??
-            task.taskId ??
-            task.id
-        );
+        // ========================================================
 
         if (lessonId) {
+
             addToDayMap(
                 occupancy.lessonDay,
                 lessonId,
                 day
             );
+
         }
+
     }
 
 
@@ -4540,11 +4769,8 @@ function createOccupancyIndexes(data) {
     // ============================================================
 
     return occupancy;
+
 }
-
-
-
-
 
 
 
