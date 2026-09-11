@@ -4232,10 +4232,34 @@ function incrementDailyRequirementLessonCount(
 
 }
 
-
 function createOccupancyIndexes(
     data
 ) {
+
+    // ========================================================
+    // NORMALIZE KEY
+    // ========================================================
+
+    function normalizeKey(
+        value
+    ) {
+
+        if (
+            value === null ||
+            value === undefined
+        ) {
+
+            return "";
+
+        }
+
+
+        return String(
+            value
+        ).trim();
+
+    }
+
 
     // ========================================================
     // PERIOD LOOKUP
@@ -4280,7 +4304,7 @@ function createOccupancyIndexes(
 
 
             periodLookup.set(
-                normalizeTimetableId(
+                normalizeKey(
                     period.id
                 ),
                 period
@@ -4306,6 +4330,10 @@ function createOccupancyIndexes(
 
         periods,
 
+        // ====================================================
+        // PERIOD OCCUPANCY
+        // ====================================================
+
         teacherPeriod:
             new Set(),
 
@@ -4323,6 +4351,10 @@ function createOccupancyIndexes(
 
         teacherSubjectPeriod:
             new Set(),
+
+        // ====================================================
+        // DAY INDEXES
+        // ====================================================
 
         teacherDay:
             new Map(),
@@ -4345,617 +4377,14 @@ function createOccupancyIndexes(
         lessonDay:
             new Map(),
 
+        // ====================================================
+        // TEACHER PERIOD LESSON DETAILS
+        // ====================================================
+
         teacherPeriodLessons:
             new Map()
 
     };
-
-
-    // ========================================================
-    // NORMALIZE KEY
-    // ========================================================
-
-    function normalizeKey(
-        value
-    ) {
-
-        if (
-            value === null ||
-            value === undefined
-        ) {
-
-            return "";
-
-        }
-
-
-        return String(
-            value
-        ).trim();
-
-    }
-
-
-    // ========================================================
-    // INDEX GENERATED ENTRIES
-    // ========================================================
-
-    const entries =
-        Array.isArray(
-            data?.generatedEntries
-        )
-            ? data.generatedEntries
-            : [];
-
-
-    entries.forEach(
-        entry => {
-
-            if (
-                !entry ||
-                typeof entry !== "object"
-            ) {
-
-                return;
-
-            }
-
-
-            // ==================================================
-            // BASIC IDENTIFIERS
-            // ==================================================
-
-            const teacherId =
-                normalizeKey(
-                    entry.teacher_id ??
-                    entry.teacherId
-                );
-
-
-            const roomId =
-                normalizeKey(
-                    entry.room_id ??
-                    entry.roomId
-                );
-
-
-            const streamId =
-                normalizeKey(
-                    entry.stream_id ??
-                    entry.streamId
-                );
-
-
-            const requirementId =
-                normalizeKey(
-                    entry.requirement_id ??
-                    entry.requirementId
-                );
-
-
-            const taskId =
-                normalizeKey(
-                    entry.task_id ??
-                    entry.taskId
-                );
-
-
-            const subjectId =
-                normalizeKey(
-                    entry.subject_id ??
-                    entry.subjectId
-                );
-
-
-            const periodId =
-                normalizeKey(
-                    entry.period_id ??
-                    entry.periodId
-                );
-
-
-            // ==================================================
-            // PERIOD
-            // ==================================================
-
-            const period =
-                periodLookup.get(
-                    periodId
-                );
-
-
-            if (
-                !period
-            ) {
-
-                return;
-
-            }
-
-
-            const dayNumber =
-                Number(
-                    period.dayNumber ??
-                    period.day_number
-                );
-
-
-            // ==================================================
-            // STUDENT GROUPS
-            // ==================================================
-
-            let studentGroupIds =
-                [];
-
-
-            if (
-                Array.isArray(
-                    entry.student_group_ids
-                )
-            ) {
-
-                studentGroupIds =
-                    entry.student_group_ids;
-
-            }
-            else if (
-                Array.isArray(
-                    entry.studentGroupIds
-                )
-            ) {
-
-                studentGroupIds =
-                    entry.studentGroupIds;
-
-            }
-
-
-            // ==================================================
-            // TEACHER / PERIOD
-            // ==================================================
-
-            if (
-                teacherId &&
-                periodId
-            ) {
-
-                occupancy.teacherPeriod.add(
-                    `${teacherId}|${periodId}`
-                );
-
-            }
-
-
-            // ==================================================
-            // ROOM / PERIOD
-            // ==================================================
-
-            if (
-                roomId &&
-                periodId
-            ) {
-
-                occupancy.roomPeriod.add(
-                    `${roomId}|${periodId}`
-                );
-
-            }
-
-
-            // ==================================================
-            // STREAM / PERIOD
-            // ==================================================
-
-            if (
-                streamId &&
-                periodId
-            ) {
-
-                occupancy.streamPeriod.add(
-                    `${streamId}|${periodId}`
-                );
-
-            }
-
-
-            // ==================================================
-            // TASK / PERIOD
-            // ==================================================
-
-            if (
-                taskId &&
-                periodId
-            ) {
-
-                occupancy.taskPeriod.add(
-                    `${taskId}|${periodId}`
-                );
-
-            }
-
-
-            // ==================================================
-            // TEACHER / SUBJECT / PERIOD
-            // ==================================================
-
-            if (
-                teacherId &&
-                subjectId &&
-                periodId
-            ) {
-
-                occupancy.teacherSubjectPeriod.add(
-                    `${teacherId}|${subjectId}|${periodId}`
-                );
-
-            }
-
-
-            // ==================================================
-            // STUDENT GROUP / PERIOD
-            // ==================================================
-
-            studentGroupIds.forEach(
-                studentGroupId => {
-
-                    const groupId =
-                        normalizeKey(
-                            studentGroupId
-                        );
-
-
-                    if (
-                        !groupId ||
-                        !periodId
-                    ) {
-
-                        return;
-
-                    }
-
-
-                    occupancy.studentGroupPeriod.add(
-                        `${groupId}|${periodId}`
-                    );
-
-
-                    // ------------------------------------------
-                    // STUDENT GROUP / DAY
-                    // ------------------------------------------
-
-                    if (
-                        Number.isFinite(
-                            dayNumber
-                        )
-                    ) {
-
-                        const key =
-                            `${groupId}|${dayNumber}`;
-
-
-                        if (
-                            !occupancy.studentGroupDay.has(
-                                key
-                            )
-                        ) {
-
-                            occupancy.studentGroupDay.set(
-                                key,
-                                0
-                            );
-
-                        }
-
-
-                        occupancy.studentGroupDay.set(
-                            key,
-                            occupancy.studentGroupDay.get(
-                                key
-                            ) + 1
-                        );
-
-                    }
-
-                }
-            );
-
-
-            // ==================================================
-            // TEACHER / DAY
-            // ==================================================
-
-            if (
-                teacherId &&
-                Number.isFinite(
-                    dayNumber
-                )
-            ) {
-
-                const key =
-                    `${teacherId}|${dayNumber}`;
-
-
-                if (
-                    !occupancy.teacherDay.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.teacherDay.set(
-                        key,
-                        0
-                    );
-
-                }
-
-
-                occupancy.teacherDay.set(
-                    key,
-                    occupancy.teacherDay.get(
-                        key
-                    ) + 1
-                );
-
-            }
-
-
-            // ==================================================
-            // STREAM / DAY
-            // ==================================================
-
-            if (
-                streamId &&
-                Number.isFinite(
-                    dayNumber
-                )
-            ) {
-
-                const key =
-                    `${streamId}|${dayNumber}`;
-
-
-                if (
-                    !occupancy.streamDay.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.streamDay.set(
-                        key,
-                        0
-                    );
-
-                }
-
-
-                occupancy.streamDay.set(
-                    key,
-                    occupancy.streamDay.get(
-                        key
-                    ) + 1
-                );
-
-            }
-
-
-            // ==================================================
-            // ROOM / DAY
-            // ==================================================
-
-            if (
-                roomId &&
-                Number.isFinite(
-                    dayNumber
-                )
-            ) {
-
-                const key =
-                    `${roomId}|${dayNumber}`;
-
-
-                if (
-                    !occupancy.roomDay.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.roomDay.set(
-                        key,
-                        0
-                    );
-
-                }
-
-
-                occupancy.roomDay.set(
-                    key,
-                    occupancy.roomDay.get(
-                        key
-                    ) + 1
-                );
-
-            }
-
-
-            // ==================================================
-            // REQUIREMENT / DAY
-            // ==================================================
-
-            if (
-                requirementId &&
-                Number.isFinite(
-                    dayNumber
-                )
-            ) {
-
-                const key =
-                    `${requirementId}|${dayNumber}`;
-
-
-                if (
-                    !occupancy.requirementDay.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.requirementDay.set(
-                        key,
-                        0
-                    );
-
-                }
-
-
-                occupancy.requirementDay.set(
-                    key,
-                    occupancy.requirementDay.get(
-                        key
-                    ) + 1
-                );
-
-
-                // ------------------------------------------
-                // DAILY REQUIREMENT LESSON COUNT
-                // ------------------------------------------
-                //
-                // This index counts actual lesson periods,
-                // not merely generated-entry objects.
-                //
-                // Double lessons therefore contribute two
-                // periods to the daily lesson count.
-                //
-                // ------------------------------------------
-
-                if (
-                    !occupancy.dailyRequirementLessons.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.dailyRequirementLessons.set(
-                        key,
-                        0
-                    );
-
-                }
-
-
-                occupancy.dailyRequirementLessons.set(
-                    key,
-                    occupancy.dailyRequirementLessons.get(
-                        key
-                    ) + 1
-                );
-
-            }
-
-
-            // ==================================================
-            // LESSON / DAY
-            // ==================================================
-
-            const lessonId =
-                normalizeKey(
-                    entry.lesson_id ??
-                    entry.lessonId
-                );
-
-
-            if (
-                lessonId &&
-                Number.isFinite(
-                    dayNumber
-                )
-            ) {
-
-                const key =
-                    `${lessonId}|${dayNumber}`;
-
-
-                if (
-                    !occupancy.lessonDay.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.lessonDay.set(
-                        key,
-                        0
-                    );
-
-                }
-
-
-                occupancy.lessonDay.set(
-                    key,
-                    occupancy.lessonDay.get(
-                        key
-                    ) + 1
-                );
-
-            }
-
-
-            // ==================================================
-            // TEACHER / PERIOD LESSONS
-            // ==================================================
-            //
-            // Keep the actual generated entries here.
-            // This is used by teacher conflict and consecutive
-            // lesson checks.
-            //
-            // ==================================================
-
-            if (
-                teacherId &&
-                periodId
-            ) {
-
-                const key =
-                    `${teacherId}|${periodId}`;
-
-
-                if (
-                    !occupancy.teacherPeriodLessons.has(
-                        key
-                    )
-                ) {
-
-                    occupancy.teacherPeriodLessons.set(
-                        key,
-                        []
-                    );
-
-                }
-
-
-                occupancy.teacherPeriodLessons
-                    .get(
-                        key
-                    )
-                    .push(
-                        entry
-                    );
-
-            }
-
-        }
-    );
-
-
-    // ========================================================
-    // RETURN INDEXES
-    // ========================================================
-
-    return {
-
-        ...occupancy,
-
-        periodLookup
-
-    };
-
-}
 
 
     // ========================================================
@@ -5004,25 +4433,25 @@ function createOccupancyIndexes(
         }
 
 
-       const possibleFields = [
+        const possibleFields = [
 
-    task.studentGroupIds,
+            task.studentGroupIds,
 
-    task.student_group_ids,
+            task.student_group_ids,
 
-    task.studentGroups,
+            task.studentGroups,
 
-    task.studentGroupId,
+            task.studentGroupId,
 
-    task.student_group_id,
+            task.student_group_id,
 
-    task.groupIds,
+            task.groupIds,
 
-    task.groupId,
+            task.groupId,
 
-    task.groups
+            task.groups
 
-];
+        ];
 
 
         for (
@@ -5099,55 +4528,6 @@ function createOccupancyIndexes(
 
 
     // ========================================================
-    // PERIOD LOOKUP
-    // ========================================================
-    //
-    // Generated entries store:
-    //
-    //     period_id
-    //
-    // Therefore period_id is the canonical period identity.
-    //
-    // ========================================================
-
-    const periods =
-        Array.isArray(
-            data?.periods
-        )
-            ? data.periods
-            : [];
-
-
-    const periodLookup =
-        new Map();
-
-
-    periods.forEach(
-        period => {
-
-            if (
-                !period ||
-                period.id === null ||
-                period.id === undefined
-            ) {
-
-                return;
-
-            }
-
-
-            periodLookup.set(
-                normalizeKey(
-                    period.id
-                ),
-                period
-            );
-
-        }
-    );
-
-
-    // ========================================================
     // GET GENERATED ENTRIES
     // ========================================================
 
@@ -5184,9 +4564,9 @@ function createOccupancyIndexes(
             }
 
 
-            // ------------------------------------------------
+            // =================================================
             // CANONICAL PERIOD ID
-            // ------------------------------------------------
+            // =================================================
 
             const periodId =
                 normalizeKey(
@@ -5204,9 +4584,9 @@ function createOccupancyIndexes(
             }
 
 
-            // ------------------------------------------------
+            // =================================================
             // PERIOD OBJECT
-            // ------------------------------------------------
+            // =================================================
 
             const period =
                 periodLookup.get(
@@ -5214,9 +4594,9 @@ function createOccupancyIndexes(
                 );
 
 
-            // ------------------------------------------------
+            // =================================================
             // DAY
-            // ------------------------------------------------
+            // =================================================
 
             const dayNumber =
                 period
@@ -5231,9 +4611,9 @@ function createOccupancyIndexes(
                     );
 
 
-            // ------------------------------------------------
+            // =================================================
             // IDENTIFIERS
-            // ------------------------------------------------
+            // =================================================
 
             const streamId =
                 normalizeKey(
@@ -5296,9 +4676,9 @@ function createOccupancyIndexes(
                 );
 
 
-            // ------------------------------------------------
+            // =================================================
             // STUDENT GROUPS
-            // ------------------------------------------------
+            // =================================================
 
             const studentGroups =
                 getStudentGroups(
@@ -5307,7 +4687,7 @@ function createOccupancyIndexes(
 
 
             // =================================================
-            // PERIOD OCCUPANCY
+            // TEACHER OCCUPANCY
             // =================================================
 
             if (
@@ -5479,6 +4859,25 @@ function createOccupancyIndexes(
 
 
                 if (
+                    studentGroups.length > 0
+                ) {
+
+                    studentGroups.forEach(
+                        studentGroupId => {
+
+                            addToDayMap(
+                                occupancy.studentGroupDay,
+                                studentGroupId,
+                                dayNumber
+                            );
+
+                        }
+                    );
+
+                }
+
+
+                if (
                     roomId &&
                     roomId.toLowerCase() !== "none"
                 ) {
@@ -5551,6 +4950,10 @@ function createOccupancyIndexes(
             }
 
 
+            // ------------------------------------------------
+            // REQUIREMENT
+            // ------------------------------------------------
+
             const requirementId =
                 normalizeKey(
                     entry.requirementId ??
@@ -5566,6 +4969,10 @@ function createOccupancyIndexes(
 
             }
 
+
+            // ------------------------------------------------
+            // PERIOD
+            // ------------------------------------------------
 
             const periodId =
                 normalizeKey(
@@ -5583,11 +4990,19 @@ function createOccupancyIndexes(
             }
 
 
+            // ------------------------------------------------
+            // PERIOD OBJECT
+            // ------------------------------------------------
+
             const period =
                 periodLookup.get(
                     periodId
                 );
 
+
+            // ------------------------------------------------
+            // DAY
+            // ------------------------------------------------
 
             const dayNumber =
                 period
@@ -5612,6 +5027,10 @@ function createOccupancyIndexes(
             }
 
 
+            // ------------------------------------------------
+            // LESSON ID
+            // ------------------------------------------------
+
             const taskId =
                 normalizeKey(
                     entry.taskId ??
@@ -5626,6 +5045,15 @@ function createOccupancyIndexes(
                     taskId
                 );
 
+
+            // ------------------------------------------------
+            // UNIQUE LESSON ID
+            // ------------------------------------------------
+            //
+            // Double lessons occupy two periods but must count
+            // as ONE lesson for daily requirement limits.
+            //
+            // ------------------------------------------------
 
             const lessonKey =
                 lessonId ||
@@ -5675,8 +5103,6 @@ function createOccupancyIndexes(
     return occupancy;
 
 }
-
-
 
 
 // ============================================================
