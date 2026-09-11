@@ -3763,9 +3763,14 @@ function populateRequirementRoomTypeSelect() {
 // LOAD REQUIREMENT OPTIONS
 // ============================================================
 
+
 async function loadRequirementOptions() {
 
     if (!timetableState.schoolId) {
+
+        console.error(
+            "loadRequirementOptions: schoolId is missing."
+        );
 
         return false;
 
@@ -3774,6 +3779,12 @@ async function loadRequirementOptions() {
 
     const schoolId =
         timetableState.schoolId;
+
+
+    console.log(
+        "Loading requirement options for school:",
+        schoolId
+    );
 
 
     // ========================================================
@@ -3813,6 +3824,12 @@ async function loadRequirementOptions() {
         return false;
 
     }
+
+
+    console.log(
+        "Requirement streams loaded:",
+        streams?.length || 0
+    );
 
 
     const streamSelect =
@@ -3893,6 +3910,12 @@ async function loadRequirementOptions() {
     }
 
 
+    console.log(
+        "Requirement subjects loaded:",
+        subjects?.length || 0
+    );
+
+
     const subjectSelect =
         document.getElementById(
             "requirementSubject"
@@ -3971,6 +3994,12 @@ async function loadRequirementOptions() {
     }
 
 
+    console.log(
+        "Requirement teachers loaded:",
+        teachers?.length || 0
+    );
+
+
     const teacherSelect =
         document.getElementById(
             "requirementTeacher"
@@ -4015,67 +4044,91 @@ async function loadRequirementOptions() {
     // ========================================================
     // GLOBAL ROOM TYPES
     // IMPORTANT:
-    // NO school_id FILTER
+    // Use the shared global room-type cache.
+    // Do NOT query timetable_room_types again here.
     // ========================================================
 
-    
-// ========================================================
-// GLOBAL ROOM TYPES
-// IMPORTANT:
-// Use the shared global room-type cache.
-// Do NOT query timetable_room_types again here.
-// ========================================================
+    if (
+        !Array.isArray(
+            timetableRoomTypes
+        ) ||
+        timetableRoomTypes.length === 0
+    ) {
 
-if (
-    timetableRoomTypes.length === 0
-) {
-
-    const loaded =
-        await loadRoomTypes();
-
-
-    if (!loaded) {
-
-        console.error(
-            "Failed to load global room types."
+        console.log(
+            "Requirement options: loading global room types..."
         );
 
-        return false;
+
+        const loaded =
+            await loadRoomTypes();
+
+
+        if (!loaded) {
+
+            console.error(
+                "Failed to load global room types."
+            );
+
+            return false;
+
+        }
 
     }
 
-}
+
+    // ========================================================
+    // POPULATE REQUIREMENT ROOM TYPE SELECT
+    // ========================================================
+
+    populateRequirementRoomTypeSelect();
 
 
-// ========================================================
-// POPULATE REQUIREMENT ROOM TYPE SELECT
-// ========================================================
-
-populateRequirementRoomTypeSelect();
-
-
-   
-
-// ============================================================
-// SAVE BUTTON
-// ============================================================
-
-const saveRequirementBtn =
-    document.getElementById(
-        "saveRequirementBtn"
+    console.log(
+        "Requirement room types loaded:",
+        timetableRoomTypes.length
     );
 
 
-if (saveRequirementBtn) {
+    // ========================================================
+    // SAVE BUTTON
+    // IMPORTANT:
+    // Attach this listener only once.
+    // ========================================================
 
-    saveRequirementBtn.addEventListener(
-        "click",
-        saveRequirement
+    const saveRequirementBtn =
+        document.getElementById(
+            "saveRequirementBtn"
+        );
+
+
+    if (
+        saveRequirementBtn &&
+        saveRequirementBtn.dataset.listenerAttached !== "true"
+    ) {
+
+        saveRequirementBtn.addEventListener(
+            "click",
+            saveRequirement
+        );
+
+
+        saveRequirementBtn.dataset.listenerAttached =
+            "true";
+
+    }
+
+
+    console.log(
+        "Requirement options loaded successfully."
     );
 
-}
+
+    return true;
 
 }
+
+
 // ============================================================
 // SAVE OR UPDATE REQUIREMENT
 // ============================================================
