@@ -71,6 +71,11 @@ console.log(
 // NORMALIZED GENERATOR DATA MODEL
 // ============================================================
 
+
+// ============================================================
+// NORMALIZED GENERATOR DATA MODEL
+// ============================================================
+
 const generatorData = {
 
     school: null,
@@ -88,34 +93,34 @@ const generatorData = {
     periods: [],
 
     requirements: [],
-     lessonTasks: [],
+
+    lessonTasks: [],
 
     lookup: {
 
-      lookup: {
+        streams:
+            new Map(),
 
-    streams:
-        new Map(),
+        subjects:
+            new Map(),
 
-    subjects:
-        new Map(),
+        teachers:
+            new Map(),
 
-    teachers:
-        new Map(),
+        rooms:
+            new Map(),
 
-    rooms:
-        new Map(),
+        periods:
+            new Map(),
 
-    periods:
-        new Map(),
+        requirements:
+            new Map()
 
-    requirements:
-        new Map()
-
-}
     }
 
 };
+
+
 
 
 // ============================================================
@@ -1232,27 +1237,7 @@ function normalizeGeneratorData(data) {
     // NORMALIZE ROOMS
     // ========================================================
 
-    normalized.rooms =
-        normalized.rooms.map(
-            room => {
-
-                return {
-
-                    ...room,
-
-                    roomType:
-                        getTimetableRoomType(
-                            room
-                        ) ||
-                        "classroom",
-
-                    available:
-                        room.available !== false
-
-                };
-
-            }
-        );
+   
 
 
     // ========================================================
@@ -1263,7 +1248,46 @@ function normalizeGeneratorData(data) {
         buildTimetableLookupMaps(
             normalized
         );
+// ========================================================
+// NORMALIZE ROOMS
+// ========================================================
 
+normalized.rooms =
+    normalized.rooms.map(
+        room => {
+
+            return {
+
+                ...room,
+
+                // ------------------------------------------------
+                // AUTHORITATIVE ROOM TYPE ID
+                // ------------------------------------------------
+
+                roomTypeId:
+                    room.room_type_id ||
+                    room.roomTypeId ||
+                    room.type_id ||
+                    room.typeId ||
+                    null,
+
+                // ------------------------------------------------
+                // LEGACY ROOM TYPE TEXT
+                // ------------------------------------------------
+
+                roomType:
+                    getTimetableRoomType(
+                        room
+                    ) ||
+                    "classroom",
+
+                available:
+                    room.available !== false
+
+            };
+
+        }
+    );
 
     console.log(
         "Generator data normalized successfully."
@@ -1635,38 +1659,80 @@ function validateGeneratorRelationships(data) {
                 requirement.requiresRoom
             ) {
 
-                const matchingRooms =
-                    data.rooms.filter(
-                        room => {
+               
+const matchingRooms =
+    data.rooms.filter(
+        room => {
 
-                            if (
-                                room.available === false
-                            ) {
+            if (
+                room.available === false
+            ) {
 
-                                return false;
+                return false;
 
-                            }
-
-
-                            if (
-                                !requirement.roomType
-                            ) {
-
-                                return true;
-
-                            }
+            }
 
 
-                            return (
-                                getTimetableRoomType(
-                                    room
-                                ) ===
-                                requirement.roomType
-                            );
+            // ------------------------------------------------
+            // AUTHORITATIVE ROOM TYPE ID
+            // ------------------------------------------------
 
-                        }
-                    );
+            if (
+                requirement.roomTypeId
+            ) {
 
+                const requiredRoomTypeId =
+                    String(
+                        requirement.roomTypeId
+                    )
+                        .trim()
+                        .toLowerCase();
+
+
+                const actualRoomTypeId =
+                    room.roomTypeId
+                        ? String(
+                            room.roomTypeId
+                        )
+                            .trim()
+                            .toLowerCase()
+                        : "";
+
+
+                return (
+                    actualRoomTypeId ===
+                    requiredRoomTypeId
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // LEGACY TEXT FALLBACK
+            // ------------------------------------------------
+
+            if (
+                requirement.roomType
+            ) {
+
+                return (
+                    getTimetableRoomType(
+                        room
+                    ) ===
+                    requirement.roomType
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM REQUIRED BUT NO TYPE SPECIFIED
+            // ------------------------------------------------
+
+            return true;
+
+        }
+    );
 
                 if (
                     matchingRooms.length === 0
@@ -1674,20 +1740,25 @@ function validateGeneratorRelationships(data) {
 
                     errors.push({
 
-                        type:
-                            "NO_ROOM",
+    type:
+        "NO_ROOM",
 
-                        requirementId,
+    requirementId,
 
-                        roomType:
-                            requirement.roomType,
+    roomTypeId:
+        requirement.roomTypeId,
 
-                        message:
-                            requirement.roomType
-                                ? `No available room of type "${requirement.roomType}" exists.`
-                                : "Requirement requires a room but no available room exists."
+    roomType:
+        requirement.roomType,
 
-                    });
+    message:
+        requirement.roomTypeId
+            ? `No available room matching the required room type exists.`
+            : requirement.roomType
+                ? `No available room of type "${requirement.roomType}" exists.`
+                : "Requirement requires a room but no available room exists."
+
+});
 
                 }
 
