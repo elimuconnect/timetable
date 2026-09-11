@@ -921,6 +921,8 @@ function buildTimetableLookupMaps(data) {
 // NORMALIZE GENERATOR DATA
 // ============================================================
 
+
+
 function normalizeGeneratorData(data) {
 
     const normalized = {
@@ -978,57 +980,62 @@ function normalizeGeneratorData(data) {
                 new Map(),
 
             periods:
+                new Map(),
+
+            requirements:
                 new Map()
 
         }
 
     };
 
-// ========================================================
-// NORMALIZE PERIODS
-// ========================================================
 
-normalized.periods =
-    normalized.periods.map(
-        period => {
+    // ========================================================
+    // NORMALIZE PERIODS
+    // ========================================================
 
-            const periodType =
-                String(
-                    period.period_type ||
-                    "lesson"
-                )
-                    .trim()
-                    .toLowerCase();
+    normalized.periods =
+        normalized.periods.map(
+            period => {
+
+                const periodType =
+                    String(
+                        period.period_type ||
+                        "lesson"
+                    )
+                        .trim()
+                        .toLowerCase();
 
 
-            return {
+                return {
 
-                ...period,
+                    ...period,
 
-                dayNumber:
-                    Number(
-                        period.day_number
-                    ) || 0,
+                    dayNumber:
+                        Number(
+                            period.day_number
+                        ) || 0,
 
-                periodNumber:
-                    Number(
-                        period.period_number
-                    ) || 0,
+                    periodNumber:
+                        Number(
+                            period.period_number
+                        ) || 0,
 
-                periodOrder:
-                    Number(
-                        period.period_order
-                    ) || 0,
+                    periodOrder:
+                        Number(
+                            period.period_order
+                        ) || 0,
 
-                isTeachingPeriod:
-                    period.is_teaching_period !== false,
+                    isTeachingPeriod:
+                        period.is_teaching_period !== false,
 
-                periodType
+                    periodType
 
-            };
+                };
 
-        }
-    );
+            }
+        );
+
 
     // ========================================================
     // NORMALIZE REQUIREMENTS
@@ -1056,7 +1063,17 @@ normalized.periods =
                     );
 
 
+                const parallelGroupSize =
+                    Number(
+                        requirement.parallel_group_size
+                    );
+
+
                 return {
+
+                    // ------------------------------------------------
+                    // IDENTITY
+                    // ------------------------------------------------
 
                     requirementId:
                         requirement.id ||
@@ -1079,6 +1096,11 @@ normalized.periods =
                         requirement.teacher_id ||
                         null,
 
+
+                    // ------------------------------------------------
+                    // WEEKLY LESSON REQUIREMENTS
+                    // ------------------------------------------------
+
                     lessonsPerWeek:
                         Number.isFinite(
                             lessonsPerWeek
@@ -1099,13 +1121,51 @@ normalized.periods =
                             )
                             : 0,
 
+
+                    // ------------------------------------------------
+                    // ROOM REQUIREMENT
+                    // ------------------------------------------------
+
                     requiresRoom:
                         requirement.requires_room === true,
+
+                    // room_type_id is the authoritative
+                    // database field.
+
+                    roomTypeId:
+                        requirement.room_type_id ||
+                        null,
+
+                    // Keep legacy text value too.
+                    // Some existing generator/display
+                    // logic may still use it.
 
                     roomType:
                         normalizeRoomType(
                             requirement.room_type
                         ),
+
+
+                    // ------------------------------------------------
+                    // PARALLEL GROUP
+                    // ------------------------------------------------
+
+                    parallelGroup:
+                        requirement.parallel_group ||
+                        null,
+
+                    parallelGroupSize:
+                        Number.isFinite(
+                            parallelGroupSize
+                        ) &&
+                        parallelGroupSize > 0
+                            ? parallelGroupSize
+                            : null,
+
+
+                    // ------------------------------------------------
+                    // DAILY LIMIT
+                    // ------------------------------------------------
 
                     maxLessonsPerDay:
                         Number.isFinite(
@@ -1210,10 +1270,15 @@ normalized.periods =
     );
 
 
+    console.log(
+        "Normalized requirements:",
+        normalized.requirements
+    );
+
+
     return normalized;
 
 }
-
 
 // ============================================================
 // VALIDATE GENERATOR RELATIONSHIPS
@@ -2908,10 +2973,42 @@ function createLessonTasks(
                 requiresRoom:
                     requirement.requiresRoom === true,
 
+                // =================================================
+                // ROOM TYPE
+                // =================================================
+                // roomTypeId is the authoritative database value.
+                // Keep roomType as the legacy text value as well.
+                // =================================================
+
+                roomTypeId:
+                    requirement.roomTypeId ||
+                    null,
+
                 roomType:
                     normalizeRoomType(
                         requirement.roomType
                     ),
+
+                // =================================================
+                // PARALLEL GROUP
+                // =================================================
+
+                parallelGroup:
+                    requirement.parallelGroup ||
+                    null,
+
+                parallelGroupSize:
+                    Number(
+                        requirement.parallelGroupSize
+                    ) > 0
+                        ? Number(
+                            requirement.parallelGroupSize
+                        )
+                        : null,
+
+                // =================================================
+                // DAILY LIMIT
+                // =================================================
 
                 maxLessonsPerDay:
                     Number(
@@ -3174,8 +3271,17 @@ function createLessonTasks(
                 roomRequired:
                     task.requiresRoom,
 
+                roomTypeId:
+                    task.roomTypeId,
+
                 roomType:
                     task.roomType,
+
+                parallelGroup:
+                    task.parallelGroup,
+
+                parallelGroupSize:
+                    task.parallelGroupSize,
 
                 maxPerDay:
                     task.maxLessonsPerDay
@@ -3188,9 +3294,6 @@ function createLessonTasks(
     return tasks;
 
 }
-
-
-
 
 // ============================================================
 // VALIDATE LESSON TASKS
@@ -6774,6 +6877,10 @@ function checkDoubleLessonConflict(
 // PLACE ONE DOUBLE LESSON
 // ============================================================
 
+// ============================================================
+// PLACE ONE DOUBLE LESSON
+// ============================================================
+
 function placeDoubleLesson(
     task,
     periods,
@@ -6829,6 +6936,59 @@ function placeDoubleLesson(
 
 
     // ========================================================
+    // ROOM REQUIREMENT
+    // ========================================================
+
+    const requiresRoom =
+        Boolean(
+            task.requiresRoom
+        );
+
+
+    const compatibleRooms =
+        getCompatibleRooms(
+            task,
+            rooms
+        );
+
+
+    // --------------------------------------------------------
+    // If a room is required, at least one compatible room
+    // must exist.
+    // --------------------------------------------------------
+
+    if (
+        requiresRoom &&
+        compatibleRooms.length === 0
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "No compatible room is available for this double lesson."
+
+        };
+
+    }
+
+
+    // --------------------------------------------------------
+    // If no room is required, use a null room.
+    // --------------------------------------------------------
+
+    const candidateRooms =
+        requiresRoom
+            ? compatibleRooms
+            : [null];
+
+
+    // ========================================================
     // SHUFFLE CANDIDATES
     // ========================================================
 
@@ -6846,28 +7006,19 @@ function placeDoubleLesson(
         const pair of candidatePairs
     ) {
 
-        const compatibleRooms =
-            getCompatibleRooms(
-                task,
-                rooms
-            );
-
-
-        if (
-            compatibleRooms.length === 0
-        ) {
-
-            continue;
-
-        }
-
 
         // ====================================================
         // TRY EACH ROOM
         // ====================================================
 
+        const shuffledRooms =
+            shuffleArray(
+                candidateRooms
+            );
+
+
         for (
-            const room of compatibleRooms
+            const room of shuffledRooms
         ) {
 
             const conflict =
@@ -6881,6 +7032,7 @@ function placeDoubleLesson(
 
 
             if (
+                !conflict ||
                 !conflict.valid
             ) {
 
@@ -6959,6 +7111,15 @@ function placeDoubleLesson(
                     taskId:
                         task.taskId,
 
+                    requirementId:
+                        task.requirementId,
+
+                    streamId:
+                        task.streamId,
+
+                    subjectId:
+                        task.subjectId,
+
                     firstPeriod:
                         pair.first.id,
 
@@ -6967,7 +7128,16 @@ function placeDoubleLesson(
 
                     roomId:
                         room?.id ||
+                        null,
+
+                    roomTypeId:
+                        task.roomTypeId ||
+                        null,
+
+                    parallelGroup:
+                        task.parallelGroup ||
                         null
+
                 }
             );
 
@@ -7003,11 +7173,29 @@ function placeDoubleLesson(
             taskId:
                 task.taskId,
 
+            requirementId:
+                task.requirementId,
+
             streamId:
                 task.streamId,
 
             subjectId:
-                task.subjectId
+                task.subjectId,
+
+            teacherId:
+                task.teacherId,
+
+            requiresRoom:
+                task.requiresRoom,
+
+            roomTypeId:
+                task.roomTypeId ||
+                null,
+
+            parallelGroup:
+                task.parallelGroup ||
+                null
+
         }
     );
 
@@ -7026,8 +7214,6 @@ function placeDoubleLesson(
     };
 
 }
-
-
 
 
 // ============================================================
@@ -16742,6 +16928,10 @@ function auditDoubleLessonStructure(
 // AUDIT ROOM TYPE REQUIREMENTS
 // ============================================================
 
+// ============================================================
+// AUDIT ROOM TYPE REQUIREMENTS
+// ============================================================
+
 function auditRoomTypeRequirements(
     data,
     entries,
@@ -16771,18 +16961,7 @@ function auditRoomTypeRequirements(
 
 
             // ------------------------------------------------
-            // REQUIREMENT ID IS NOW AUTHORITATIVE
-            // ------------------------------------------------
-            //
-            // The generated entry must carry the exact
-            // requirement that produced the lesson.
-            //
-            // Do NOT infer the requirement again from:
-            //
-            //     stream + subject + teacher
-            //
-            // because those values can legitimately match
-            // more than one requirement.
+            // REQUIREMENT ID IS AUTHORITATIVE
             // ------------------------------------------------
 
             const requirementId =
@@ -16809,7 +16988,6 @@ function auditRoomTypeRequirements(
 
                         teacherId:
                             normalized.teacherId
-
                     }
                 );
 
@@ -16842,7 +17020,6 @@ function auditRoomTypeRequirements(
                             index,
 
                         requirementId
-
                     }
                 );
 
@@ -16857,7 +17034,7 @@ function auditRoomTypeRequirements(
             // ------------------------------------------------
 
             if (
-                !requirement.requiresRoom
+                requirement.requiresRoom !== true
             ) {
 
                 return;
@@ -16882,7 +17059,6 @@ function auditRoomTypeRequirements(
                             index,
 
                         requirementId
-
                     }
                 );
 
@@ -16918,7 +17094,6 @@ function auditRoomTypeRequirements(
 
                         roomId:
                             normalized.roomId
-
                     }
                 );
 
@@ -16929,49 +17104,120 @@ function auditRoomTypeRequirements(
 
 
             // ------------------------------------------------
-            // COMPARE REQUIRED ROOM TYPE
-            // VS ACTUAL ROOM TYPE
+            // AUTHORITATIVE ROOM TYPE ID
+            // ------------------------------------------------
+            //
+            // Requirements use:
+            //
+            //     requirement.roomTypeId
+            //
+            // Rooms use:
+            //
+            //     room.room_type_id
+            //
+            // These UUIDs are the authoritative relationship.
+            //
+            // Legacy room_type text is retained only as a
+            // fallback for older data.
             // ------------------------------------------------
 
-            const expectedType =
-                normalizeRoomType(
-                    requirement.roomType
-                );
-
-
-            const actualType =
-                normalizeRoomType(
-                    getTimetableRoomType(
-                        room
+            const expectedRoomTypeId =
+                requirement.roomTypeId
+                    ? normalizeTimetableId(
+                        requirement.roomTypeId
                     )
-                );
+                    : null;
 
+
+            const actualRoomTypeId =
+                room.room_type_id
+                    ? normalizeTimetableId(
+                        room.room_type_id
+                    )
+                    : null;
+
+
+            // ------------------------------------------------
+            // PRIMARY CHECK — ROOM TYPE ID
+            // ------------------------------------------------
 
             if (
-                expectedType &&
-                expectedType !==
-                actualType
+                expectedRoomTypeId
             ) {
 
-                addTimetableAuditError(
-                    audit,
-                    "roomTypes",
-                    "Generated room does not match the requirement room type.",
-                    {
-                        entryIndex:
-                            index,
+                if (
+                    actualRoomTypeId !==
+                    expectedRoomTypeId
+                ) {
 
-                        requirementId,
+                    addTimetableAuditError(
+                        audit,
+                        "roomTypes",
+                        "Generated room does not match the requirement room type.",
+                        {
+                            entryIndex:
+                                index,
 
-                        expectedType,
+                            requirementId,
 
-                        actualType,
+                            expectedRoomTypeId,
 
-                        roomId:
-                            normalized.roomId
+                            actualRoomTypeId,
 
-                    }
-                );
+                            roomId:
+                                normalized.roomId
+                        }
+                    );
+
+                }
+
+            }
+            else {
+
+                // ------------------------------------------------
+                // LEGACY FALLBACK — ROOM TYPE TEXT
+                // ------------------------------------------------
+
+                const expectedType =
+                    normalizeRoomType(
+                        requirement.roomType
+                    );
+
+
+                const actualType =
+                    normalizeRoomType(
+                        getTimetableRoomType(
+                            room
+                        )
+                    );
+
+
+                if (
+                    expectedType &&
+                    expectedType !==
+                    actualType
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "roomTypes",
+                        "Generated room does not match the requirement room type.",
+                        {
+                            entryIndex:
+                                index,
+
+                            requirementId,
+
+                            expectedType,
+
+                            actualType,
+
+                            roomId:
+                                normalized.roomId
+                        }
+                    );
+
+                }
 
             }
 
@@ -16996,7 +17242,6 @@ function auditRoomTypeRequirements(
 
                         roomId:
                             normalized.roomId
-
                     }
                 );
 
@@ -17006,7 +17251,6 @@ function auditRoomTypeRequirements(
     );
 
 }
-
 
 // ============================================================
 // AUDIT BASIC ENTITY REFERENCES
@@ -18083,7 +18327,9 @@ function runStage7Repair(
                 repaired.push(
                     task
                 );
-
+generatorData.placedTasks.push(
+    task
+);
 
                 // ------------------------------------------------
                 // PRESERVE GENERATED ENTRIES
