@@ -2492,6 +2492,10 @@ function populateRoomTypeSelect(
 // GET ROOM TYPE NAME
 // ============================================================
 
+// ============================================================
+// GET ROOM TYPE NAME
+// ============================================================
+
 function getRoomTypeName(
     roomTypeId
 ) {
@@ -2506,8 +2510,8 @@ function getRoomTypeName(
     const type =
         timetableRoomTypes.find(
             item =>
-                item.id ===
-                roomTypeId
+                String(item.id) ===
+                String(roomTypeId)
         );
 
 
@@ -2516,7 +2520,6 @@ function getRoomTypeName(
         : "";
 
 }
-
 
 // ============================================================
 // FIND ROOM TYPE BY NAME
@@ -3097,12 +3100,12 @@ async function saveRoom() {
     // FIND GLOBAL ROOM TYPE
     // ========================================================
 
-    const selectedType =
-        timetableRoomTypes.find(
-            type =>
-                type.id ===
-                roomTypeId
-        );
+   const selectedType =
+    timetableRoomTypes.find(
+        type =>
+            String(type.id) ===
+            String(roomTypeId)
+    );
 
 
     if (!selectedType) {
@@ -4015,83 +4018,43 @@ async function loadRequirementOptions() {
     // NO school_id FILTER
     // ========================================================
 
-    const {
-        data: roomTypes,
-        error: roomTypesError
-    } = await supabaseClient
+    
+// ========================================================
+// GLOBAL ROOM TYPES
+// IMPORTANT:
+// Use the shared global room-type cache.
+// Do NOT query timetable_room_types again here.
+// ========================================================
 
-        .from(
-            "timetable_room_types"
-        )
+if (
+    timetableRoomTypes.length === 0
+) {
 
-        .select(
-            "id, type_name"
-        )
-
-        .order(
-            "type_name"
-        );
+    const loaded =
+        await loadRoomTypes();
 
 
-    if (roomTypesError) {
+    if (!loaded) {
 
         console.error(
-            "Failed to load global room types:",
-            roomTypesError
+            "Failed to load global room types."
         );
 
         return false;
 
     }
 
-
-    const roomTypeSelect =
-        document.getElementById(
-            "requirementRoomType"
-        );
-
-
-    if (roomTypeSelect) {
-
-        roomTypeSelect.innerHTML = `
-            <option value="">
-                Select room type
-            </option>
-        `;
-
-
-        (roomTypes || []).forEach(
-            roomType => {
-
-                const option =
-                    document.createElement(
-                        "option"
-                    );
-
-                option.value =
-                    roomType.id;
-
-                option.textContent =
-                    roomType.type_name;
-
-                roomTypeSelect.appendChild(
-                    option
-                );
-
-            }
-        );
-
-    }
-
-
-    // ========================================================
-    // SUCCESS
-    // ========================================================
-
-    return true;
-
 }
 
+
+// ========================================================
+// POPULATE REQUIREMENT ROOM TYPE SELECT
+// ========================================================
+
+populateRequirementRoomTypeSelect();
+
+
+   
 
 // ============================================================
 // SAVE BUTTON
@@ -4429,6 +4392,9 @@ const roomTypeId =
         )
         : null,
 
+        parallel_group:
+        parallelGroup || null
+
     };
 
 
@@ -4633,7 +4599,8 @@ window.editRequirement =
                 double_lessons_per_week,
                 requires_room,
                 room_type_id,
-                max_lessons_per_day
+                max_lessons_per_day,
+                parallel_group
             `)
 
             .eq(
@@ -4752,6 +4719,42 @@ window.editRequirement =
             );
 
 
+        const parallelGroupElement =
+            document.getElementById(
+                "requirementParallelGroup"
+            );
+
+
+        // ====================================================
+        // VERIFY REQUIRED FORM ELEMENTS
+        // ====================================================
+
+        if (
+            !streamElement ||
+            !subjectElement ||
+            !teacherElement ||
+            !lessonsElement ||
+            !doubleLessonsElement ||
+            !maxPerDayElement ||
+            !requiresRoomElement ||
+            !roomTypeElement
+        ) {
+
+            console.error(
+                "Requirement edit form elements missing."
+            );
+
+
+            alert(
+                "Requirement form is incomplete."
+            );
+
+
+            return;
+
+        }
+
+
         // ====================================================
         // SET EDITING ID
         // ====================================================
@@ -4765,33 +4768,45 @@ window.editRequirement =
         // ====================================================
 
         streamElement.value =
-            requirement.stream_id;
+            requirement.stream_id || "";
 
 
         subjectElement.value =
-            requirement.subject_id;
+            requirement.subject_id || "";
 
 
         teacherElement.value =
-            requirement.teacher_id;
+            requirement.teacher_id || "";
 
 
         lessonsElement.value =
-            requirement.lessons_per_week;
+            requirement.lessons_per_week || "";
 
 
         doubleLessonsElement.value =
-            requirement.double_lessons_per_week;
+            requirement.double_lessons_per_week || 0;
 
 
         maxPerDayElement.value =
-            requirement.max_lessons_per_day;
+            requirement.max_lessons_per_day || "";
 
 
         requiresRoomElement.value =
             requirement.requires_room
                 ? "true"
                 : "false";
+
+
+        // ====================================================
+        // SET PARALLEL GROUP
+        // ====================================================
+
+        if (parallelGroupElement) {
+
+            parallelGroupElement.value =
+                requirement.parallel_group || "";
+
+        }
 
 
         // ====================================================
@@ -4809,8 +4824,12 @@ window.editRequirement =
         if (
             requirement.requires_room &&
             requirement.room_type_id &&
-            roomTypeElement.value !==
+            String(
+                roomTypeElement.value
+            ) !==
+            String(
                 requirement.room_type_id
+            )
         ) {
 
             console.error(
@@ -4818,9 +4837,11 @@ window.editRequirement =
                 requirement.room_type_id
             );
 
+
             alert(
                 "The room type belonging to this requirement could not be found."
             );
+
 
             cancelRequirementEdit();
 
@@ -4834,8 +4855,12 @@ window.editRequirement =
         // ====================================================
 
         if (
-            streamElement.value !==
-            requirement.stream_id
+            String(
+                streamElement.value
+            ) !==
+            String(
+                requirement.stream_id
+            )
         ) {
 
             console.error(
@@ -4862,8 +4887,12 @@ window.editRequirement =
         // ====================================================
 
         if (
-            subjectElement.value !==
-            requirement.subject_id
+            String(
+                subjectElement.value
+            ) !==
+            String(
+                requirement.subject_id
+            )
         ) {
 
             console.error(
@@ -4890,8 +4919,12 @@ window.editRequirement =
         // ====================================================
 
         if (
-            teacherElement.value !==
-            requirement.teacher_id
+            String(
+                teacherElement.value
+            ) !==
+            String(
+                requirement.teacher_id
+            )
         ) {
 
             console.error(
@@ -5006,13 +5039,16 @@ window.editRequirement =
         if (formElement) {
 
             formElement.scrollIntoView({
-                behavior: "smooth",
-                block: "center"
+                behavior:
+                    "smooth",
+                block:
+                    "center"
             });
 
         }
 
     };
+
 
 
 // ============================================================
@@ -5181,6 +5217,7 @@ function cancelRequirementEdit() {
 // LOAD REQUIREMENTS
 // ============================================================
 
+
 async function loadRequirements() {
 
     const container =
@@ -5217,7 +5254,37 @@ async function loadRequirements() {
 
 
     // ========================================================
-    // LOAD REQUIREMENTS + GLOBAL ROOM TYPE
+    // LOAD GLOBAL ROOM TYPES
+    // IMPORTANT:
+    // Requirements use the same global room-type cache
+    // as Rooms.
+    // ========================================================
+
+    if (
+        timetableRoomTypes.length === 0
+    ) {
+
+        const loaded =
+            await loadRoomTypes();
+
+
+        if (!loaded) {
+
+            container.innerHTML = `
+                <div class="empty-message">
+                    Failed to load global room types.
+                </div>
+            `;
+
+            return;
+
+        }
+
+    }
+
+
+    // ========================================================
+    // LOAD REQUIREMENTS
     // ========================================================
 
     const {
@@ -5240,11 +5307,8 @@ async function loadRequirements() {
             requires_room,
             room_type_id,
             max_lessons_per_day,
-            created_at,
-            timetable_room_types (
-                id,
-                type_name
-            )
+            parallel_group,
+            created_at
         `)
 
         .eq(
@@ -5413,7 +5477,9 @@ async function loadRequirements() {
         stream => {
 
             streamMap[
-                stream.id
+                String(
+                    stream.id
+                )
             ] =
                 stream.stream_name;
 
@@ -5427,7 +5493,9 @@ async function loadRequirements() {
         subject => {
 
             subjectMap[
-                subject.id
+                String(
+                    subject.id
+                )
             ] =
                 subject.subject_name;
 
@@ -5441,7 +5509,9 @@ async function loadRequirements() {
         teacher => {
 
             teacherMap[
-                teacher.id
+                String(
+                    teacher.id
+                )
             ] =
                 teacher.teacher_name;
 
@@ -5471,6 +5541,8 @@ async function loadRequirements() {
 
                     <th>Double / Week</th>
 
+                    <th>Parallel Group</th>
+
                     <th>Room Type</th>
 
                     <th>Max / Day</th>
@@ -5491,31 +5563,60 @@ async function loadRequirements() {
 
             const streamName =
                 streamMap[
-                    requirement.stream_id
-                ] || "—";
+                    String(
+                        requirement.stream_id
+                    )
+                ] ||
+                "—";
 
 
             const subjectName =
                 subjectMap[
-                    requirement.subject_id
-                ] || "—";
+                    String(
+                        requirement.subject_id
+                    )
+                ] ||
+                "—";
 
 
             const teacherName =
                 teacherMap[
-                    requirement.teacher_id
-                ] || "—";
+                    String(
+                        requirement.teacher_id
+                    )
+                ] ||
+                "—";
+
+
+            // ------------------------------------------------
+            // GLOBAL ROOM TYPE LOOKUP
+            // ------------------------------------------------
+
+            const selectedRoomType =
+                timetableRoomTypes.find(
+                    type =>
+                        String(
+                            type.id
+                        ) ===
+                        String(
+                            requirement.room_type_id
+                        )
+                );
 
 
             const roomTypeName =
                 requirement.requires_room
                     ? (
-                        requirement
-                            .timetable_room_types
+                        selectedRoomType
                             ?.type_name ||
                         "Special room"
                     )
                     : "None";
+
+
+            const parallelGroup =
+                requirement.parallel_group ||
+                "—";
 
 
             html += `
@@ -5552,6 +5653,13 @@ async function loadRequirements() {
 
                     <td>
                         ${requirement.double_lessons_per_week}
+                    </td>
+
+
+                    <td>
+                        ${escapeHtml(
+                            parallelGroup
+                        )}
                     </td>
 
 
@@ -5617,7 +5725,6 @@ async function loadRequirements() {
         html;
 
 }
-
 
 // ============================================================
 // DELETE REQUIREMENT
