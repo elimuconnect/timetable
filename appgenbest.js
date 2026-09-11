@@ -1252,6 +1252,10 @@ function normalizeGeneratorData(data) {
 // NORMALIZE ROOMS
 // ========================================================
 
+// ========================================================
+// NORMALIZE ROOMS
+// ========================================================
+
 normalized.rooms =
     normalized.rooms.map(
         room => {
@@ -1260,26 +1264,28 @@ normalized.rooms =
 
                 ...room,
 
-                // ------------------------------------------------
+                // =================================================
                 // AUTHORITATIVE ROOM TYPE ID
-                // ------------------------------------------------
+                // =================================================
 
                 roomTypeId:
                     room.room_type_id ||
                     room.roomTypeId ||
-                    room.type_id ||
-                    room.typeId ||
                     null,
 
-                // ------------------------------------------------
+                // =================================================
                 // LEGACY ROOM TYPE TEXT
-                // ------------------------------------------------
+                // =================================================
 
                 roomType:
                     getTimetableRoomType(
                         room
                     ) ||
                     "classroom",
+
+                // =================================================
+                // AVAILABILITY
+                // =================================================
 
                 available:
                     room.available !== false
@@ -1288,7 +1294,6 @@ normalized.rooms =
 
         }
     );
-
     console.log(
         "Generator data normalized successfully."
     );
@@ -1303,6 +1308,10 @@ normalized.rooms =
     return normalized;
 
 }
+
+// ============================================================
+// VALIDATE GENERATOR RELATIONSHIPS
+// ============================================================
 
 // ============================================================
 // VALIDATE GENERATOR RELATIONSHIPS
@@ -1651,88 +1660,93 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // =================================================
             // ROOM VALIDATION
-            // ------------------------------------------------
+            // =================================================
 
             if (
                 requirement.requiresRoom
             ) {
 
-               
-const matchingRooms =
-    data.rooms.filter(
-        room => {
-
-            if (
-                room.available === false
-            ) {
-
-                return false;
-
-            }
-
-
-            // ------------------------------------------------
-            // AUTHORITATIVE ROOM TYPE ID
-            // ------------------------------------------------
-
-            if (
-                requirement.roomTypeId
-            ) {
-
-                const requiredRoomTypeId =
-                    String(
-                        requirement.roomTypeId
-                    )
-                        .trim()
-                        .toLowerCase();
-
-
-                const actualRoomTypeId =
-                    room.roomTypeId
-                        ? String(
-                            room.roomTypeId
+                const expectedRoomTypeId =
+                    requirement.roomTypeId
+                        ? normalizeTimetableId(
+                            requirement.roomTypeId
                         )
-                            .trim()
-                            .toLowerCase()
-                        : "";
+                        : null;
 
 
-                return (
-                    actualRoomTypeId ===
-                    requiredRoomTypeId
-                );
-
-            }
+                const expectedRoomType =
+                    normalizeRoomType(
+                        requirement.roomType
+                    );
 
 
-            // ------------------------------------------------
-            // LEGACY TEXT FALLBACK
-            // ------------------------------------------------
+                const matchingRooms =
+                    data.rooms.filter(
+                        room => {
 
-            if (
-                requirement.roomType
-            ) {
+                            if (
+                                !room ||
+                                room.available === false
+                            ) {
 
-                return (
-                    getTimetableRoomType(
-                        room
-                    ) ===
-                    requirement.roomType
-                );
+                                return false;
 
-            }
+                            }
 
 
-            // ------------------------------------------------
-            // ROOM REQUIRED BUT NO TYPE SPECIFIED
-            // ------------------------------------------------
+                            // ------------------------------------------------
+                            // AUTHORITATIVE ROOM TYPE ID
+                            // ------------------------------------------------
 
-            return true;
+                            if (
+                                expectedRoomTypeId
+                            ) {
 
-        }
-    );
+                                const actualRoomTypeId =
+                                    room.roomTypeId ||
+                                    room.room_type_id ||
+                                    null;
+
+
+                                return (
+                                    normalizeTimetableId(
+                                        actualRoomTypeId
+                                    ) ===
+                                    expectedRoomTypeId
+                                );
+
+                            }
+
+
+                            // ------------------------------------------------
+                            // LEGACY TEXT FALLBACK
+                            // ------------------------------------------------
+
+                            if (
+                                expectedRoomType
+                            ) {
+
+                                return (
+                                    getTimetableRoomType(
+                                        room
+                                    ) ===
+                                    expectedRoomType
+                                );
+
+                            }
+
+
+                            // ------------------------------------------------
+                            // ROOM REQUIRED BUT NO TYPE
+                            // ------------------------------------------------
+
+                            return true;
+
+                        }
+                    );
+
 
                 if (
                     matchingRooms.length === 0
@@ -1740,25 +1754,25 @@ const matchingRooms =
 
                     errors.push({
 
-    type:
-        "NO_ROOM",
+                        type:
+                            "NO_ROOM",
 
-    requirementId,
+                        requirementId,
 
-    roomTypeId:
-        requirement.roomTypeId,
+                        roomTypeId:
+                            expectedRoomTypeId,
 
-    roomType:
-        requirement.roomType,
+                        roomType:
+                            expectedRoomType,
 
-    message:
-        requirement.roomTypeId
-            ? `No available room matching the required room type exists.`
-            : requirement.roomType
-                ? `No available room of type "${requirement.roomType}" exists.`
-                : "Requirement requires a room but no available room exists."
+                        message:
+                            expectedRoomTypeId
+                                ? `No available room matching required room type ID "${expectedRoomTypeId}" exists.`
+                                : expectedRoomType
+                                    ? `No available room of type "${expectedRoomType}" exists.`
+                                    : "Requirement requires a room but no available room exists."
 
-});
+                    });
 
                 }
 
@@ -1822,8 +1836,6 @@ const matchingRooms =
     return result;
 
 }
-
-
 // ============================================================
 // VALIDATE NORMALIZED PERIODS
 // ============================================================
@@ -3871,14 +3883,26 @@ function sortTimetablePeriods(
 // GET COMPATIBLE ROOMS
 // ============================================================
 
+// ============================================================
+// GET COMPATIBLE ROOMS
+// ============================================================
+
 function getCompatibleRooms(
     task,
     rooms
 ) {
 
+    // ========================================================
+    // VALID ROOM COLLECTION
+    // ========================================================
+
     const availableRooms =
         Array.isArray(rooms)
-            ? rooms.filter(Boolean)
+            ? rooms.filter(
+                room =>
+                    room &&
+                    room.available !== false
+            )
             : [];
 
 
@@ -3888,7 +3912,7 @@ function getCompatibleRooms(
 
     if (
         !task ||
-        !task.requiresRoom
+        task.requiresRoom !== true
     ) {
 
         return [null];
@@ -3897,7 +3921,7 @@ function getCompatibleRooms(
 
 
     // --------------------------------------------------------
-    // ROOM REQUIRED
+    // ROOM REQUIRED BUT NONE AVAILABLE
     // --------------------------------------------------------
 
     if (
@@ -3909,17 +3933,42 @@ function getCompatibleRooms(
     }
 
 
+    // ========================================================
+    // AUTHORITATIVE ROOM TYPE ID
+    // ========================================================
+
+    const requestedRoomTypeId =
+        task.roomTypeId ||
+        task.room_type_id ||
+        task.requiredRoomTypeId ||
+        task.required_room_type_id ||
+        null;
+
+
+    const normalizedRequestedRoomTypeId =
+        requestedRoomTypeId
+            ? normalizeTimetableId(
+                requestedRoomTypeId
+            )
+            : null;
+
+
+    // ========================================================
+    // LEGACY ROOM TYPE TEXT
+    // ========================================================
+
     const requestedType =
         normalizeRoomType(
             task.roomType
         );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // NO SPECIFIC ROOM TYPE
-    // --------------------------------------------------------
+    // ========================================================
 
     if (
+        !normalizedRequestedRoomTypeId &&
         !requestedType
     ) {
 
@@ -3930,13 +3979,45 @@ function getCompatibleRooms(
     }
 
 
-    // --------------------------------------------------------
-    // MATCH ROOM TYPE
-    // --------------------------------------------------------
+    // ========================================================
+    // MATCH ROOMS
+    // ========================================================
 
     const matchingRooms =
         availableRooms.filter(
             room => {
+
+                // ------------------------------------------------
+                // ROOM TYPE ID
+                // ------------------------------------------------
+                // This is authoritative when the task has one.
+                // ------------------------------------------------
+
+                if (
+                    normalizedRequestedRoomTypeId
+                ) {
+
+                    const roomTypeId =
+                        room.roomTypeId ||
+                        room.room_type_id ||
+                        room.typeId ||
+                        room.type_id ||
+                        null;
+
+
+                    return (
+                        normalizeTimetableId(
+                            roomTypeId
+                        ) ===
+                        normalizedRequestedRoomTypeId
+                    );
+
+                }
+
+
+                // ------------------------------------------------
+                // LEGACY TEXT FALLBACK
+                // ------------------------------------------------
 
                 const roomType =
                     normalizeRoomType(
@@ -3955,16 +4036,9 @@ function getCompatibleRooms(
         );
 
 
-    // --------------------------------------------------------
-    // IMPORTANT:
-    // DO NOT FAIL JUST BECAUSE ROOM TYPE
-    // TEXT IS SLIGHTLY DIFFERENT.
-    //
-    // Example:
-    // "Laboratory"
-    // "Lab"
-    // "laboratory"
-    // --------------------------------------------------------
+    // ========================================================
+    // MATCH FOUND
+    // ========================================================
 
     if (
         matchingRooms.length > 0
@@ -3977,24 +4051,48 @@ function getCompatibleRooms(
     }
 
 
-    // --------------------------------------------------------
-    // NO MATCHING ROOM
-    // --------------------------------------------------------
+    // ========================================================
+    // NO MATCH
+    // ========================================================
 
     console.warn(
-        "No room matches requested type.",
+        "No compatible room matches requested room type.",
         {
+
             taskId:
                 task.taskId,
 
+            requirementId:
+                task.requirementId,
+
+            requestedRoomTypeId:
+                normalizedRequestedRoomTypeId,
+
             requestedType,
 
-            availableTypes:
+            availableRooms:
                 availableRooms.map(
-                    room =>
-                        getTimetableRoomType(
-                            room
-                        )
+                    room => ({
+
+                        roomId:
+                            room.id,
+
+                        roomName:
+                            getTimetableRoomName(
+                                room
+                            ),
+
+                        roomTypeId:
+                            room.roomTypeId ||
+                            room.room_type_id ||
+                            null,
+
+                        roomType:
+                            getTimetableRoomType(
+                                room
+                            )
+
+                    })
                 )
 
         }
