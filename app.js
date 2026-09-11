@@ -2959,31 +2959,6 @@ if (cancelRoomBtn) {
 }
 
 
-// ============================================================
-// CLOSE ROOM FORM
-// ============================================================
-
-function closeRoomForm() {
-
-    const form =
-        document.getElementById(
-            "roomFormCard"
-        );
-
-
-    if (form) {
-
-        form.style.display =
-            "none";
-
-    }
-
-}
-
-
-
-
-
 function closeRoomForm() {
 
     const form =
