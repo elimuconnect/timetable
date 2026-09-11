@@ -2845,21 +2845,21 @@ async function openRoomForm(
         // ----------------------------------------------------
         // SET SELECTED ROOM TYPE
         // ----------------------------------------------------
-
-        if (roomTypeSelect) {
+ if (roomTypeSelect) {
 
             roomTypeSelect.value =
                 roomTypeId;
 
+       
 
             // Safety check
             // If the ID doesn't exist in the dropdown,
             // leave it unselected.
 
-            if (
-                roomTypeSelect.value !==
-                roomTypeId
-            ) {
+           if (
+    String(roomTypeSelect.value) !==
+    String(roomTypeId)
+) {
 
                 console.warn(
                     "Room type ID not found in global room types:",
@@ -4075,7 +4075,7 @@ if (saveRequirementBtn) {
 
 }
 
-
+}
 // ============================================================
 // SAVE OR UPDATE REQUIREMENT
 // ============================================================
