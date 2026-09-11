@@ -5264,6 +5264,10 @@ function getTeacherOccupiedPeriods(
 
 
 
+// ============================================================
+// CALCULATE LONGEST CONSECUTIVE PERIOD RUN
+// ============================================================
+
 function calculateLongestConsecutivePeriodRun(
     periods
 ) {
@@ -5387,14 +5391,6 @@ function calculateLongestConsecutivePeriodRun(
             // ==================================================
             // REMOVE DUPLICATE PERIOD ORDERS
             // ==================================================
-            //
-            // Multiple entries may occupy the same period
-            // because of parallel lessons.
-            //
-            // A teacher's consecutive run must therefore
-            // count the occupied period only once.
-            //
-            // ==================================================
 
             const uniqueOrders =
                 [
@@ -5488,10 +5484,6 @@ function calculateLongestConsecutivePeriodRun(
     );
 
 
-    // ========================================================
-    // RETURN RESULT
-    // ========================================================
-
     return longestRun;
 
 }
@@ -5500,17 +5492,6 @@ function calculateLongestConsecutivePeriodRun(
 
 // ============================================================
 // CHECK TEACHER CONSECUTIVE LIMIT
-// ============================================================
-//
-// Returns:
-//
-//     true
-//         if placing the candidate period(s) WOULD exceed
-//         the teacher's maximum consecutive lesson limit.
-//
-//     false
-//         if the limit would not be exceeded.
-//
 // ============================================================
 
 function wouldExceedTeacherConsecutiveLimit(
@@ -5533,13 +5514,10 @@ function wouldExceedTeacherConsecutiveLimit(
 
     const teacherId =
         normalizeTimetableId(
-            task.teacherId
+            task.teacherId ??
+            task.teacher_id
         );
 
-
-    // --------------------------------------------------------
-    // No teacher = no teacher consecutive constraint.
-    // --------------------------------------------------------
 
     if (
         !teacherId
@@ -5556,10 +5534,6 @@ function wouldExceedTeacherConsecutiveLimit(
             teacherId
         );
 
-
-    // --------------------------------------------------------
-    // No configured limit = no hard constraint.
-    // --------------------------------------------------------
 
     if (
         maximum <= 0
@@ -5582,14 +5556,7 @@ function wouldExceedTeacherConsecutiveLimit(
 
 
     // ========================================================
-    // PROJECTED TEACHER PERIODS
-    // ========================================================
-    //
-    // Add the candidate period(s) to the currently occupied
-    // periods.
-    //
-    // No duplicate period IDs are added.
-    //
+    // PROJECTED PERIODS
     // ========================================================
 
     const projectedPeriodMap =
@@ -5598,6 +5565,17 @@ function wouldExceedTeacherConsecutiveLimit(
 
     occupiedPeriods.forEach(
         period => {
+
+            if (
+                !period ||
+                period.id === null ||
+                period.id === undefined
+            ) {
+
+                return;
+
+            }
+
 
             projectedPeriodMap.set(
                 normalizeTimetableId(
@@ -5614,7 +5592,9 @@ function wouldExceedTeacherConsecutiveLimit(
         period => {
 
             if (
-                !period
+                !period ||
+                period.id === null ||
+                period.id === undefined
             ) {
 
                 return;
@@ -5657,6 +5637,7 @@ function wouldExceedTeacherConsecutiveLimit(
 }
 
 
+
 // ============================================================
 // GET TEACHER CONSECUTIVE CONFLICT REASON
 // ============================================================
@@ -5669,7 +5650,8 @@ function getTeacherConsecutiveConflictReason(
     const maximum =
         getTeacherMaxConsecutiveLessons(
             indexes,
-            task?.teacherId
+            task?.teacherId ??
+            task?.teacher_id
         );
 
 
@@ -5678,6 +5660,7 @@ function getTeacherConsecutiveConflictReason(
     ) {
 
         return "";
+
     }
 
 
@@ -5691,18 +5674,9 @@ function getTeacherConsecutiveConflictReason(
 }
 
 
+
 // ============================================================
 // GET STUDENT GROUPS FOR TASK
-// ============================================================
-//
-// Student-group occupancy is the authoritative level for
-// detecting student conflicts.
-//
-// If explicit student groups exist, use them.
-//
-// If they do not exist, fall back to streamId so ordinary
-// non-parallel lessons retain the old behaviour.
-//
 // ============================================================
 
 function getTaskStudentGroups(
@@ -5719,13 +5693,23 @@ function getTaskStudentGroups(
 
 
     const possibleGroups =
+
         task.studentGroupIds ??
+        task.student_group_ids ??
         task.studentGroups ??
+        task.student_group_ids ??
         task.studentGroupId ??
+        task.student_group_id ??
         task.groupIds ??
+        task.group_ids ??
         task.groupId ??
+        task.group_id ??
         task.groups;
 
+
+    // ========================================================
+    // ARRAY
+    // ========================================================
 
     if (
         Array.isArray(
@@ -5761,6 +5745,10 @@ function getTaskStudentGroups(
     }
 
 
+    // ========================================================
+    // SINGLE VALUE
+    // ========================================================
+
     if (
         possibleGroups !== undefined &&
         possibleGroups !== null &&
@@ -5769,22 +5757,33 @@ function getTaskStudentGroups(
         ).trim() !== ""
     ) {
 
-        return [
+        const normalized =
             normalizeTimetableId(
                 possibleGroups
-            )
-        ];
+            );
+
+
+        if (
+            normalized
+        ) {
+
+            return [
+                normalized
+            ];
+
+        }
 
     }
 
 
-    // --------------------------------------------------------
-    // Normal non-parallel lesson fallback.
-    // --------------------------------------------------------
+    // ========================================================
+    // FALLBACK TO STREAM
+    // ========================================================
 
     const streamId =
         normalizeTimetableId(
-            task.streamId
+            task.streamId ??
+            task.stream_id
         );
 
 
@@ -5793,6 +5792,7 @@ function getTaskStudentGroups(
         : [];
 
 }
+
 
 
 // ============================================================
@@ -5828,14 +5828,6 @@ function getTeacherLessonsAtPeriod(
         );
 
 
-    const lessons = [];
-
-
-    // --------------------------------------------------------
-    // Prefer the detailed teacher-period lesson index when
-    // available.
-    // --------------------------------------------------------
-
     if (
         indexes.teacherPeriodLessons instanceof Map
     ) {
@@ -5851,7 +5843,9 @@ function getTeacherLessonsAtPeriod(
 
 
         if (
-            Array.isArray(existing)
+            Array.isArray(
+                existing
+            )
         ) {
 
             return existing;
@@ -5861,42 +5855,142 @@ function getTeacherLessonsAtPeriod(
     }
 
 
-    return lessons;
+    return [];
 
 }
 
 
 
+// ============================================================
+// GET TASK PARALLEL GROUP
+// ============================================================
+//
+// Parallel lessons may share a teacher only when they belong
+// to the same explicit parallel group.
+//
+// Same subject alone is NOT sufficient.
+//
+// ============================================================
+
+function getTaskParallelGroup(
+    task
+) {
+
+    if (
+        !task
+    ) {
+
+        return "";
+
+    }
+
+
+    return normalizeTimetableId(
+        task.parallelGroup ??
+        task.parallel_group
+    );
+
+}
 
 
 
+// ============================================================
+// CHECK WHETHER TWO LESSONS MAY RUN CONCURRENTLY
+// ============================================================
+
+function areConcurrentTeacherLessonsAllowed(
+    task,
+    existingLesson
+) {
+
+    if (
+        !task ||
+        !existingLesson
+    ) {
+
+        return false;
+
+    }
 
 
+    const taskSubjectId =
+        normalizeTimetableId(
+            task.subjectId ??
+            task.subject_id
+        );
 
 
+    const existingSubjectId =
+        normalizeTimetableId(
+            existingLesson.subjectId ??
+            existingLesson.subject_id
+        );
 
+
+    // ========================================================
+    // SUBJECT MUST MATCH
+    // ========================================================
+
+    if (
+        !taskSubjectId ||
+        !existingSubjectId ||
+        taskSubjectId !== existingSubjectId
+    ) {
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // PARALLEL GROUP
+    // ========================================================
+    //
+    // If an explicit parallel group exists, both lessons must
+    // belong to the SAME parallel group.
+    //
+    // If neither side has a parallel group, same-subject
+    // concurrent teaching remains allowed for compatibility
+    // with existing shared-teaching data.
+    //
+    // ========================================================
+
+    const taskParallelGroup =
+        getTaskParallelGroup(
+            task
+        );
+
+
+    const existingParallelGroup =
+        normalizeTimetableId(
+            existingLesson.parallelGroup ??
+            existingLesson.parallel_group
+        );
+
+
+    if (
+        taskParallelGroup ||
+        existingParallelGroup
+    ) {
+
+        return (
+            taskParallelGroup &&
+            existingParallelGroup &&
+            taskParallelGroup ===
+            existingParallelGroup
+        );
+
+    }
+
+
+    return true;
+
+}
 
 
 
 // ============================================================
 // CHECK SINGLE SLOT CONFLICT
-// ============================================================
-//
-// CONFLICT RULES:
-//
-// 1. Same student group + same period = CONFLICT
-//
-// 2. Same stream + same period is NOT automatically a conflict.
-//    Different student groups may be taught in parallel.
-//
-// 3. Same teacher + same period is allowed when the existing
-//    lesson has the SAME subject and represents concurrent/shared
-//    teaching.
-//
-// 4. Same teacher + same period + DIFFERENT subject = CONFLICT.
-//
-// 5. Same room + same period = CONFLICT.
-//
 // ============================================================
 
 function checkSingleSlotConflict(
@@ -5931,14 +6025,25 @@ function checkSingleSlotConflict(
         );
 
 
+    if (
+        !periodId
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "Period has no valid ID."
+
+        };
+
+    }
+
+
     // ========================================================
     // STUDENT GROUP
-    // ========================================================
-    //
-    // This is the authoritative class/student conflict check.
-    //
-    // DO NOT reject merely because streamId matches.
-    //
     // ========================================================
 
     const studentGroups =
@@ -5992,7 +6097,8 @@ function checkSingleSlotConflict(
 
     const teacherId =
         normalizeTimetableId(
-            task.teacherId
+            task.teacherId ??
+            task.teacher_id
         );
 
 
@@ -6005,17 +6111,11 @@ function checkSingleSlotConflict(
 
 
         if (
+            indexes.teacherPeriod &&
             indexes.teacherPeriod.has(
                 teacherKey
             )
         ) {
-
-            // ------------------------------------------------
-            // SAME TEACHER ALREADY EXISTS.
-            //
-            // Check whether this can be legitimate concurrent
-            // teaching.
-            // ------------------------------------------------
 
             const existingTeacherLessons =
                 getTeacherLessonsAtPeriod(
@@ -6025,28 +6125,14 @@ function checkSingleSlotConflict(
                 );
 
 
-            const subjectId =
-                normalizeTimetableId(
-                    task.subjectId
-                );
-
-
             const concurrentAllowed =
                 existingTeacherLessons.length > 0 &&
                 existingTeacherLessons.every(
-                    existingLesson => {
-
-                        const existingSubjectId =
-                            normalizeTimetableId(
-                                existingLesson.subjectId
-                            );
-
-                        return (
-                            existingSubjectId ===
-                            subjectId
-                        );
-
-                    }
+                    existingLesson =>
+                        areConcurrentTeacherLessonsAllowed(
+                            task,
+                            existingLesson
+                        )
                 );
 
 
@@ -6060,7 +6146,7 @@ function checkSingleSlotConflict(
                         false,
 
                     reason:
-                        "Teacher is already teaching a different subject in this period."
+                        "Teacher is already teaching a conflicting lesson in this period."
 
                 };
 
@@ -6072,25 +6158,21 @@ function checkSingleSlotConflict(
 
 
     // ========================================================
-    // TEACHER CONSECUTIVE LESSON LIMIT
+    // TEACHER CONSECUTIVE LIMIT
     // ========================================================
 
     if (
         teacherId
     ) {
 
-        const wouldExceedConsecutive =
+        if (
             wouldExceedTeacherConsecutiveLimit(
                 task,
                 [
                     period
                 ],
                 indexes
-            );
-
-
-        if (
-            wouldExceedConsecutive
+            )
         ) {
 
             return {
@@ -6120,11 +6202,18 @@ function checkSingleSlotConflict(
         room.id
     ) {
 
+        const roomId =
+            normalizeTimetableId(
+                room.id
+            );
+
+
         const roomKey =
-            `${normalizeTimetableId(room.id)}__${periodId}`;
+            `${roomId}__${periodId}`;
 
 
         if (
+            indexes.roomPeriod &&
             indexes.roomPeriod.has(
                 roomKey
             )
@@ -6151,26 +6240,38 @@ function checkSingleSlotConflict(
 
     const requirementId =
         normalizeTimetableId(
-            task.requirementId
+            task.requirementId ??
+            task.requirement_id
         );
 
 
     const maxPerDay =
         Number(
-            task.maxLessonsPerDay
+            task.maxLessonsPerDay ??
+            task.max_lessons_per_day
         ) || 0;
+
+
+    const dayNumber =
+        Number(
+            period.dayNumber ??
+            period.day_number
+        );
 
 
     if (
         requirementId &&
-        maxPerDay > 0
+        maxPerDay > 0 &&
+        Number.isFinite(
+            dayNumber
+        )
     ) {
 
         const currentCount =
             getDailyRequirementLessonCount(
                 indexes,
                 requirementId,
-                period.dayNumber
+                dayNumber
             );
 
 
@@ -6194,10 +6295,6 @@ function checkSingleSlotConflict(
     }
 
 
-    // ========================================================
-    // SLOT IS AVAILABLE
-    // ========================================================
-
     return {
 
         valid:
@@ -6212,9 +6309,6 @@ function checkSingleSlotConflict(
 
 
 
-
-
-
 // ============================================================
 // RESERVE SLOT
 // ============================================================
@@ -6223,17 +6317,13 @@ function checkSingleSlotConflict(
 //
 // IMPORTANT:
 //
-// streamPeriod is retained as a legacy/support index.
+// A double lesson calls reserveSlot() twice.
 //
-// It is NOT the authoritative student conflict index.
-//
-// studentGroupPeriod is the authoritative index.
+// Therefore daily requirement lesson counting is protected by
+// a unique requirement/day/lesson key so the two periods of
+// one double lesson count as ONE lesson.
 //
 // ============================================================
-
-
-
-
 
 function reserveSlot(
     task,
@@ -6259,7 +6349,8 @@ function reserveSlot(
 
     const streamId =
         normalizeTimetableId(
-            task.streamId
+            task.streamId ??
+            task.stream_id
         );
 
 
@@ -6269,24 +6360,29 @@ function reserveSlot(
         );
 
 
+    if (
+        !periodId
+    ) {
+
+        return false;
+
+    }
+
+
     const requirementId =
         normalizeTimetableId(
-            task.requirementId
+            task.requirementId ??
+            task.requirement_id
         );
 
 
     // ========================================================
     // STREAM / PERIOD
     // ========================================================
-    //
-    // Retained for legacy lookup/support.
-    //
-    // DO NOT use this by itself to reject parallel lessons.
-    //
-    // ========================================================
 
     if (
-        streamId
+        streamId &&
+        indexes.streamPeriod
     ) {
 
         indexes.streamPeriod.add(
@@ -6299,10 +6395,6 @@ function reserveSlot(
     // ========================================================
     // STUDENT GROUP / PERIOD
     // ========================================================
-    //
-    // THIS is the actual student occupancy reservation.
-    //
-    // ========================================================
 
     const studentGroups =
         getTaskStudentGroups(
@@ -6310,22 +6402,22 @@ function reserveSlot(
         );
 
 
-    for (
-        const studentGroupId of studentGroups
+    if (
+        indexes.studentGroupPeriod
     ) {
 
-        if (
-            !studentGroupId
+        for (
+            const studentGroupId of studentGroups
         ) {
 
-            continue;
+            if (
+                !studentGroupId
+            ) {
 
-        }
+                continue;
 
+            }
 
-        if (
-            indexes.studentGroupPeriod
-        ) {
 
             indexes.studentGroupPeriod.add(
                 `${studentGroupId}__${periodId}`
@@ -6342,7 +6434,8 @@ function reserveSlot(
 
     const teacherId =
         normalizeTimetableId(
-            task.teacherId
+            task.teacherId ??
+            task.teacher_id
         );
 
 
@@ -6350,15 +6443,23 @@ function reserveSlot(
         teacherId
     ) {
 
+        if (
+            !indexes.teacherPeriod
+        ) {
+
+            indexes.teacherPeriod =
+                new Set();
+
+        }
+
+
         indexes.teacherPeriod.add(
             `${teacherId}__${periodId}`
         );
 
 
         // ----------------------------------------------------
-        // Store lesson details so a later lesson can determine
-        // whether this teacher assignment is valid concurrent
-        // teaching or a genuine clash.
+        // DETAILED TEACHER LESSON INDEX
         // ----------------------------------------------------
 
         if (
@@ -6396,20 +6497,35 @@ function reserveSlot(
             .push({
 
                 taskId:
-                    task.taskId ||
-                    task.id ||
+                    task.taskId ??
+                    task.task_id ??
+                    task.id ??
+                    null,
+
+                lessonId:
+                    task.lessonId ??
+                    task.lesson_id ??
                     null,
 
                 subjectId:
-                    task.subjectId ||
+                    task.subjectId ??
+                    task.subject_id ??
                     null,
 
                 streamId:
-                    task.streamId ||
+                    task.streamId ??
+                    task.stream_id ??
+                    null,
+
+                parallelGroup:
+                    task.parallelGroup ??
+                    task.parallel_group ??
                     null,
 
                 studentGroupIds:
-                    studentGroups
+                    [
+                        ...studentGroups
+                    ]
 
             });
 
@@ -6425,38 +6541,304 @@ function reserveSlot(
         room.id
     ) {
 
+        if (
+            !indexes.roomPeriod
+        ) {
+
+            indexes.roomPeriod =
+                new Set();
+
+        }
+
+
         const roomId =
             normalizeTimetableId(
                 room.id
             );
 
 
-        indexes.roomPeriod.add(
-            `${roomId}__${periodId}`
-        );
+        if (
+            roomId
+        ) {
+
+            indexes.roomPeriod.add(
+                `${roomId}__${periodId}`
+            );
+
+        }
 
     }
 
 
     // ========================================================
-    // REQUIREMENT / DAY
+    // DAY INDEXES
+    // ========================================================
+
+    const dayNumber =
+        Number(
+            period.dayNumber ??
+            period.day_number
+        );
+
+
+    if (
+        Number.isFinite(
+            dayNumber
+        )
+    ) {
+
+        // ----------------------------------------------------
+        // TEACHER DAY
+        // ----------------------------------------------------
+
+        if (
+            teacherId &&
+            indexes.teacherDay instanceof Map
+        ) {
+
+            if (
+                !indexes.teacherDay.has(
+                    teacherId
+                )
+            ) {
+
+                indexes.teacherDay.set(
+                    teacherId,
+                    new Set()
+                );
+
+            }
+
+
+            indexes.teacherDay
+                .get(
+                    teacherId
+                )
+                .add(
+                    dayNumber
+                );
+
+        }
+
+
+        // ----------------------------------------------------
+        // STREAM DAY
+        // ----------------------------------------------------
+
+        if (
+            streamId &&
+            indexes.streamDay instanceof Map
+        ) {
+
+            if (
+                !indexes.streamDay.has(
+                    streamId
+                )
+            ) {
+
+                indexes.streamDay.set(
+                    streamId,
+                    new Set()
+                );
+
+            }
+
+
+            indexes.streamDay
+                .get(
+                    streamId
+                )
+                .add(
+                    dayNumber
+                );
+
+        }
+
+
+        // ----------------------------------------------------
+        // STUDENT GROUP DAY
+        // ----------------------------------------------------
+
+        if (
+            indexes.studentGroupDay instanceof Map
+        ) {
+
+            studentGroups.forEach(
+                studentGroupId => {
+
+                    if (
+                        !indexes.studentGroupDay.has(
+                            studentGroupId
+                        )
+                    ) {
+
+                        indexes.studentGroupDay.set(
+                            studentGroupId,
+                            new Set()
+                        );
+
+                    }
+
+
+                    indexes.studentGroupDay
+                        .get(
+                            studentGroupId
+                        )
+                        .add(
+                            dayNumber
+                        );
+
+                }
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // ROOM DAY
+        // ----------------------------------------------------
+
+        if (
+            room &&
+            room.id &&
+            indexes.roomDay instanceof Map
+        ) {
+
+            const roomId =
+                normalizeTimetableId(
+                    room.id
+                );
+
+
+            if (
+                roomId
+            ) {
+
+                if (
+                    !indexes.roomDay.has(
+                        roomId
+                    )
+                ) {
+
+                    indexes.roomDay.set(
+                        roomId,
+                        new Set()
+                    );
+
+                }
+
+
+                indexes.roomDay
+                    .get(
+                        roomId
+                    )
+                    .add(
+                        dayNumber
+                    );
+
+            }
+
+        }
+
+
+        // ----------------------------------------------------
+        // REQUIREMENT DAY
+        // ----------------------------------------------------
+
+        if (
+            requirementId &&
+            indexes.requirementDay instanceof Map
+        ) {
+
+            if (
+                !indexes.requirementDay.has(
+                    requirementId
+                )
+            ) {
+
+                indexes.requirementDay.set(
+                    requirementId,
+                    new Set()
+                );
+
+            }
+
+
+            indexes.requirementDay
+                .get(
+                    requirementId
+                )
+                .add(
+                    dayNumber
+                );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // DAILY REQUIREMENT LESSON COUNT
+    // ========================================================
+    //
+    // CRITICAL:
+    //
+    // A double lesson occupies two periods but is ONE lesson.
+    //
+    // Use:
+    //
+    //     requirement + day + lesson/task
+    //
+    // as the unique key.
+    //
     // ========================================================
 
     if (
-        requirementId
+        requirementId &&
+        Number.isFinite(
+            dayNumber
+        )
     ) {
 
-        const dayNumber =
-            Number(
-                period.dayNumber
+        if (
+            !(indexes.dailyRequirementLessonKeys instanceof Set)
+        ) {
+
+            indexes.dailyRequirementLessonKeys =
+                new Set();
+
+        }
+
+
+        const lessonId =
+            normalizeTimetableId(
+                task.lessonId ??
+                task.lesson_id ??
+                task.taskId ??
+                task.task_id ??
+                task.id
             );
 
 
+        const lessonKey =
+            lessonId ||
+            `${requirementId}__${periodId}`;
+
+
+        const uniqueDailyLessonKey =
+            `${requirementId}__${dayNumber}__${lessonKey}`;
+
+
         if (
-            Number.isFinite(
-                dayNumber
+            !indexes.dailyRequirementLessonKeys.has(
+                uniqueDailyLessonKey
             )
         ) {
+
+            indexes.dailyRequirementLessonKeys.add(
+                uniqueDailyLessonKey
+            );
+
 
             incrementDailyRequirementLessonCount(
                 indexes,
@@ -6476,8 +6858,7 @@ function reserveSlot(
 
 
 
-
-
+// ============================================================
 // CREATE GENERATED ENTRY
 // ============================================================
 
@@ -6497,6 +6878,12 @@ function createGeneratedEntry(
     }
 
 
+    const studentGroups =
+        getTaskStudentGroups(
+            task
+        );
+
+
     return {
 
         school_id:
@@ -6506,51 +6893,47 @@ function createGeneratedEntry(
             period.id,
 
         stream_id:
-            task.streamId,
+            task.streamId ??
+            task.stream_id ??
+            null,
 
         subject_id:
-            task.subjectId,
+            task.subjectId ??
+            task.subject_id ??
+            null,
 
         teacher_id:
-            task.teacherId ||
+            task.teacherId ??
+            task.teacher_id ??
             null,
 
         room_id:
             room?.id ||
             null,
 
-        // ----------------------------------------------------
-        // IDENTIFIERS REQUIRED FOR OCCUPANCY REBUILDING
-        // ----------------------------------------------------
-
         task_id:
-            task.taskId ||
-            task.id ||
+            task.taskId ??
+            task.task_id ??
+            task.id ??
             null,
 
         requirement_id:
-            task.requirementId ||
+            task.requirementId ??
+            task.requirement_id ??
             null,
 
         lesson_id:
-            task.lessonId ||
-            task.requirementId ||
-            task.taskId ||
-            task.id ||
+            task.lessonId ??
+            task.lesson_id ??
+            task.taskId ??
+            task.task_id ??
+            task.id ??
             null,
 
-        // ----------------------------------------------------
-        // STUDENT GROUP INFORMATION
-        // ----------------------------------------------------
-
         student_group_ids:
-            Array.isArray(task.studentGroupIds)
-                ? [...task.studentGroupIds]
-                : Array.isArray(task.studentGroups)
-                    ? [...task.studentGroups]
-                    : task.studentGroupId
-                        ? [task.studentGroupId]
-                        : []
+            [
+                ...studentGroups
+            ]
 
     };
 
@@ -6559,27 +6942,7 @@ function createGeneratedEntry(
 
 
 // ============================================================
-// STAGE 4 — DOUBLE LESSON PLACEMENT
-// ============================================================
-//
-// Finds valid pairs of consecutive teaching periods.
-//
-// A double lesson requires:
-//
-//     PERIOD 1
-//     PERIOD 2
-//
-// Both must:
-//
-// - belong to the same day
-// - be teaching periods
-// - be consecutive according to periodOrder
-//
-// ============================================================
-
-
-// ============================================================
-// GET CONSECUTIVE TEACHING PERIOD PAIRS
+// STAGE 4 — GET CONSECUTIVE TEACHING PERIOD PAIRS
 // ============================================================
 
 function getConsecutiveTeachingPeriodPairs(
@@ -6587,7 +6950,9 @@ function getConsecutiveTeachingPeriodPairs(
 ) {
 
     if (
-        !Array.isArray(periods)
+        !Array.isArray(
+            periods
+        )
     ) {
 
         return [];
@@ -6645,10 +7010,6 @@ function getConsecutiveTeachingPeriodPairs(
             sortedPeriods[i + 1];
 
 
-        // ----------------------------------------------------
-        // MUST BE CONSECUTIVE
-        // ----------------------------------------------------
-
         if (
             !arePeriodsConsecutive(
                 firstPeriod,
@@ -6674,10 +7035,6 @@ function getConsecutiveTeachingPeriodPairs(
     }
 
 
-    // ========================================================
-    // DEBUG
-    // ========================================================
-
     console.log(
         "Consecutive teaching period pairs:",
         pairs.length
@@ -6688,34 +7045,11 @@ function getConsecutiveTeachingPeriodPairs(
 
 }
 
-// ============================================================
-// CHECK DOUBLE LESSON CONFLICT
-// ============================================================
-//
-// Checks BOTH periods of a double lesson.
-//
-// A double lesson is valid only if both periods are free.
-//
-// ============================================================
+
 
 // ============================================================
 // CHECK DOUBLE LESSON CONFLICT
 // ============================================================
-//
-// Checks BOTH periods of a double lesson.
-//
-// A double lesson is valid only if:
-//
-// - the periods are consecutive
-// - the stream is free in both periods
-// - the teacher is free in both periods
-// - the teacher consecutive limit is respected
-// - the room is free in both periods
-// - the requirement daily limit is respected
-//
-// ============================================================
-
-
 
 function checkDoubleLessonConflict(
     task,
@@ -6770,7 +7104,44 @@ function checkDoubleLessonConflict(
 
 
     // ========================================================
-    // CHECK FIRST PERIOD
+    // BOTH PERIODS MUST BE ON SAME DAY
+    // ========================================================
+
+    const firstDay =
+        Number(
+            firstPeriod.dayNumber ??
+            firstPeriod.day_number
+        );
+
+
+    const secondDay =
+        Number(
+            secondPeriod.dayNumber ??
+            secondPeriod.day_number
+        );
+
+
+    if (
+        Number.isFinite(firstDay) &&
+        Number.isFinite(secondDay) &&
+        firstDay !== secondDay
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "Double lesson periods must be on the same day."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // FIRST PERIOD
     // ========================================================
 
     const firstCheck =
@@ -6800,95 +7171,26 @@ function checkDoubleLessonConflict(
 
 
     // ========================================================
-    // IMPORTANT DAILY LIMIT CHECK
+    // IDENTIFIERS
     // ========================================================
-    //
-    // A double lesson occupies TWO periods.
-    //
-    // However, for the requirement daily lesson limit,
-    // a double lesson counts as ONE lesson.
-    //
-    // Therefore we check:
-    //
-    //     current daily lessons + 1
-    //
-    // rather than:
-    //
-    //     current daily lessons + 2
-    //
-    // ========================================================
-
-    const requirementId =
-        normalizeTimetableId(
-            task.requirementId
-        );
-
-
-    const maxPerDay =
-        Number(
-            task.maxLessonsPerDay
-        ) || 0;
-
-
-    if (
-        requirementId &&
-        maxPerDay > 0
-    ) {
-
-        const dayNumber =
-            Number(
-                firstPeriod.dayNumber
-            );
-
-
-        const currentCount =
-            getDailyRequirementLessonCount(
-                indexes,
-                requirementId,
-                dayNumber
-            );
-
-
-        if (
-            currentCount + 1 >
-            maxPerDay
-        ) {
-
-            return {
-
-                valid:
-                    false,
-
-                reason:
-                    "Double lesson would exceed the requirement daily limit."
-
-            };
-
-        }
-
-    }
-
-
-    // ========================================================
-    // CHECK SECOND PERIOD
-    // ========================================================
-    //
-    // The first period has already passed
-    // checkSingleSlotConflict().
-    //
-    // The second period must now be checked independently.
-    //
-    // ========================================================
-
-    const streamId =
-        normalizeTimetableId(
-            task.streamId
-        );
-
 
     const secondPeriodId =
         normalizeTimetableId(
             secondPeriod.id
+        );
+
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId ??
+            task.teacher_id
+        );
+
+
+    const subjectId =
+        normalizeTimetableId(
+            task.subjectId ??
+            task.subject_id
         );
 
 
@@ -6915,23 +7217,8 @@ function checkDoubleLessonConflict(
         }
 
 
-        const normalizedGroupId =
-            normalizeTimetableId(
-                studentGroupId
-            );
-
-
-        if (
-            !normalizedGroupId
-        ) {
-
-            continue;
-
-        }
-
-
         const studentGroupKey =
-            `${normalizedGroupId}__${secondPeriodId}`;
+            `${studentGroupId}__${secondPeriodId}`;
 
 
         if (
@@ -6957,83 +7244,58 @@ function checkDoubleLessonConflict(
 
 
     // ========================================================
-    // TEACHER
+    // TEACHER / SECOND PERIOD
     // ========================================================
-    //
-    // A teacher may teach multiple lessons in the same
-    // period ONLY when all concurrent lessons are for the
-    // SAME subject.
-    //
-    // This must match checkSingleSlotConflict().
-    //
-    // ========================================================
-
-    const teacherId =
-        normalizeTimetableId(
-            task.teacherId
-        );
-
 
     if (
         teacherId
     ) {
 
-        const existingTeacherLessons =
-            getTeacherLessonsAtPeriod(
-                indexes,
-                teacherId,
-                secondPeriodId
-            );
-
-
-        const subjectId =
-            normalizeTimetableId(
-                task.subjectId
-            );
-
-
-        const concurrentAllowed =
-            existingTeacherLessons.length > 0 &&
-            existingTeacherLessons.every(
-                existingLesson => {
-
-                    const existingSubjectId =
-                        normalizeTimetableId(
-                            existingLesson.subjectId
-                        );
-
-
-                    return (
-                        existingSubjectId ===
-                        subjectId
-                    );
-
-                }
-            );
+        const teacherKey =
+            `${teacherId}__${secondPeriodId}`;
 
 
         if (
-            !existingTeacherLessons.length
+            indexes.teacherPeriod &&
+            indexes.teacherPeriod.has(
+                teacherKey
+            )
         ) {
 
-            // ------------------------------------------------
-            // Teacher is free in the second period.
-            // ------------------------------------------------
+            const existingTeacherLessons =
+                getTeacherLessonsAtPeriod(
+                    indexes,
+                    teacherId,
+                    secondPeriodId
+                );
 
-        }
-        else if (
-            !concurrentAllowed
-        ) {
 
-            return {
+            const concurrentAllowed =
+                existingTeacherLessons.length > 0 &&
+                existingTeacherLessons.every(
+                    existingLesson =>
+                        areConcurrentTeacherLessonsAllowed(
+                            task,
+                            existingLesson
+                        )
+                );
 
-                valid:
-                    false,
 
-                reason:
-                    "Teacher is already teaching a different subject in the second period."
+            if (
+                !concurrentAllowed
+            ) {
 
-            };
+                return {
+
+                    valid:
+                        false,
+
+                    reason:
+                        "Teacher is already teaching a conflicting lesson in the second period."
+
+                };
+
+            }
 
         }
 
@@ -7041,23 +7303,14 @@ function checkDoubleLessonConflict(
 
 
     // ========================================================
-    // TEACHER CONSECUTIVE LESSON LIMIT
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // A double lesson occupies TWO consecutive periods.
-    //
-    // Therefore we must evaluate BOTH candidate periods
-    // together against the teacher's existing timetable.
-    //
+    // TEACHER CONSECUTIVE LIMIT
     // ========================================================
 
     if (
         teacherId
     ) {
 
-        const wouldExceedConsecutive =
+        if (
             wouldExceedTeacherConsecutiveLimit(
                 task,
                 [
@@ -7065,11 +7318,7 @@ function checkDoubleLessonConflict(
                     secondPeriod
                 ],
                 indexes
-            );
-
-
-        if (
-            wouldExceedConsecutive
+            )
         ) {
 
             return {
@@ -7091,7 +7340,7 @@ function checkDoubleLessonConflict(
 
 
     // ========================================================
-    // ROOM
+    // ROOM / SECOND PERIOD
     // ========================================================
 
     if (
@@ -7132,6 +7381,72 @@ function checkDoubleLessonConflict(
 
 
     // ========================================================
+    // DAILY REQUIREMENT LIMIT
+    // ========================================================
+    //
+    // A double lesson counts as ONE lesson for the daily
+    // requirement limit.
+    //
+    // ========================================================
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId ??
+            task.requirement_id
+        );
+
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay ??
+            task.max_lessons_per_day
+        ) || 0;
+
+
+    const dayNumber =
+        Number(
+            firstPeriod.dayNumber ??
+            firstPeriod.day_number
+        );
+
+
+    if (
+        requirementId &&
+        maxPerDay > 0 &&
+        Number.isFinite(
+            dayNumber
+        )
+    ) {
+
+        const currentCount =
+            getDailyRequirementLessonCount(
+                indexes,
+                requirementId,
+                dayNumber
+            );
+
+
+        if (
+            currentCount + 1 >
+            maxPerDay
+        ) {
+
+            return {
+
+                valid:
+                    false,
+
+                reason:
+                    "Double lesson would exceed the requirement daily limit."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
     // VALID
     // ========================================================
 
@@ -7146,11 +7461,6 @@ function checkDoubleLessonConflict(
     };
 
 }
-
-
-
-
-
 
 // ============================================================
 // PLACE ONE DOUBLE LESSON
