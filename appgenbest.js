@@ -8349,15 +8349,16 @@ function getTaskPriorityScore(
     //
     // ========================================================
 
-    if (
-        normalizeRoomType(
-            task.roomType
-        )
-    ) {
+   if (
+    task.roomTypeId ||
+    normalizeRoomType(
+        task.roomType
+    )
+) {
 
-        score += 300;
+    score += 300;
 
-    }
+}
 
 
     // ========================================================
@@ -8807,12 +8808,13 @@ function calculateTaskPriorityScore(
     // ========================================================
 
     if (
-        task.roomType
-    ) {
+    task.roomTypeId ||
+    task.roomType
+) {
 
-        score += 25;
+    score += 25;
 
-    }
+}
 
 
     // ========================================================
@@ -9038,42 +9040,57 @@ function sortLessonTasksByPriority(
     );
 
 
-    console.table(
-        result.map(
-            task => ({
+   console.table(
+    result.map(
+        task => ({
 
-                taskId:
-                    task.taskId,
+            taskId:
+                task.taskId,
 
-                type:
-                    task.taskType,
+            requirementId:
+                task.requirementId,
 
-                duration:
-                    task.duration,
+            type:
+                task.taskType,
 
-                roomRequired:
-                    task.requiresRoom,
+            duration:
+                task.duration,
 
-                roomType:
-                    task.roomType,
+            roomRequired:
+                task.requiresRoom,
 
-                maxPerDay:
-                    task.maxLessonsPerDay,
+            roomTypeId:
+                task.roomTypeId,
 
-                priority:
-                    calculateTaskPriorityScore(
-                        task,
-                        data
-                    )
+            roomType:
+                task.roomType,
 
-            })
-        )
-    );
+            parallelGroup:
+                task.parallelGroup,
 
+            parallelGroupSize:
+                task.parallelGroupSize,
+
+            maxPerDay:
+                task.maxLessonsPerDay,
+
+            priority:
+                calculateTaskPriorityScore(
+                    task,
+                    data
+                )
+
+        })
+    )
+);
 
     return result;
 
 }
+
+// ============================================================
+// PREPARE SMART TASK ORDER
+// ============================================================
 
 // ============================================================
 // PREPARE SMART TASK ORDER
@@ -9109,6 +9126,16 @@ function prepareSmartLessonTaskOrder(
     orderedTasks.forEach(
         task => {
 
+            if (
+                !task ||
+                typeof task !== "object"
+            ) {
+
+                return;
+
+            }
+
+
             task.placed =
                 false;
 
@@ -9116,6 +9143,20 @@ function prepareSmartLessonTaskOrder(
                 [];
 
             task.roomId =
+                null;
+
+            // ------------------------------------------------
+            // Ensure placement metadata does not retain
+            // stale values from an earlier generation pass.
+            // ------------------------------------------------
+
+            task.periodId =
+                null;
+
+            task.firstPeriodId =
+                null;
+
+            task.secondPeriodId =
                 null;
 
         }
@@ -9142,7 +9183,6 @@ function prepareSmartLessonTaskOrder(
     return orderedTasks;
 
 }
-
 // ============================================================
 // STAGE 6C — CANDIDATE SLOT SCORING
 // ============================================================
