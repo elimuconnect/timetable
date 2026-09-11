@@ -4233,16 +4233,78 @@ function incrementDailyRequirementLessonCount(
 }
 
 
-
 function createOccupancyIndexes(
     data
 ) {
+
+    // ========================================================
+    // PERIOD LOOKUP
+    // ========================================================
+    //
+    // Generated entries store:
+    //
+    //     period_id
+    //
+    // Therefore period_id is the canonical period identity.
+    //
+    // The complete period collection is also stored on the
+    // occupancy indexes because teacher consecutive-limit
+    // checks need to resolve period IDs back to period objects.
+    //
+    // ========================================================
+
+    const periods =
+        Array.isArray(
+            data?.periods
+        )
+            ? data.periods
+            : [];
+
+
+    const periodLookup =
+        new Map();
+
+
+    periods.forEach(
+        period => {
+
+            if (
+                !period ||
+                period.id === null ||
+                period.id === undefined
+            ) {
+
+                return;
+
+            }
+
+
+            periodLookup.set(
+                normalizeTimetableId(
+                    period.id
+                ),
+                period
+            );
+
+        }
+    );
+
 
     // ========================================================
     // CREATE EMPTY OCCUPANCY INDEXES
     // ========================================================
 
     const occupancy = {
+
+        // ====================================================
+        // PERIOD DEFINITIONS
+        // ====================================================
+        //
+        // Required by getIndexedPeriod().
+        //
+        // ====================================================
+
+        periods,
 
         teacherPeriod:
             new Set(),
@@ -4312,6 +4374,588 @@ function createOccupancyIndexes(
         ).trim();
 
     }
+
+
+    // ========================================================
+    // INDEX GENERATED ENTRIES
+    // ========================================================
+
+    const entries =
+        Array.isArray(
+            data?.generatedEntries
+        )
+            ? data.generatedEntries
+            : [];
+
+
+    entries.forEach(
+        entry => {
+
+            if (
+                !entry ||
+                typeof entry !== "object"
+            ) {
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // BASIC IDENTIFIERS
+            // ==================================================
+
+            const teacherId =
+                normalizeKey(
+                    entry.teacher_id ??
+                    entry.teacherId
+                );
+
+
+            const roomId =
+                normalizeKey(
+                    entry.room_id ??
+                    entry.roomId
+                );
+
+
+            const streamId =
+                normalizeKey(
+                    entry.stream_id ??
+                    entry.streamId
+                );
+
+
+            const requirementId =
+                normalizeKey(
+                    entry.requirement_id ??
+                    entry.requirementId
+                );
+
+
+            const taskId =
+                normalizeKey(
+                    entry.task_id ??
+                    entry.taskId
+                );
+
+
+            const subjectId =
+                normalizeKey(
+                    entry.subject_id ??
+                    entry.subjectId
+                );
+
+
+            const periodId =
+                normalizeKey(
+                    entry.period_id ??
+                    entry.periodId
+                );
+
+
+            // ==================================================
+            // PERIOD
+            // ==================================================
+
+            const period =
+                periodLookup.get(
+                    periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const dayNumber =
+                Number(
+                    period.dayNumber ??
+                    period.day_number
+                );
+
+
+            // ==================================================
+            // STUDENT GROUPS
+            // ==================================================
+
+            let studentGroupIds =
+                [];
+
+
+            if (
+                Array.isArray(
+                    entry.student_group_ids
+                )
+            ) {
+
+                studentGroupIds =
+                    entry.student_group_ids;
+
+            }
+            else if (
+                Array.isArray(
+                    entry.studentGroupIds
+                )
+            ) {
+
+                studentGroupIds =
+                    entry.studentGroupIds;
+
+            }
+
+
+            // ==================================================
+            // TEACHER / PERIOD
+            // ==================================================
+
+            if (
+                teacherId &&
+                periodId
+            ) {
+
+                occupancy.teacherPeriod.add(
+                    `${teacherId}|${periodId}`
+                );
+
+            }
+
+
+            // ==================================================
+            // ROOM / PERIOD
+            // ==================================================
+
+            if (
+                roomId &&
+                periodId
+            ) {
+
+                occupancy.roomPeriod.add(
+                    `${roomId}|${periodId}`
+                );
+
+            }
+
+
+            // ==================================================
+            // STREAM / PERIOD
+            // ==================================================
+
+            if (
+                streamId &&
+                periodId
+            ) {
+
+                occupancy.streamPeriod.add(
+                    `${streamId}|${periodId}`
+                );
+
+            }
+
+
+            // ==================================================
+            // TASK / PERIOD
+            // ==================================================
+
+            if (
+                taskId &&
+                periodId
+            ) {
+
+                occupancy.taskPeriod.add(
+                    `${taskId}|${periodId}`
+                );
+
+            }
+
+
+            // ==================================================
+            // TEACHER / SUBJECT / PERIOD
+            // ==================================================
+
+            if (
+                teacherId &&
+                subjectId &&
+                periodId
+            ) {
+
+                occupancy.teacherSubjectPeriod.add(
+                    `${teacherId}|${subjectId}|${periodId}`
+                );
+
+            }
+
+
+            // ==================================================
+            // STUDENT GROUP / PERIOD
+            // ==================================================
+
+            studentGroupIds.forEach(
+                studentGroupId => {
+
+                    const groupId =
+                        normalizeKey(
+                            studentGroupId
+                        );
+
+
+                    if (
+                        !groupId ||
+                        !periodId
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    occupancy.studentGroupPeriod.add(
+                        `${groupId}|${periodId}`
+                    );
+
+
+                    // ------------------------------------------
+                    // STUDENT GROUP / DAY
+                    // ------------------------------------------
+
+                    if (
+                        Number.isFinite(
+                            dayNumber
+                        )
+                    ) {
+
+                        const key =
+                            `${groupId}|${dayNumber}`;
+
+
+                        if (
+                            !occupancy.studentGroupDay.has(
+                                key
+                            )
+                        ) {
+
+                            occupancy.studentGroupDay.set(
+                                key,
+                                0
+                            );
+
+                        }
+
+
+                        occupancy.studentGroupDay.set(
+                            key,
+                            occupancy.studentGroupDay.get(
+                                key
+                            ) + 1
+                        );
+
+                    }
+
+                }
+            );
+
+
+            // ==================================================
+            // TEACHER / DAY
+            // ==================================================
+
+            if (
+                teacherId &&
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const key =
+                    `${teacherId}|${dayNumber}`;
+
+
+                if (
+                    !occupancy.teacherDay.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.teacherDay.set(
+                        key,
+                        0
+                    );
+
+                }
+
+
+                occupancy.teacherDay.set(
+                    key,
+                    occupancy.teacherDay.get(
+                        key
+                    ) + 1
+                );
+
+            }
+
+
+            // ==================================================
+            // STREAM / DAY
+            // ==================================================
+
+            if (
+                streamId &&
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const key =
+                    `${streamId}|${dayNumber}`;
+
+
+                if (
+                    !occupancy.streamDay.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.streamDay.set(
+                        key,
+                        0
+                    );
+
+                }
+
+
+                occupancy.streamDay.set(
+                    key,
+                    occupancy.streamDay.get(
+                        key
+                    ) + 1
+                );
+
+            }
+
+
+            // ==================================================
+            // ROOM / DAY
+            // ==================================================
+
+            if (
+                roomId &&
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const key =
+                    `${roomId}|${dayNumber}`;
+
+
+                if (
+                    !occupancy.roomDay.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.roomDay.set(
+                        key,
+                        0
+                    );
+
+                }
+
+
+                occupancy.roomDay.set(
+                    key,
+                    occupancy.roomDay.get(
+                        key
+                    ) + 1
+                );
+
+            }
+
+
+            // ==================================================
+            // REQUIREMENT / DAY
+            // ==================================================
+
+            if (
+                requirementId &&
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const key =
+                    `${requirementId}|${dayNumber}`;
+
+
+                if (
+                    !occupancy.requirementDay.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.requirementDay.set(
+                        key,
+                        0
+                    );
+
+                }
+
+
+                occupancy.requirementDay.set(
+                    key,
+                    occupancy.requirementDay.get(
+                        key
+                    ) + 1
+                );
+
+
+                // ------------------------------------------
+                // DAILY REQUIREMENT LESSON COUNT
+                // ------------------------------------------
+                //
+                // This index counts actual lesson periods,
+                // not merely generated-entry objects.
+                //
+                // Double lessons therefore contribute two
+                // periods to the daily lesson count.
+                //
+                // ------------------------------------------
+
+                if (
+                    !occupancy.dailyRequirementLessons.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.dailyRequirementLessons.set(
+                        key,
+                        0
+                    );
+
+                }
+
+
+                occupancy.dailyRequirementLessons.set(
+                    key,
+                    occupancy.dailyRequirementLessons.get(
+                        key
+                    ) + 1
+                );
+
+            }
+
+
+            // ==================================================
+            // LESSON / DAY
+            // ==================================================
+
+            const lessonId =
+                normalizeKey(
+                    entry.lesson_id ??
+                    entry.lessonId
+                );
+
+
+            if (
+                lessonId &&
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const key =
+                    `${lessonId}|${dayNumber}`;
+
+
+                if (
+                    !occupancy.lessonDay.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.lessonDay.set(
+                        key,
+                        0
+                    );
+
+                }
+
+
+                occupancy.lessonDay.set(
+                    key,
+                    occupancy.lessonDay.get(
+                        key
+                    ) + 1
+                );
+
+            }
+
+
+            // ==================================================
+            // TEACHER / PERIOD LESSONS
+            // ==================================================
+            //
+            // Keep the actual generated entries here.
+            // This is used by teacher conflict and consecutive
+            // lesson checks.
+            //
+            // ==================================================
+
+            if (
+                teacherId &&
+                periodId
+            ) {
+
+                const key =
+                    `${teacherId}|${periodId}`;
+
+
+                if (
+                    !occupancy.teacherPeriodLessons.has(
+                        key
+                    )
+                ) {
+
+                    occupancy.teacherPeriodLessons.set(
+                        key,
+                        []
+                    );
+
+                }
+
+
+                occupancy.teacherPeriodLessons
+                    .get(
+                        key
+                    )
+                    .push(
+                        entry
+                    );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // RETURN INDEXES
+    // ========================================================
+
+    return {
+
+        ...occupancy,
+
+        periodLookup
+
+    };
+
+}
 
 
     // ========================================================
@@ -5193,28 +5837,14 @@ function getTeacherOccupiedPeriods(
 }
 
 
-// ============================================================
-// CALCULATE LONGEST CONSECUTIVE PERIOD RUN
-// ============================================================
-//
-// Returns the longest sequence of consecutive teaching
-// periods for the supplied periods.
-//
-// Consecutive means:
-//
-//     same day
-//     AND
-//     next periodOrder = previous periodOrder + 1
-//
-// This intentionally uses the SAME definition as:
-//
-//     arePeriodsConsecutive()
-//
-// ============================================================
 
 function calculateLongestConsecutivePeriodRun(
     periods
 ) {
+
+    // ========================================================
+    // VALIDATE INPUT
+    // ========================================================
 
     if (
         !Array.isArray(periods) ||
@@ -5226,19 +5856,20 @@ function calculateLongestConsecutivePeriodRun(
     }
 
 
+    // ========================================================
+    // GROUP PERIOD ORDERS BY DAY
+    // ========================================================
+
     const dayGroups =
         new Map();
 
-
-    // ========================================================
-    // GROUP BY DAY
-    // ========================================================
 
     periods.forEach(
         period => {
 
             if (
-                !period
+                !period ||
+                typeof period !== "object"
             ) {
 
                 return;
@@ -5246,21 +5877,31 @@ function calculateLongestConsecutivePeriodRun(
             }
 
 
+            // ==================================================
+            // SUPPORT NORMALIZED AND DATABASE FIELD NAMES
+            // ==================================================
+
             const dayNumber =
                 Number(
-                    period.dayNumber
+                    period.dayNumber ??
+                    period.day_number
                 );
 
 
             const periodOrder =
                 Number(
-                    period.periodOrder
+                    period.periodOrder ??
+                    period.period_order
                 );
 
 
             if (
-                !Number.isFinite(dayNumber) ||
-                !Number.isFinite(periodOrder)
+                !Number.isFinite(
+                    dayNumber
+                ) ||
+                !Number.isFinite(
+                    periodOrder
+                )
             ) {
 
                 return;
@@ -5282,30 +5923,52 @@ function calculateLongestConsecutivePeriodRun(
             }
 
 
-            dayGroups.get(
-                dayNumber
-            ).push(
-                periodOrder
-            );
+            dayGroups
+                .get(
+                    dayNumber
+                )
+                .push(
+                    periodOrder
+                );
 
         }
     );
 
 
+    // ========================================================
+    // FIND LONGEST RUN ACROSS ALL DAYS
+    // ========================================================
+
     let longestRun =
         0;
 
 
-    // ========================================================
-    // ANALYSE EACH DAY
-    // ========================================================
-
     dayGroups.forEach(
         orders => {
 
-            // ------------------------------------------------
-            // REMOVE DUPLICATES
-            // ------------------------------------------------
+            if (
+                !Array.isArray(
+                    orders
+                ) ||
+                orders.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // REMOVE DUPLICATE PERIOD ORDERS
+            // ==================================================
+            //
+            // Multiple entries may occupy the same period
+            // because of parallel lessons.
+            //
+            // A teacher's consecutive run must therefore
+            // count the occupied period only once.
+            //
+            // ==================================================
 
             const uniqueOrders =
                 [
@@ -5331,6 +5994,10 @@ function calculateLongestConsecutivePeriodRun(
             }
 
 
+            // ==================================================
+            // SINGLE PERIOD
+            // ==================================================
+
             let currentRun =
                 1;
 
@@ -5339,9 +6006,9 @@ function calculateLongestConsecutivePeriodRun(
                 1;
 
 
-            // ------------------------------------------------
-            // FIND LONGEST CONSECUTIVE RUN
-            // ------------------------------------------------
+            // ==================================================
+            // CHECK CONSECUTIVE PERIODS
+            // ==================================================
 
             for (
                 let i = 1;
@@ -5349,9 +6016,17 @@ function calculateLongestConsecutivePeriodRun(
                 i++
             ) {
 
+                const currentOrder =
+                    uniqueOrders[i];
+
+
+                const previousOrder =
+                    uniqueOrders[i - 1];
+
+
                 if (
-                    uniqueOrders[i] ===
-                    uniqueOrders[i - 1] + 1
+                    currentOrder ===
+                    previousOrder + 1
                 ) {
 
                     currentRun++;
@@ -5373,6 +6048,10 @@ function calculateLongestConsecutivePeriodRun(
             }
 
 
+            // ==================================================
+            // UPDATE GLOBAL LONGEST RUN
+            // ==================================================
+
             longestRun =
                 Math.max(
                     longestRun,
@@ -5383,9 +6062,14 @@ function calculateLongestConsecutivePeriodRun(
     );
 
 
+    // ========================================================
+    // RETURN RESULT
+    // ========================================================
+
     return longestRun;
 
 }
+
 
 
 // ============================================================
