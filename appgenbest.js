@@ -4232,6 +4232,7 @@ function incrementDailyRequirementLessonCount(
 
 }
 
+
 function createOccupancyIndexes(
     data
 ) {
@@ -4331,6 +4332,23 @@ function createOccupancyIndexes(
         periods,
 
         // ====================================================
+        // TEACHER LIMITS
+        // ====================================================
+        //
+        // Required by:
+        //
+        //     getTeacherMaxConsecutiveLessons()
+        //     checkSingleSlotConflict()
+        //     checkDoubleLessonConflict()
+        //
+        // Stores normalized teacher limits by teacher ID.
+        //
+        // ====================================================
+
+        teacherLimits:
+            new Map(),
+
+        // ====================================================
         // PERIOD OCCUPANCY
         // ====================================================
 
@@ -4378,6 +4396,22 @@ function createOccupancyIndexes(
             new Map(),
 
         // ====================================================
+        // DAILY REQUIREMENT UNIQUE LESSON KEYS
+        // ====================================================
+        //
+        // One double lesson occupies two periods but counts
+        // as one lesson for the requirement/day daily limit.
+        //
+        // Key format:
+        //
+        //     requirementId__dayNumber__lessonId
+        //
+        // ====================================================
+
+        dailyRequirementLessonKeys:
+            new Set(),
+
+        // ====================================================
         // TEACHER PERIOD LESSON DETAILS
         // ====================================================
 
@@ -4385,6 +4419,88 @@ function createOccupancyIndexes(
             new Map()
 
     };
+
+
+    // ========================================================
+    // BUILD TEACHER LIMIT INDEX
+    // ========================================================
+    //
+    // Teachers were already normalized earlier by
+    // normalizeGeneratorData().
+    //
+    // We therefore support both:
+    //
+    //     maxLessonsPerDay
+    //     max_lessons_per_day
+    //
+    // and likewise for weekly/consecutive limits.
+    //
+    // ========================================================
+
+    const teachers =
+        Array.isArray(
+            data?.teachers
+        )
+            ? data.teachers
+            : [];
+
+
+    teachers.forEach(
+        teacher => {
+
+            if (
+                !teacher ||
+                teacher.id === null ||
+                teacher.id === undefined
+            ) {
+
+                return;
+
+            }
+
+
+            const teacherId =
+                normalizeKey(
+                    teacher.id
+                );
+
+
+            if (
+                !teacherId
+            ) {
+
+                return;
+
+            }
+
+
+            occupancy.teacherLimits.set(
+                teacherId,
+                {
+
+                    maxLessonsPerDay:
+                        Number(
+                            teacher.maxLessonsPerDay ??
+                            teacher.max_lessons_per_day
+                        ) || 0,
+
+                    maxLessonsPerWeek:
+                        Number(
+                            teacher.maxLessonsPerWeek ??
+                            teacher.max_lessons_per_week
+                        ) || 0,
+
+                    maxConsecutiveLessons:
+                        Number(
+                            teacher.maxConsecutiveLessons ??
+                            teacher.max_consecutive_lessons
+                        ) || 0
+
+                }
+            );
+
+        }
+    );
 
 
     // ========================================================
@@ -4739,6 +4855,11 @@ function createOccupancyIndexes(
                         streamId:
                             streamId || null,
 
+                        parallelGroup:
+                            entry.parallelGroup ??
+                            entry.parallel_group ??
+                            null,
+
                         studentGroupIds:
                             studentGroups
 
@@ -4933,13 +5054,6 @@ function createOccupancyIndexes(
     //
     // ========================================================
 
-    const dailyLessonKeys =
-        new Set();
-
-    occupancy.dailyRequirementLessonKeys =
-    dailyLessonKeys;
-
-
     entries.forEach(
         entry => {
 
@@ -5073,7 +5187,7 @@ function createOccupancyIndexes(
 
 
             if (
-                dailyLessonKeys.has(
+                occupancy.dailyRequirementLessonKeys.has(
                     uniqueLessonKey
                 )
             ) {
@@ -5083,7 +5197,7 @@ function createOccupancyIndexes(
             }
 
 
-            dailyLessonKeys.add(
+            occupancy.dailyRequirementLessonKeys.add(
                 uniqueLessonKey
             );
 
@@ -5106,7 +5220,6 @@ function createOccupancyIndexes(
     return occupancy;
 
 }
-
 
 // ============================================================
 // GET TEACHER MAX CONSECUTIVE LESSONS
@@ -5996,6 +6109,7 @@ function areConcurrentTeacherLessonsAllowed(
 // CHECK SINGLE SLOT CONFLICT
 // ============================================================
 
+
 function checkSingleSlotConflict(
     task,
     period,
@@ -6113,6 +6227,10 @@ function checkSingleSlotConflict(
             `${teacherId}__${periodId}`;
 
 
+        // ----------------------------------------------------
+        // TEACHER PERIOD CONFLICT
+        // ----------------------------------------------------
+
         if (
             indexes.teacherPeriod &&
             indexes.teacherPeriod.has(
@@ -6157,16 +6275,131 @@ function checkSingleSlotConflict(
 
         }
 
-    }
+
+        // ====================================================
+        // TEACHER DAILY LIMIT
+        // ====================================================
+        //
+        // A teacher cannot exceed:
+        //
+        //     maxLessonsPerDay
+        //
+        // The candidate period counts as one additional
+        // occupied teaching period.
+        //
+        // ====================================================
+
+        const teacherLimits =
+            indexes.teacherLimits instanceof Map
+                ? indexes.teacherLimits.get(
+                    teacherId
+                )
+                : null;
 
 
-    // ========================================================
-    // TEACHER CONSECUTIVE LIMIT
-    // ========================================================
+        const maximumDailyLessons =
+            Number(
+                teacherLimits?.maxLessonsPerDay
+            ) || 0;
 
-    if (
-        teacherId
-    ) {
+
+        if (
+            maximumDailyLessons > 0
+        ) {
+
+            const dayNumber =
+                Number(
+                    period.dayNumber ??
+                    period.day_number
+                );
+
+
+            if (
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const currentDailyLessons =
+                    getTeacherDailyLessonCountFromPeriods(
+                        indexes,
+                        teacherId,
+                        dayNumber,
+                        indexes.periods
+                    );
+
+
+                if (
+                    currentDailyLessons + 1 >
+                    maximumDailyLessons
+                ) {
+
+                    return {
+
+                        valid:
+                            false,
+
+                        reason:
+                            `Teacher would exceed the maximum of ${maximumDailyLessons} lessons per day.`
+
+                    };
+
+                }
+
+            }
+
+        }
+
+
+        // ====================================================
+        // TEACHER WEEKLY LIMIT
+        // ====================================================
+        //
+        // The candidate period counts as one additional
+        // occupied teaching period for the weekly limit.
+        //
+        // ====================================================
+
+        const maximumWeeklyLessons =
+            Number(
+                teacherLimits?.maxLessonsPerWeek
+            ) || 0;
+
+
+        if (
+            maximumWeeklyLessons > 0
+        ) {
+
+            const currentWeeklyLessons =
+                getTeacherWeeklyLessonCount(
+                    indexes,
+                    teacherId
+                );
+
+
+            if (
+                currentWeeklyLessons + 1 >
+                maximumWeeklyLessons
+            ) {
+
+                return {
+
+                    valid:
+                        false,
+
+                    reason:
+                        `Teacher would exceed the maximum of ${maximumWeeklyLessons} lessons per week.`
+
+                };
+
+            }
+
+        }
+
+
+        // ====================================================
+        // TEACHER CONSECUTIVE LIMIT
+        // ====================================================
 
         if (
             wouldExceedTeacherConsecutiveLimit(
@@ -6298,6 +6531,10 @@ function checkSingleSlotConflict(
     }
 
 
+    // ========================================================
+    // VALID
+    // ========================================================
+
     return {
 
         valid:
@@ -6309,8 +6546,6 @@ function checkSingleSlotConflict(
     };
 
 }
-
-
 
 // ============================================================
 // RESERVE SLOT
@@ -7054,6 +7289,7 @@ function getConsecutiveTeachingPeriodPairs(
 // CHECK DOUBLE LESSON CONFLICT
 // ============================================================
 
+
 function checkDoubleLessonConflict(
     task,
     firstPeriod,
@@ -7146,6 +7382,21 @@ function checkDoubleLessonConflict(
     // ========================================================
     // FIRST PERIOD
     // ========================================================
+    //
+    // checkSingleSlotConflict() already validates:
+    //
+    // - student group
+    // - teacher conflict
+    // - teacher daily limit +1
+    // - teacher weekly limit +1
+    // - teacher consecutive limit
+    // - room
+    // - requirement daily limit
+    //
+    // We additionally perform the TRUE double-lesson
+    // teacher-limit checks below using +2.
+    //
+    // ========================================================
 
     const firstCheck =
         checkSingleSlotConflict(
@@ -7190,11 +7441,128 @@ function checkDoubleLessonConflict(
         );
 
 
-    const subjectId =
-        normalizeTimetableId(
-            task.subjectId ??
-            task.subject_id
-        );
+    // ========================================================
+    // TEACHER LIMITS
+    // ========================================================
+    //
+    // A double lesson occupies TWO teaching periods.
+    //
+    // Therefore:
+    //
+    //     current teacher load + 2
+    //
+    // must remain within both:
+    //
+    //     maxLessonsPerDay
+    //     maxLessonsPerWeek
+    //
+    // ========================================================
+
+    if (
+        teacherId
+    ) {
+
+        const teacherLimits =
+            indexes.teacherLimits instanceof Map
+                ? indexes.teacherLimits.get(
+                    teacherId
+                )
+                : null;
+
+
+        // ====================================================
+        // DAILY LIMIT
+        // ====================================================
+
+        const maximumDailyLessons =
+            Number(
+                teacherLimits?.maxLessonsPerDay
+            ) || 0;
+
+
+        if (
+            maximumDailyLessons > 0 &&
+            Number.isFinite(firstDay)
+        ) {
+
+            const currentDailyLessons =
+                getTeacherDailyLessonCountFromPeriods(
+                    indexes,
+                    teacherId,
+                    firstDay,
+                    indexes.periods
+                );
+
+
+            const projectedDailyLessons =
+                currentDailyLessons + 2;
+
+
+            if (
+                projectedDailyLessons >
+                maximumDailyLessons
+            ) {
+
+                return {
+
+                    valid:
+                        false,
+
+                    reason:
+                        `Double lesson would exceed the teacher maximum of ${maximumDailyLessons} lessons per day.`
+
+                };
+
+            }
+
+        }
+
+
+        // ====================================================
+        // WEEKLY LIMIT
+        // ====================================================
+
+        const maximumWeeklyLessons =
+            Number(
+                teacherLimits?.maxLessonsPerWeek
+            ) || 0;
+
+
+        if (
+            maximumWeeklyLessons > 0
+        ) {
+
+            const currentWeeklyLessons =
+                getTeacherWeeklyLessonCount(
+                    indexes,
+                    teacherId
+                );
+
+
+            const projectedWeeklyLessons =
+                currentWeeklyLessons + 2;
+
+
+            if (
+                projectedWeeklyLessons >
+                maximumWeeklyLessons
+            ) {
+
+                return {
+
+                    valid:
+                        false,
+
+                    reason:
+                        `Double lesson would exceed the teacher maximum of ${maximumWeeklyLessons} lessons per week.`
+
+                };
+
+            }
+
+        }
+
+    }
 
 
     // ========================================================
@@ -7387,8 +7755,8 @@ function checkDoubleLessonConflict(
     // DAILY REQUIREMENT LIMIT
     // ========================================================
     //
-    // A double lesson counts as ONE lesson for the daily
-    // requirement limit.
+    // A double lesson counts as ONE lesson for the
+    // requirement daily limit.
     //
     // ========================================================
 
@@ -7406,26 +7774,17 @@ function checkDoubleLessonConflict(
         ) || 0;
 
 
-    const dayNumber =
-        Number(
-            firstPeriod.dayNumber ??
-            firstPeriod.day_number
-        );
-
-
     if (
         requirementId &&
         maxPerDay > 0 &&
-        Number.isFinite(
-            dayNumber
-        )
+        Number.isFinite(firstDay)
     ) {
 
         const currentCount =
             getDailyRequirementLessonCount(
                 indexes,
                 requirementId,
-                dayNumber
+                firstDay
             );
 
 
@@ -7464,6 +7823,7 @@ function checkDoubleLessonConflict(
     };
 
 }
+
 
 // ============================================================
 // PLACE ONE DOUBLE LESSON
@@ -12597,7 +12957,8 @@ function releaseReservedSlot(
 
     const streamId =
         normalizeTimetableId(
-            task.streamId
+            task.streamId ??
+            task.stream_id
         );
 
 
@@ -12624,11 +12985,7 @@ function releaseReservedSlot(
     // STREAM
     // ========================================================
     //
-    // Keep this legacy index because other generator code may
-    // still reference it.
-    //
-    // Actual student conflict detection is handled through
-    // studentGroupPeriod.
+    // Legacy stream-period occupancy.
     //
     // ========================================================
 
@@ -12689,7 +13046,8 @@ function releaseReservedSlot(
 
     const teacherId =
         normalizeTimetableId(
-            task.teacherId
+            task.teacherId ??
+            task.teacher_id
         );
 
 
@@ -12697,15 +13055,9 @@ function releaseReservedSlot(
     // TEACHER PERIOD LESSON TRACKING
     // ========================================================
     //
-    // Remove only this task's lesson record.
+    // Remove ONLY this task's lesson record.
     //
-    // IMPORTANT:
-    //
-    // Do NOT immediately delete teacherPeriod.
-    //
-    // Another lesson may still legitimately occupy the same
-    // teacher + period, for example a shared same-subject
-    // concurrent lesson.
+    // Do not remove unrelated concurrent lessons.
     //
     // ========================================================
 
@@ -12732,7 +13084,16 @@ function releaseReservedSlot(
 
             const taskId =
                 normalizeTimetableId(
-                    task.taskId
+                    task.taskId ??
+                    task.task_id ??
+                    task.id
+                );
+
+
+            const lessonId =
+                normalizeTimetableId(
+                    task.lessonId ??
+                    task.lesson_id
                 );
 
 
@@ -12740,18 +13101,21 @@ function releaseReservedSlot(
                 teacherLessons.filter(
                     lesson => {
 
-                        const lessonTaskId =
+                        const existingTaskId =
                             normalizeTimetableId(
                                 lesson?.taskId
                             );
 
 
+                        const existingLessonId =
+                            normalizeTimetableId(
+                                lesson?.lessonId
+                            );
+
+
                         // ------------------------------------------------
-                        // If this task has a valid ID, remove only the
-                        // matching task.
-                        //
-                        // If it does not, do NOT remove unrelated
-                        // lessons with missing IDs.
+                        // Prefer task ID when available.
+                        // Otherwise use lesson ID.
                         // ------------------------------------------------
 
                         if (
@@ -12759,12 +13123,30 @@ function releaseReservedSlot(
                         ) {
 
                             return (
-                                lessonTaskId !==
+                                existingTaskId !==
                                 taskId
                             );
 
                         }
 
+
+                        if (
+                            lessonId
+                        ) {
+
+                            return (
+                                existingLessonId !==
+                                lessonId
+                            );
+
+                        }
+
+
+                        // ------------------------------------------------
+                        // No reliable identity.
+                        //
+                        // Do not remove unrelated records.
+                        // ------------------------------------------------
 
                         return true;
 
@@ -12799,8 +13181,8 @@ function releaseReservedSlot(
     // TEACHER / PERIOD
     // ========================================================
     //
-    // Remove the teacher-period occupancy ONLY when there are
-    // no remaining lesson records for that teacher + period.
+    // Remove teacher-period occupancy only when no lesson
+    // records remain for this teacher + period.
     //
     // ========================================================
 
@@ -12814,10 +13196,11 @@ function releaseReservedSlot(
 
 
         const remainingTeacherLessons =
-            indexes.teacherPeriodLessons
-                ?.get(
+            indexes.teacherPeriodLessons instanceof Map
+                ? indexes.teacherPeriodLessons.get(
                     teacherKey
-                );
+                )
+                : null;
 
 
         if (
@@ -12870,25 +13253,34 @@ function releaseReservedSlot(
     // ========================================================
     //
     // A double lesson occupies TWO periods but counts as ONE
-    // requirement lesson for the day.
+    // lesson for the requirement daily limit.
     //
-    // Therefore, do NOT blindly decrement the daily requirement
-    // count for every released period.
+    // Therefore:
     //
-    // First determine whether another reservation belonging to
-    // this SAME task still exists on the same day.
+    // - remove the daily count only when this was the final
+    //   remaining period for this task on this day
+    //
+    // - remove the EXACT unique daily lesson key:
+    //
+    //     requirementId__dayNumber__lessonId
+    //
+    // NOT:
+    //
+    //     requirementId__dayNumber
     //
     // ========================================================
 
     const requirementId =
         normalizeTimetableId(
-            task.requirementId
+            task.requirementId ??
+            task.requirement_id
         );
 
 
     const dayNumber =
         Number(
-            period.dayNumber
+            period.dayNumber ??
+            period.day_number
         );
 
 
@@ -12898,32 +13290,41 @@ function releaseReservedSlot(
         indexes.dailyRequirementLessons
     ) {
 
-        const key =
+        const dailyKey =
             getDailyRequirementKey(
                 requirementId,
                 dayNumber
             );
 
 
+        const taskId =
+            normalizeTimetableId(
+                task.taskId ??
+                task.task_id ??
+                task.id
+            );
+
+
+        const lessonId =
+            normalizeTimetableId(
+                task.lessonId ??
+                task.lesson_id
+        );
+
+
+        const lessonKey =
+            lessonId ||
+            taskId;
+
+
         let anotherTaskPeriodRemains =
             false;
 
 
-        const taskId =
-            normalizeTimetableId(
-                task.taskId
-            );
-
-
-        // --------------------------------------------------------
-        // Check the remaining teacher-period reservations for
-        // another period belonging to this same task.
-        //
-        // This is especially important during double-lesson
-        // rollback: releasing the first period must NOT remove
-        // the single daily requirement count while the second
-        // period is still reserved.
-        // --------------------------------------------------------
+        // ====================================================
+        // CHECK WHETHER THE SAME TASK STILL OWNS ANOTHER
+        // PERIOD ON THE SAME DAY
+        // ====================================================
 
         if (
             taskId &&
@@ -12988,10 +13389,26 @@ function releaseReservedSlot(
 
 
                 if (
-                    !remainingPeriod ||
+                    !remainingPeriod
+                ) {
+
+                    continue;
+
+                }
+
+
+                const remainingDay =
                     Number(
-                        remainingPeriod.dayNumber
-                    ) !==
+                        remainingPeriod.dayNumber ??
+                        remainingPeriod.day_number
+                    );
+
+
+                if (
+                    !Number.isFinite(
+                        remainingDay
+                    ) ||
+                    remainingDay !==
                     dayNumber
                 ) {
 
@@ -13002,11 +13419,45 @@ function releaseReservedSlot(
 
                 const matchingTask =
                     lessons.some(
-                        lesson =>
-                            normalizeTimetableId(
-                                lesson?.taskId
-                            ) ===
-                            taskId
+                        lesson => {
+
+                            const existingTaskId =
+                                normalizeTimetableId(
+                                    lesson?.taskId
+                                );
+
+
+                            const existingLessonId =
+                                normalizeTimetableId(
+                                    lesson?.lessonId
+                                );
+
+
+                            if (
+                                taskId &&
+                                existingTaskId ===
+                                taskId
+                            ) {
+
+                                return true;
+
+                            }
+
+
+                            if (
+                                lessonKey &&
+                                existingLessonId ===
+                                lessonKey
+                            ) {
+
+                                return true;
+
+                            }
+
+
+                            return false;
+
+                        }
                     );
 
 
@@ -13026,10 +13477,10 @@ function releaseReservedSlot(
         }
 
 
-        // --------------------------------------------------------
-        // Only remove the daily requirement lesson when this was
-        // the final remaining period for this task on this day.
-        // --------------------------------------------------------
+        // ====================================================
+        // REMOVE DAILY COUNT ONLY WHEN THIS IS THE FINAL
+        // PERIOD FOR THE TASK ON THIS DAY
+        // ====================================================
 
         if (
             !anotherTaskPeriodRemains
@@ -13048,30 +13499,112 @@ function releaseReservedSlot(
             ) {
 
                 indexes.dailyRequirementLessons.delete(
-                    key
+                    dailyKey
                 );
 
             }
             else {
 
                 indexes.dailyRequirementLessons.set(
-                    key,
+                    dailyKey,
                     currentCount - 1
                 );
 
             }
 
 
-            // ----------------------------------------------------
-            // Keep the unique daily requirement key index in sync.
-            // ----------------------------------------------------
+            // =================================================
+            // REMOVE EXACT UNIQUE DAILY LESSON KEY
+            // =================================================
 
             if (
-                indexes.dailyRequirementLessonKeys
+                indexes.dailyRequirementLessonKeys instanceof Set
             ) {
 
-                indexes.dailyRequirementLessonKeys.delete(
-                    key
+                const prefix =
+                    `${dailyKey}__`;
+
+
+                const keysToRemove = [];
+
+
+                indexes.dailyRequirementLessonKeys.forEach(
+                    uniqueKey => {
+
+                        if (
+                            typeof uniqueKey !==
+                            "string"
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !uniqueKey.startsWith(
+                                prefix
+                            )
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        // ------------------------------------------------
+                        // Exact lesson/task match when available.
+                        // ------------------------------------------------
+
+                        if (
+                            lessonKey
+                        ) {
+
+                            if (
+                                uniqueKey ===
+                                `${prefix}${lessonKey}`
+                            ) {
+
+                                keysToRemove.push(
+                                    uniqueKey
+                                );
+
+                            }
+
+                            return;
+
+                        }
+
+
+                        // ------------------------------------------------
+                        // No lesson identity available.
+                        //
+                        // Remove only the first matching key for this
+                        // requirement/day rather than clearing all keys.
+                        // ------------------------------------------------
+
+                        if (
+                            keysToRemove.length === 0
+                        ) {
+
+                            keysToRemove.push(
+                                uniqueKey
+                            );
+
+                        }
+
+                    }
+                );
+
+
+                keysToRemove.forEach(
+                    uniqueKey => {
+
+                        indexes.dailyRequirementLessonKeys.delete(
+                            uniqueKey
+                        );
+
+                    }
                 );
 
             }
@@ -13084,8 +13617,6 @@ function releaseReservedSlot(
     return true;
 
 }
-
-
 
 // ============================================================
 // PLACE SELECTED TASK
@@ -13526,6 +14057,9 @@ function selectNextSmartTask(
 //
 // ============================================================
 
+
+
+
 function generateSmartTimetable(
     data
 ) {
@@ -13564,10 +14098,101 @@ function generateSmartTimetable(
     // CREATE FRESH OCCUPANCY INDEXES
     // ========================================================
 
-   const indexes =
-    createOccupancyIndexes(
-        data
-    );
+    const indexes =
+        createOccupancyIndexes(
+            data
+        );
+
+
+    // ========================================================
+    // BUILD TEACHER LIMIT INDEX
+    // ========================================================
+    //
+    // The conflict functions use:
+    //
+    //     indexes.teacherLimits
+    //
+    // for:
+    //
+    //     - maxLessonsPerDay
+    //     - maxLessonsPerWeek
+    //     - maxConsecutiveLessons
+    //
+    // createOccupancyIndexes() does not need to own the
+    // normalized teacher-limit construction, so we prepare it
+    // here from the already normalized generator data.
+    //
+    // ========================================================
+
+    if (
+        !(indexes.teacherLimits instanceof Map)
+    ) {
+
+        indexes.teacherLimits =
+            new Map();
+
+    }
+
+
+    if (
+        Array.isArray(data.teachers)
+    ) {
+
+        data.teachers.forEach(
+            teacher => {
+
+                if (
+                    !teacher ||
+                    !teacher.id
+                ) {
+
+                    return;
+
+                }
+
+
+                const teacherId =
+                    normalizeTimetableId(
+                        teacher.id
+                    );
+
+
+                if (
+                    !teacherId
+                ) {
+
+                    return;
+
+                }
+
+
+                indexes.teacherLimits.set(
+                    teacherId,
+                    {
+
+                        maxLessonsPerDay:
+                            Number(
+                                teacher.maxLessonsPerDay
+                            ) || 0,
+
+                        maxLessonsPerWeek:
+                            Number(
+                                teacher.maxLessonsPerWeek
+                            ) || 0,
+
+                        maxConsecutiveLessons:
+                            Number(
+                                teacher.maxConsecutiveLessons
+                            ) || 0
+
+                    }
+                );
+
+            }
+        );
+
+    }
+
 
     // ========================================================
     // CREATE RESULT
@@ -13675,7 +14300,13 @@ function generateSmartTimetable(
                         task.streamId,
 
                     subjectId:
-                        task.subjectId
+                        task.subjectId,
+
+                    teacherId:
+                        task.teacherId,
+
+                    requirementId:
+                        task.requirementId
 
                 }
             );
@@ -13736,7 +14367,7 @@ function generateSmartTimetable(
         //
         // IMPORTANT:
         //
-        // We DO NOT fail the task after candidate #1 fails.
+        // We do NOT fail the task after candidate #1 fails.
         //
         // We try every candidate returned by 6C / 6D.
         //
@@ -13779,6 +14410,7 @@ function generateSmartTimetable(
             // =================================================
 
             if (
+                attempt &&
                 attempt.placed
             ) {
 
@@ -13800,7 +14432,7 @@ function generateSmartTimetable(
             // =================================================
 
             lastFailureReason =
-                attempt.reason ||
+                attempt?.reason ||
                 lastFailureReason;
 
 
@@ -13815,10 +14447,11 @@ function generateSmartTimetable(
                         task.taskType,
 
                     candidateScore:
-                        candidate.score,
+                        candidate?.score,
 
                     reason:
-                        attempt.reason
+                        attempt?.reason ||
+                        "Candidate rejected."
 
                 }
             );
@@ -13835,10 +14468,26 @@ function generateSmartTimetable(
             successfulPlacement.placed
         ) {
 
-            result.entries.push(
-                ...successfulPlacement.entries
-            );
+            // ------------------------------------------------
+            // ADD GENERATED ENTRIES
+            // ------------------------------------------------
 
+            if (
+                Array.isArray(
+                    successfulPlacement.entries
+                )
+            ) {
+
+                result.entries.push(
+                    ...successfulPlacement.entries
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // TRACK PLACED TASK
+            // ------------------------------------------------
 
             result.placedTasks.push({
 
@@ -13906,6 +14555,9 @@ function generateSmartTimetable(
                     type:
                         task.taskType,
 
+                    requirementId:
+                        task.requirementId,
+
                     periods:
                         task.periodIds,
 
@@ -13938,6 +14590,12 @@ function generateSmartTimetable(
 
                 taskType:
                     task.taskType,
+
+                requirementId:
+                    task.requirementId,
+
+                teacherId:
+                    task.teacherId,
 
                 reason:
                     lastFailureReason
@@ -14005,6 +14663,15 @@ function generateSmartTimetable(
         remainingTasks.forEach(
             task => {
 
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
                 result.failedTasks.push({
 
                     task,
@@ -14014,8 +14681,29 @@ function generateSmartTimetable(
 
                 });
 
+
+                task.placed =
+                    false;
+
+
+                task.periodIds =
+                    [];
+
+
+                task.roomId =
+                    null;
+
             }
         );
+
+
+        // ----------------------------------------------------
+        // Make sure the active queue does not retain tasks
+        // after they have been recorded as failed.
+        // ----------------------------------------------------
+
+        remainingTasks.length =
+            0;
 
     }
 
@@ -14106,6 +14794,10 @@ function generateSmartTimetable(
                         item.task?.teacherId ||
                         null,
 
+                    requirementId:
+                        item.task?.requirementId ||
+                        null,
+
                     reason:
                         item.reason
 
@@ -14134,6 +14826,10 @@ function generateSmartTimetable(
 
                     type:
                         item.task?.taskType ||
+                        null,
+
+                    requirementId:
+                        item.task?.requirementId ||
                         null,
 
                     periods:
@@ -14170,8 +14866,6 @@ function generateSmartTimetable(
     };
 
 }
-
-
 
 
 // ============================================================
@@ -14351,20 +15045,28 @@ async function generateTimetable() {
         );
 
 
-        const failedTasks =
-            Array.isArray(
-                result.failedTasks
+      const failedTasks =
+    Array.isArray(
+        result.failedTasks
+    )
+        ? result.failedTasks
+            .map(
+                item =>
+                    item?.task ||
+                    item
             )
-                ? result.failedTasks
-                : [];
+            .filter(
+                Boolean
+            )
+        : [];
 
 
         const repairResult =
-            runStage7Repair(
-                failedTasks,
-                result.placedTasks || [],
-                generatorData
-            );
+    runStage7Repair(
+        failedTasks,
+        result.placedTasks || [],
+        generatorData
+    );
 
 
         // ----------------------------------------------------
