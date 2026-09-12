@@ -18867,12 +18867,12 @@ function runStage7Repair(
     //
     // ========================================================
 
-    generatorData.placedTasks =
-        Array.isArray(
-            placedTasks
-        )
-            ? placedTasks
-            : [];
+   generatorData.placedTasks =
+    Array.isArray(
+        placedTasks
+    )
+        ? [...placedTasks]
+        : [];
 
 
     console.log(
@@ -18953,13 +18953,24 @@ function runStage7Repair(
                 result.repaired
             ) {
 
-                repaired.push(
-                    task
-                );
-generatorData.placedTasks.push(
+
+repaired.push(
     task
 );
 
+if (
+    !generatorData.placedTasks.includes(
+        task
+    )
+) {
+
+    generatorData.placedTasks.push(
+        task
+    );
+
+}
+
+                
                 // ------------------------------------------------
                 // PRESERVE GENERATED ENTRIES
                 // ------------------------------------------------
