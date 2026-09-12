@@ -4936,6 +4936,9 @@ function createOccupancyIndexes(
     const dailyLessonKeys =
         new Set();
 
+    occupancy.dailyRequirementLessonKeys =
+    dailyLessonKeys;
+
 
     entries.forEach(
         entry => {
@@ -12433,78 +12436,6 @@ function placeSelectedDoubleTask(
     }
 
 
-    // ========================================================
-    // DOUBLE LESSON DAILY REQUIREMENT CORRECTION
-    // ========================================================
-    //
-    // reserveSlot() reserves ONE period at a time.
-    //
-    // Therefore the two reservations temporarily create:
-    //
-    //     +1 first period
-    //     +1 second period
-    //
-    // But a double lesson represents ONE lesson for the
-    // requirement's daily lesson limit.
-    //
-    // Therefore remove ONE of the two increments.
-    //
-    // ========================================================
-
-    const requirementId =
-        normalizeTimetableId(
-            task.requirementId
-        );
-
-
-    const firstDayNumber =
-        Number(
-            firstPeriod.dayNumber
-        );
-
-
-    const secondDayNumber =
-        Number(
-            secondPeriod.dayNumber
-        );
-
-
-    if (
-        requirementId &&
-        Number.isFinite(firstDayNumber) &&
-        Number.isFinite(secondDayNumber) &&
-        firstDayNumber === secondDayNumber &&
-        indexes.dailyRequirementLessons
-    ) {
-
-        const currentDailyCount =
-            getDailyRequirementLessonCount(
-                indexes,
-                requirementId,
-                firstDayNumber
-            );
-
-
-        if (
-            currentDailyCount > 0
-        ) {
-
-            const key =
-                getDailyRequirementKey(
-                    requirementId,
-                    firstDayNumber
-                );
-
-
-            indexes.dailyRequirementLessons.set(
-                key,
-                currentDailyCount - 1
-            );
-
-        }
-
-    }
-
 
     // ========================================================
     // CREATE ENTRIES
@@ -12543,22 +12474,7 @@ function placeSelectedDoubleTask(
         // each period, so restore the removed increment first.
         // ----------------------------------------------------
 
-        if (
-            requirementId &&
-            Number.isFinite(firstDayNumber) &&
-            Number.isFinite(secondDayNumber) &&
-            firstDayNumber === secondDayNumber &&
-            indexes.dailyRequirementLessons
-        ) {
-
-            incrementDailyRequirementLessonCount(
-                indexes,
-                requirementId,
-                firstDayNumber,
-                1
-            );
-
-        }
+        
 
 
         // ----------------------------------------------------
@@ -12658,6 +12574,7 @@ function placeSelectedDoubleTask(
 // This is required so failed double-lesson attempts do not
 // leave stale conflict reservations behind.
 //
+
 
 
 function releaseReservedSlot(
@@ -12951,6 +12868,17 @@ function releaseReservedSlot(
     // ========================================================
     // REQUIREMENT / DAY
     // ========================================================
+    //
+    // A double lesson occupies TWO periods but counts as ONE
+    // requirement lesson for the day.
+    //
+    // Therefore, do NOT blindly decrement the daily requirement
+    // count for every released period.
+    //
+    // First determine whether another reservation belonging to
+    // this SAME task still exists on the same day.
+    //
+    // ========================================================
 
     const requirementId =
         normalizeTimetableId(
@@ -12977,29 +12905,176 @@ function releaseReservedSlot(
             );
 
 
-        const currentCount =
-            getDailyRequirementLessonCount(
-                indexes,
-                requirementId,
-                dayNumber
+        let anotherTaskPeriodRemains =
+            false;
+
+
+        const taskId =
+            normalizeTimetableId(
+                task.taskId
             );
 
+
+        // --------------------------------------------------------
+        // Check the remaining teacher-period reservations for
+        // another period belonging to this same task.
+        //
+        // This is especially important during double-lesson
+        // rollback: releasing the first period must NOT remove
+        // the single daily requirement count while the second
+        // period is still reserved.
+        // --------------------------------------------------------
 
         if (
-            currentCount <= 1
+            taskId &&
+            indexes.teacherPeriodLessons
         ) {
 
-            indexes.dailyRequirementLessons.delete(
-                key
-            );
+            for (
+                const [
+                    teacherPeriodKey,
+                    lessons
+                ]
+                of indexes.teacherPeriodLessons.entries()
+            ) {
+
+                if (
+                    !Array.isArray(
+                        lessons
+                    )
+                ) {
+
+                    continue;
+
+                }
+
+
+                const separatorIndex =
+                    teacherPeriodKey.lastIndexOf(
+                        "__"
+                    );
+
+
+                if (
+                    separatorIndex === -1
+                ) {
+
+                    continue;
+
+                }
+
+
+                const remainingPeriodId =
+                    teacherPeriodKey.slice(
+                        separatorIndex + 2
+                    );
+
+
+                if (
+                    remainingPeriodId ===
+                    periodId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const remainingPeriod =
+                    getIndexedPeriod(
+                        indexes,
+                        remainingPeriodId
+                    );
+
+
+                if (
+                    !remainingPeriod ||
+                    Number(
+                        remainingPeriod.dayNumber
+                    ) !==
+                    dayNumber
+                ) {
+
+                    continue;
+
+                }
+
+
+                const matchingTask =
+                    lessons.some(
+                        lesson =>
+                            normalizeTimetableId(
+                                lesson?.taskId
+                            ) ===
+                            taskId
+                    );
+
+
+                if (
+                    matchingTask
+                ) {
+
+                    anotherTaskPeriodRemains =
+                        true;
+
+                    break;
+
+                }
+
+            }
 
         }
-        else {
 
-            indexes.dailyRequirementLessons.set(
-                key,
-                currentCount - 1
-            );
+
+        // --------------------------------------------------------
+        // Only remove the daily requirement lesson when this was
+        // the final remaining period for this task on this day.
+        // --------------------------------------------------------
+
+        if (
+            !anotherTaskPeriodRemains
+        ) {
+
+            const currentCount =
+                getDailyRequirementLessonCount(
+                    indexes,
+                    requirementId,
+                    dayNumber
+                );
+
+
+            if (
+                currentCount <= 1
+            ) {
+
+                indexes.dailyRequirementLessons.delete(
+                    key
+                );
+
+            }
+            else {
+
+                indexes.dailyRequirementLessons.set(
+                    key,
+                    currentCount - 1
+                );
+
+            }
+
+
+            // ----------------------------------------------------
+            // Keep the unique daily requirement key index in sync.
+            // ----------------------------------------------------
+
+            if (
+                indexes.dailyRequirementLessonKeys
+            ) {
+
+                indexes.dailyRequirementLessonKeys.delete(
+                    key
+                );
+
+            }
 
         }
 
@@ -13009,6 +13084,7 @@ function releaseReservedSlot(
     return true;
 
 }
+
 
 
 // ============================================================
