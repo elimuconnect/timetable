@@ -16314,6 +16314,8 @@ console.log(
 );
 
 
+
+
 console.table(
     [
         ...failureReasonCounts.entries()
@@ -16343,71 +16345,262 @@ console.table(
 );
 
 
+// ============================================================
+// STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
+// ============================================================
+//
+// Shows exactly which requirements still have unplaced tasks.
+//
+// This is especially useful when Stage 6F completes with:
+//
+//     "No valid placement candidate exists."
+//
+// ============================================================
+
+if (
+    result.failedTasks.length > 0
+) {
+
+    const failedRequirementMap =
+        new Map();
 
 
+    result.failedTasks.forEach(
+        item => {
+
+            const task =
+                item?.task ||
+                item;
 
 
+            if (
+                !task
+            ) {
+
+                return;
+
+            }
 
 
+            const requirementId =
+                task.requirementId ??
+                task.requirement_id ??
+                null;
 
-    
 
-    // ========================================================
-    // SUCCESS TABLE
-    // ========================================================
+            if (
+                !requirementId
+            ) {
 
-    if (
-        result.placedTasks.length > 0
-    ) {
+                return;
 
-        console.table(
-            result.placedTasks.map(
-                item => ({
+            }
+
+
+            if (
+                !failedRequirementMap.has(
+                    requirementId
+                )
+            ) {
+
+                failedRequirementMap.set(
+                    requirementId,
+                    []
+                );
+
+            }
+
+
+            failedRequirementMap
+                .get(
+                    requirementId
+                )
+                .push({
 
                     taskId:
-                        item.task?.taskId ||
+                        task.taskId ??
+                        task.task_id ??
+                        task.id ??
                         null,
 
-                    type:
-                        item.task?.taskType ||
+                    taskType:
+                        task.taskType ??
+                        task.type ??
                         null,
 
-                    requirementId:
-                        item.task?.requirementId ||
+                    streamId:
+                        task.streamId ??
+                        task.stream_id ??
                         null,
 
-                    periods:
-                        item.task?.periodIds?.join(
+                    subjectId:
+                        task.subjectId ??
+                        task.subject_id ??
+                        null,
+
+                    teacherId:
+                        task.teacherId ??
+                        task.teacher_id ??
+                        null,
+
+                    reason:
+                        item?.reason ||
+                        "Unknown"
+
+                });
+
+        }
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.table(
+        [
+            ...failedRequirementMap.entries()
+        ]
+        .map(
+            (
+                [
+                    requirementId,
+                    tasks
+                ]
+            ) => ({
+
+                requirementId,
+
+                failedTasks:
+                    tasks.length,
+
+                taskIds:
+                    tasks
+                        .map(
+                            task =>
+                                task.taskId
+                        )
+                        .join(
                             ", "
-                        ) ||
-                        "",
+                        ),
 
-                    room:
-                        item.task?.roomId ||
-                        null,
+                taskTypes:
+                    tasks
+                        .map(
+                            task =>
+                                task.taskType
+                        )
+                        .join(
+                            ", "
+                        ),
 
-                    score:
-                        item.candidate?.score ??
-                        null
+                streams:
+                    tasks
+                        .map(
+                            task =>
+                                task.streamId
+                        )
+                        .join(
+                            ", "
+                        ),
 
-                })
-            )
-        );
+                subjects:
+                    tasks
+                        .map(
+                            task =>
+                                task.subjectId
+                        )
+                        .join(
+                            ", "
+                        ),
 
-    }
+                teachers:
+                    tasks
+                        .map(
+                            task =>
+                                task.teacherId
+                        )
+                        .join(
+                            ", "
+                        )
+
+            })
+        )
+    );
 
 
-    // ========================================================
-    // RETURN COMPLETE RESULT
-    // ========================================================
+    console.log(
+        "======================================"
+    );
 
-    return {
+}
 
-        ...result,
 
-        indexes
+// ============================================================
+// SUCCESS TABLE
+// ============================================================
 
-    };
+if (
+    result.placedTasks.length > 0
+) {
+
+    console.table(
+        result.placedTasks.map(
+            item => ({
+
+                taskId:
+                    item.task?.taskId ||
+                    null,
+
+                type:
+                    item.task?.taskType ||
+                    null,
+
+                requirementId:
+                    item.task?.requirementId ||
+                    null,
+
+                periods:
+                    item.task?.periodIds?.join(
+                        ", "
+                    ) ||
+                    "",
+
+                room:
+                    item.task?.roomId ||
+                    null,
+
+                score:
+                    item.candidate?.score ??
+                    null
+
+            })
+        )
+    );
+
+}
+
+
+// ============================================================
+// RETURN COMPLETE RESULT
+// ============================================================
+
+return {
+
+    ...result,
+
+    indexes
+
+};
 
 }
 
