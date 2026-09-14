@@ -13187,6 +13187,10 @@ function placeSelectedDoubleTask(
 
 
 
+
+
+
+
 function releaseReservedSlot(
     task,
     period,
@@ -13228,7 +13232,17 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // STREAM
+    // STUDENT GROUPS
+    // ========================================================
+
+    const studentGroups =
+        getTaskStudentGroups(
+            task
+        );
+
+
+    // ========================================================
+    // STREAM / PERIOD
     // ========================================================
 
     if (
@@ -13244,16 +13258,61 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // STUDENT GROUPS
+    // STUDENT GROUP / PERIOD
     // ========================================================
 
     if (
         indexes.studentGroupPeriod
     ) {
 
-        const studentGroups =
-            getTaskStudentGroups(
-                task
+        studentGroups.forEach(
+            groupId => {
+
+                const normalizedGroupId =
+                    normalizeTimetableId(
+                        groupId
+                    );
+
+
+                if (
+                    !normalizedGroupId
+                ) {
+
+                    return;
+
+                }
+
+
+                indexes.studentGroupPeriod.delete(
+                    `${normalizedGroupId}__${periodId}`
+                );
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // STUDENT GROUP / PERIOD LESSON DETAILS
+    // ========================================================
+
+    if (
+        indexes.studentGroupPeriodLessons instanceof Map
+    ) {
+
+        const taskId =
+            normalizeTimetableId(
+                task.taskId ??
+                task.task_id ??
+                task.id
+            );
+
+
+        const lessonId =
+            normalizeTimetableId(
+                task.lessonId ??
+                task.lesson_id
             );
 
 
@@ -13267,11 +13326,91 @@ function releaseReservedSlot(
 
 
                 if (
-                    normalizedGroupId
+                    !normalizedGroupId
                 ) {
 
-                    indexes.studentGroupPeriod.delete(
-                        `${normalizedGroupId}__${periodId}`
+                    return;
+
+                }
+
+
+                const studentGroupKey =
+                    `${normalizedGroupId}__${periodId}`;
+
+
+                const lessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        studentGroupKey
+                    );
+
+
+                if (
+                    !Array.isArray(
+                        lessons
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                const remainingLessons =
+                    lessons.filter(
+                        lesson => {
+
+                            const existingTaskId =
+                                normalizeTimetableId(
+                                    lesson?.taskId
+                                );
+
+
+                            const existingLessonId =
+                                normalizeTimetableId(
+                                    lesson?.lessonId
+                                );
+
+
+                            if (
+                                taskId &&
+                                existingTaskId === taskId
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            if (
+                                lessonId &&
+                                existingLessonId === lessonId
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            return true;
+
+                        }
+                    );
+
+
+                if (
+                    remainingLessons.length > 0
+                ) {
+
+                    indexes.studentGroupPeriodLessons.set(
+                        studentGroupKey,
+                        remainingLessons
+                    );
+
+                }
+                else {
+
+                    indexes.studentGroupPeriodLessons.delete(
+                        studentGroupKey
                     );
 
                 }
@@ -13299,7 +13438,7 @@ function releaseReservedSlot(
 
     if (
         teacherId &&
-        indexes.teacherPeriodLessons
+        indexes.teacherPeriodLessons instanceof Map
     ) {
 
         const teacherKey =
@@ -13349,6 +13488,10 @@ function releaseReservedSlot(
                             );
 
 
+                        // ------------------------------------------------
+                        // Prefer task identity when available.
+                        // ------------------------------------------------
+
                         if (
                             taskId
                         ) {
@@ -13360,6 +13503,10 @@ function releaseReservedSlot(
 
                         }
 
+
+                        // ------------------------------------------------
+                        // Fall back to lesson identity.
+                        // ------------------------------------------------
 
                         if (
                             lessonId
@@ -13405,6 +13552,15 @@ function releaseReservedSlot(
     // ========================================================
     // TEACHER / PERIOD
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Only delete teacherPeriod when there are NO remaining
+    // teacher lessons in this period.
+    //
+    // This preserves legitimate concurrent/shared teaching.
+    //
+    // ========================================================
 
     if (
         teacherId &&
@@ -13442,6 +13598,14 @@ function releaseReservedSlot(
     // ========================================================
     // TEACHER + SUBJECT + PERIOD
     // ========================================================
+    //
+    // Only remove this index when no remaining lesson with the
+    // same teacher + subject + period exists.
+    //
+    // This prevents rollback from destroying a legitimate
+    // concurrent/shared lesson entry.
+    //
+    // ========================================================
 
     if (
         teacherId &&
@@ -13459,9 +13623,66 @@ function releaseReservedSlot(
             subjectId
         ) {
 
-            indexes.teacherSubjectPeriod.delete(
-                `${teacherId}__${subjectId}__${periodId}`
-            );
+            const teacherSubjectPeriodKey =
+                `${teacherId}__${subjectId}__${periodId}`;
+
+
+            let anotherMatchingLesson =
+                false;
+
+
+            if (
+                indexes.teacherPeriodLessons instanceof Map
+            ) {
+
+                const teacherKey =
+                    `${teacherId}__${periodId}`;
+
+
+                const remainingLessons =
+                    indexes.teacherPeriodLessons.get(
+                        teacherKey
+                    );
+
+
+                if (
+                    Array.isArray(
+                        remainingLessons
+                    )
+                ) {
+
+                    anotherMatchingLesson =
+                        remainingLessons.some(
+                            lesson => {
+
+                                const existingSubjectId =
+                                    normalizeTimetableId(
+                                        lesson?.subjectId
+                                    );
+
+
+                                return (
+                                    existingSubjectId ===
+                                    subjectId
+                                );
+
+                            }
+                        );
+
+                }
+
+            }
+
+
+            if (
+                !anotherMatchingLesson
+            ) {
+
+                indexes.teacherSubjectPeriod.delete(
+                    teacherSubjectPeriodKey
+                );
+
+            }
 
         }
 
@@ -13469,7 +13690,7 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // ROOM
+    // ROOM / PERIOD
     // ========================================================
 
     if (
@@ -13498,8 +13719,15 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // REQUIREMENT / DAY
+    // DAY INDEXES
     // ========================================================
+
+    const dayNumber =
+        Number(
+            period.dayNumber ??
+            period.day_number
+        );
+
 
     const requirementId =
         normalizeTimetableId(
@@ -13508,12 +13736,652 @@ function releaseReservedSlot(
         );
 
 
-    const dayNumber =
-        Number(
-            period.dayNumber ??
-            period.day_number
-        );
+    if (
+        Number.isFinite(
+            dayNumber
+        )
+    ) {
 
+        // ----------------------------------------------------
+        // TEACHER DAY
+        // ----------------------------------------------------
+
+        if (
+            teacherId &&
+            indexes.teacherDay instanceof Map
+        ) {
+
+            const teacherDays =
+                indexes.teacherDay.get(
+                    teacherId
+                );
+
+
+            if (
+                teacherDays instanceof Set
+            ) {
+
+                let teacherStillOnDay =
+                    false;
+
+
+                if (
+                    indexes.teacherPeriodLessons instanceof Map
+                ) {
+
+                    for (
+                        const [
+                            teacherPeriodKey,
+                            lessons
+                        ]
+                        of indexes.teacherPeriodLessons.entries()
+                    ) {
+
+                        if (
+                            !Array.isArray(
+                                lessons
+                            ) ||
+                            lessons.length === 0
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const separatorIndex =
+                            teacherPeriodKey.lastIndexOf(
+                                "__"
+                            );
+
+
+                        if (
+                            separatorIndex === -1
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const indexedTeacherId =
+                            teacherPeriodKey.slice(
+                                0,
+                                separatorIndex
+                            );
+
+
+                        if (
+                            indexedTeacherId !==
+                            teacherId
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const indexedPeriodId =
+                            teacherPeriodKey.slice(
+                                separatorIndex + 2
+                            );
+
+
+                        const indexedPeriod =
+                            getIndexedPeriod(
+                                indexes,
+                                indexedPeriodId
+                            );
+
+
+                        if (
+                            !indexedPeriod
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const indexedDay =
+                            Number(
+                                indexedPeriod.dayNumber ??
+                                indexedPeriod.day_number
+                            );
+
+
+                        if (
+                            Number.isFinite(
+                                indexedDay
+                            ) &&
+                            indexedDay === dayNumber
+                        ) {
+
+                            teacherStillOnDay =
+                                true;
+
+                            break;
+
+                        }
+
+                    }
+
+                }
+
+
+                if (
+                    !teacherStillOnDay
+                ) {
+
+                    teacherDays.delete(
+                        dayNumber
+                    );
+
+                }
+
+
+                if (
+                    teacherDays.size === 0
+                ) {
+
+                    indexes.teacherDay.delete(
+                        teacherId
+                    );
+
+                }
+
+            }
+
+        }
+
+
+        // ----------------------------------------------------
+        // STREAM DAY
+        // ----------------------------------------------------
+
+        if (
+            streamId &&
+            indexes.streamDay instanceof Map
+        ) {
+
+            const streamDays =
+                indexes.streamDay.get(
+                    streamId
+                );
+
+
+            if (
+                streamDays instanceof Set
+            ) {
+
+                let streamStillOnDay =
+                    false;
+
+
+                if (
+                    indexes.streamPeriod instanceof Set
+                ) {
+
+                    const prefix =
+                        `${streamId}__`;
+
+
+                    for (
+                        const key of indexes.streamPeriod
+                    ) {
+
+                        if (
+                            typeof key !==
+                            "string" ||
+                            !key.startsWith(
+                                prefix
+                            )
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const indexedPeriodId =
+                            key.slice(
+                                prefix.length
+                            );
+
+
+                        const indexedPeriod =
+                            getIndexedPeriod(
+                                indexes,
+                                indexedPeriodId
+                            );
+
+
+                        if (
+                            !indexedPeriod
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const indexedDay =
+                            Number(
+                                indexedPeriod.dayNumber ??
+                                indexedPeriod.day_number
+                            );
+
+
+                        if (
+                            Number.isFinite(
+                                indexedDay
+                            ) &&
+                            indexedDay === dayNumber
+                        ) {
+
+                            streamStillOnDay =
+                                true;
+
+                            break;
+
+                        }
+
+                    }
+
+                }
+
+
+                if (
+                    !streamStillOnDay
+                ) {
+
+                    streamDays.delete(
+                        dayNumber
+                    );
+
+                }
+
+
+                if (
+                    streamDays.size === 0
+                ) {
+
+                    indexes.streamDay.delete(
+                        streamId
+                    );
+
+                }
+
+            }
+
+        }
+
+
+        // ----------------------------------------------------
+        // STUDENT GROUP DAY
+        // ----------------------------------------------------
+
+        if (
+            indexes.studentGroupDay instanceof Map
+        ) {
+
+            studentGroups.forEach(
+                groupId => {
+
+                    const normalizedGroupId =
+                        normalizeTimetableId(
+                            groupId
+                        );
+
+
+                    if (
+                        !normalizedGroupId
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const groupDays =
+                        indexes.studentGroupDay.get(
+                            normalizedGroupId
+                        );
+
+
+                    if (
+                        !(groupDays instanceof Set)
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    let groupStillOnDay =
+                        false;
+
+
+                    if (
+                        indexes.studentGroupPeriod instanceof Set
+                    ) {
+
+                        const prefix =
+                            `${normalizedGroupId}__`;
+
+
+                        for (
+                            const key of indexes.studentGroupPeriod
+                        ) {
+
+                            if (
+                                typeof key !==
+                                "string" ||
+                                !key.startsWith(
+                                    prefix
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const indexedPeriodId =
+                                key.slice(
+                                    prefix.length
+                                );
+
+
+                            const indexedPeriod =
+                                getIndexedPeriod(
+                                    indexes,
+                                    indexedPeriodId
+                                );
+
+
+                            if (
+                                !indexedPeriod
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const indexedDay =
+                                Number(
+                                    indexedPeriod.dayNumber ??
+                                    indexedPeriod.day_number
+                                );
+
+
+                            if (
+                                Number.isFinite(
+                                    indexedDay
+                                ) &&
+                                indexedDay === dayNumber
+                            ) {
+
+                                groupStillOnDay =
+                                    true;
+
+                                break;
+
+                            }
+
+                        }
+
+                    }
+
+
+                    if (
+                        !groupStillOnDay
+                    ) {
+
+                        groupDays.delete(
+                            dayNumber
+                        );
+
+                    }
+
+
+                    if (
+                        groupDays.size === 0
+                    ) {
+
+                        indexes.studentGroupDay.delete(
+                            normalizedGroupId
+                        );
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // ROOM DAY
+        // ----------------------------------------------------
+
+        if (
+            room &&
+            room.id &&
+            indexes.roomDay instanceof Map
+        ) {
+
+            const roomId =
+                normalizeTimetableId(
+                    room.id
+                );
+
+
+            if (
+                roomId
+            ) {
+
+                const roomDays =
+                    indexes.roomDay.get(
+                        roomId
+                    );
+
+
+                if (
+                    roomDays instanceof Set
+                ) {
+
+                    let roomStillOnDay =
+                        false;
+
+
+                    if (
+                        indexes.roomPeriod instanceof Set
+                    ) {
+
+                        const prefix =
+                            `${roomId}__`;
+
+
+                        for (
+                            const key of indexes.roomPeriod
+                        ) {
+
+                            if (
+                                typeof key !==
+                                "string" ||
+                                !key.startsWith(
+                                    prefix
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const indexedPeriodId =
+                                key.slice(
+                                    prefix.length
+                                );
+
+
+                            const indexedPeriod =
+                                getIndexedPeriod(
+                                    indexes,
+                                    indexedPeriodId
+                                );
+
+
+                            if (
+                                !indexedPeriod
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const indexedDay =
+                                Number(
+                                    indexedPeriod.dayNumber ??
+                                    indexedPeriod.day_number
+                                );
+
+
+                            if (
+                                Number.isFinite(
+                                    indexedDay
+                                ) &&
+                                indexedDay === dayNumber
+                            ) {
+
+                                roomStillOnDay =
+                                    true;
+
+                                break;
+
+                            }
+
+                        }
+
+                    }
+
+
+                    if (
+                        !roomStillOnDay
+                    ) {
+
+                        roomDays.delete(
+                            dayNumber
+                        );
+
+                    }
+
+
+                    if (
+                        roomDays.size === 0
+                    ) {
+
+                        indexes.roomDay.delete(
+                            roomId
+                        );
+
+                    }
+
+                }
+
+            }
+
+        }
+
+
+        // ----------------------------------------------------
+        // REQUIREMENT DAY
+        // ----------------------------------------------------
+
+        if (
+            requirementId &&
+            indexes.requirementDay instanceof Map
+        ) {
+
+            const requirementDays =
+                indexes.requirementDay.get(
+                    requirementId
+                );
+
+
+            if (
+                requirementDays instanceof Set
+            ) {
+
+                let requirementStillOnDay =
+                    false;
+
+
+                if (
+                    indexes.dailyRequirementLessons
+                ) {
+
+                    const dailyKey =
+                        getDailyRequirementKey(
+                            requirementId,
+                            dayNumber
+                        );
+
+
+                    const count =
+                        getDailyRequirementLessonCount(
+                            indexes,
+                            requirementId,
+                            dayNumber
+                        );
+
+
+                    requirementStillOnDay =
+                        count > 0;
+
+                }
+
+
+                if (
+                    !requirementStillOnDay
+                ) {
+
+                    requirementDays.delete(
+                        dayNumber
+                    );
+
+                }
+
+
+                if (
+                    requirementDays.size === 0
+                ) {
+
+                    indexes.requirementDay.delete(
+                        requirementId
+                    );
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // DAILY REQUIREMENT LESSON COUNT
+    // ========================================================
+    //
+    // A double lesson occupies two periods but represents
+    // one lesson. The unique daily lesson key therefore
+    // determines whether the daily count should be removed.
+    //
+    // ========================================================
 
     if (
         requirementId &&
@@ -13553,8 +14421,8 @@ function releaseReservedSlot(
 
 
         // ====================================================
-        // CHECK WHETHER ANOTHER PERIOD OF THE SAME TASK
-        // STILL EXISTS ON THE SAME DAY
+        // CHECK ALL REMAINING TEACHER LESSONS FOR THIS TASK
+        // ON THE SAME DAY.
         // ====================================================
 
         if (
@@ -13573,7 +14441,8 @@ function releaseReservedSlot(
                 if (
                     !Array.isArray(
                         lessons
-                    )
+                    ) ||
+                    lessons.length === 0
                 ) {
 
                     continue;
@@ -13677,10 +14546,8 @@ function releaseReservedSlot(
 
                             if (
                                 lessonKey &&
-                                (
-                                    existingLessonId ===
-                                    lessonKey
-                                )
+                                existingLessonId ===
+                                lessonKey
                             ) {
 
                                 return true;
@@ -13712,7 +14579,7 @@ function releaseReservedSlot(
 
         // ====================================================
         // REMOVE DAILY LESSON COUNT ONLY WHEN THIS IS THE
-        // FINAL PERIOD OF THIS TASK ON THIS DAY
+        // FINAL PERIOD OF THIS TASK ON THIS DAY.
         // ====================================================
 
         if (
@@ -13748,11 +14615,6 @@ function releaseReservedSlot(
 
             // =================================================
             // REMOVE EXACT UNIQUE DAILY LESSON KEY
-            //
-            // Format:
-            //
-            // requirementId__dayNumber__lessonId
-            //
             // =================================================
 
             if (
@@ -13852,6 +14714,8 @@ function releaseReservedSlot(
 
 }
 
+
+    
 
 // ============================================================
 // PLACE SELECTED TASK
