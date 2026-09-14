@@ -19501,6 +19501,7 @@ const STAGE7_CONFIG = {
 
 
 
+
 function runStage7Repair(
     failedTasks,
     placedTasks,
@@ -19519,10 +19520,6 @@ function runStage7Repair(
         "======================================"
     );
 
-
-    // ========================================================
-    // NO FAILED TASKS
-    // ========================================================
 
     if (
         !Array.isArray(
@@ -19559,10 +19556,6 @@ function runStage7Repair(
 
     }
 
-
-    // ========================================================
-    // GENERATOR DATA
-    // ========================================================
 
     if (
         !generatorData
@@ -19635,93 +19628,31 @@ function runStage7Repair(
 
 
     // ========================================================
-    // NORMALIZE PLACED TASKS
-    // ========================================================
-    //
     // IMPORTANT:
+    // STAGE 7 RELOCATION NEEDS THE ACTUAL STAGE 6
+    // PLACED-TASK LIST.
     //
-    // Stage 6F stores placedTasks as:
+    // runStage7Repair() already receives placedTasks as an
+    // argument, so make that list available through
+    // generatorData.
     //
-    // {
-    //     task,
-    //     entries,
-    //     candidate
-    // }
+    // Previously attemptStage7Relocation() looked for:
     //
-    // Stage 7 relocation requires the ACTUAL task object.
+    //     generatorData.placedTasks
     //
-    // Therefore convert:
+    // but runStage7Repair() never populated it.
     //
-    //     { task: actualTask }
-    //
-    // into:
-    //
-    //     actualTask
-    //
-    // This is critical for:
-    //
-    //     findTaskPeriod()
-    //     findTaskRoom()
-    //     moveStage7Task()
-    //     checkSingleSlotConflict()
+    // This caused relocation to silently stop whenever a
+    // direct empty-slot repair was not possible.
     //
     // ========================================================
 
-    const normalizedPlacedTasks =
-        Array.isArray(
-            placedTasks
-        )
-            ? placedTasks
-                .map(
-                    item => {
-
-                        // ------------------------------------
-                        // Stage 6F wrapper
-                        // ------------------------------------
-
-                        if (
-                            item &&
-                            item.task
-                        ) {
-
-                            return item.task;
-
-                        }
-
-
-                        // ------------------------------------
-                        // Already an actual task
-                        // ------------------------------------
-
-                        if (
-                            item &&
-                            (
-                                item.taskId ||
-                                item.id
-                            )
-                        ) {
-
-                            return item;
-
-                        }
-
-
-                        return null;
-
-                    }
-                )
-                .filter(
-                    Boolean
-                )
-            : [];
-
-
-    // ========================================================
-    // MAKE PLACED TASKS AVAILABLE TO STAGE 7
-    // ========================================================
-
-    generatorData.placedTasks =
-        normalizedPlacedTasks;
+   generatorData.placedTasks =
+    Array.isArray(
+        placedTasks
+    )
+        ? [...placedTasks]
+        : [];
 
 
     console.log(
@@ -19730,55 +19661,10 @@ function runStage7Repair(
     );
 
     console.log(
-        "STAGE 7: Actual placed tasks available for relocation:",
+        "STAGE 7: Existing placed tasks available for relocation:",
         generatorData.placedTasks.length
     );
 
-
-    // ========================================================
-    // DEBUG PLACED TASKS
-    // ========================================================
-
-    console.table(
-        generatorData.placedTasks.map(
-            task => ({
-
-                taskId:
-                    task?.taskId ||
-                    task?.id ||
-                    null,
-
-                taskType:
-                    task?.taskType ||
-                    task?.type ||
-                    null,
-
-                periodIds:
-                    Array.isArray(
-                        task?.periodIds
-                    )
-                        ? task.periodIds.join(
-                            ", "
-                        )
-                        : (
-                            task?.periodId ||
-                            task?.period_id ||
-                            ""
-                        ),
-
-                roomId:
-                    task?.roomId ||
-                    task?.room_id ||
-                    null
-
-            })
-        )
-    );
-
-
-    // ========================================================
-    // RESULT COLLECTIONS
-    // ========================================================
 
     const repaired = [];
 
@@ -19789,19 +19675,17 @@ function runStage7Repair(
     const moved = [];
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // WORKING COPY
-    // ========================================================
+    // --------------------------------------------------------
 
     let remainingTasks =
-        [
-            ...failedTasks
-        ];
+        [...failedTasks];
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // REPAIR PASSES
-    // ========================================================
+    // --------------------------------------------------------
 
     for (
         let pass = 1;
@@ -19826,10 +19710,6 @@ function runStage7Repair(
         const nextFailed = [];
 
 
-        // ====================================================
-        // PROCESS EACH FAILED TASK
-        // ====================================================
-
         for (
             const task of remainingTasks
         ) {
@@ -19848,37 +19728,29 @@ function runStage7Repair(
                 );
 
 
-            // ==================================================
-            // SUCCESS
-            // ==================================================
-
             if (
                 result &&
                 result.repaired
             ) {
 
-                repaired.push(
-                    task
-                );
 
+repaired.push(
+    task
+);
 
-                // ------------------------------------------------
-                // Keep the actual task object in placedTasks.
-                // ------------------------------------------------
+if (
+    !generatorData.placedTasks.includes(
+        task
+    )
+) {
 
-                if (
-                    !generatorData.placedTasks.includes(
-                        task
-                    )
-                ) {
+    generatorData.placedTasks.push(
+        task
+    );
 
-                    generatorData.placedTasks.push(
-                        task
-                    );
+}
 
-                }
-
-
+                
                 // ------------------------------------------------
                 // PRESERVE GENERATED ENTRIES
                 // ------------------------------------------------
@@ -19895,10 +19767,6 @@ function runStage7Repair(
 
                 }
 
-
-                // ------------------------------------------------
-                // PRESERVE MOVED TASKS
-                // ------------------------------------------------
 
                 if (
                     Array.isArray(
@@ -19935,14 +19803,9 @@ function runStage7Repair(
             nextFailed;
 
 
-        // ====================================================
-        // PASS SUMMARY
-        // ====================================================
-
         console.log(
             `STAGE 7 PASS ${pass}:`,
             {
-
                 repaired:
                     repaired.length,
 
@@ -19954,14 +19817,9 @@ function runStage7Repair(
 
                 moved:
                     moved.length
-
             }
         );
 
-
-        // ====================================================
-        // ALL REPAIRED
-        // ====================================================
 
         if (
             remainingTasks.length === 0
@@ -19974,18 +19832,10 @@ function runStage7Repair(
     }
 
 
-    // ========================================================
-    // FINAL FAILED TASKS
-    // ========================================================
-
     stillFailed.push(
         ...remainingTasks
     );
 
-
-    // ========================================================
-    // FINAL SUMMARY
-    // ========================================================
 
     console.log(
         "======================================"
@@ -20020,59 +19870,6 @@ function runStage7Repair(
         stillFailed.length
     );
 
-
-    // ========================================================
-    // FAILED TASK TABLE
-    // ========================================================
-
-    if (
-        stillFailed.length > 0
-    ) {
-
-        console.table(
-            stillFailed.map(
-                task => ({
-
-                    taskId:
-                        task?.taskId ||
-                        task?.id ||
-                        null,
-
-                    taskType:
-                        task?.taskType ||
-                        task?.type ||
-                        null,
-
-                    requirementId:
-                        task?.requirementId ||
-                        task?.requirement_id ||
-                        null,
-
-                    streamId:
-                        task?.streamId ||
-                        task?.stream_id ||
-                        null,
-
-                    subjectId:
-                        task?.subjectId ||
-                        task?.subject_id ||
-                        null,
-
-                    teacherId:
-                        task?.teacherId ||
-                        task?.teacher_id ||
-                        null
-
-                })
-            )
-        );
-
-    }
-
-
-    // ========================================================
-    // RETURN
-    // ========================================================
 
     return {
 
