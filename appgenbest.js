@@ -19500,6 +19500,7 @@ const STAGE7_CONFIG = {
 
 
 
+
 function runStage7Repair(
     failedTasks,
     placedTasks,
@@ -19518,6 +19519,10 @@ function runStage7Repair(
         "======================================"
     );
 
+
+    // ========================================================
+    // NO FAILED TASKS
+    // ========================================================
 
     if (
         !Array.isArray(
@@ -19554,6 +19559,10 @@ function runStage7Repair(
 
     }
 
+
+    // ========================================================
+    // GENERATOR DATA
+    // ========================================================
 
     if (
         !generatorData
@@ -19626,31 +19635,93 @@ function runStage7Repair(
 
 
     // ========================================================
+    // NORMALIZE PLACED TASKS
+    // ========================================================
+    //
     // IMPORTANT:
-    // STAGE 7 RELOCATION NEEDS THE ACTUAL STAGE 6
-    // PLACED-TASK LIST.
     //
-    // runStage7Repair() already receives placedTasks as an
-    // argument, so make that list available through
-    // generatorData.
+    // Stage 6F stores placedTasks as:
     //
-    // Previously attemptStage7Relocation() looked for:
+    // {
+    //     task,
+    //     entries,
+    //     candidate
+    // }
     //
-    //     generatorData.placedTasks
+    // Stage 7 relocation requires the ACTUAL task object.
     //
-    // but runStage7Repair() never populated it.
+    // Therefore convert:
     //
-    // This caused relocation to silently stop whenever a
-    // direct empty-slot repair was not possible.
+    //     { task: actualTask }
+    //
+    // into:
+    //
+    //     actualTask
+    //
+    // This is critical for:
+    //
+    //     findTaskPeriod()
+    //     findTaskRoom()
+    //     moveStage7Task()
+    //     checkSingleSlotConflict()
     //
     // ========================================================
 
-   generatorData.placedTasks =
-    Array.isArray(
-        placedTasks
-    )
-        ? [...placedTasks]
-        : [];
+    const normalizedPlacedTasks =
+        Array.isArray(
+            placedTasks
+        )
+            ? placedTasks
+                .map(
+                    item => {
+
+                        // ------------------------------------
+                        // Stage 6F wrapper
+                        // ------------------------------------
+
+                        if (
+                            item &&
+                            item.task
+                        ) {
+
+                            return item.task;
+
+                        }
+
+
+                        // ------------------------------------
+                        // Already an actual task
+                        // ------------------------------------
+
+                        if (
+                            item &&
+                            (
+                                item.taskId ||
+                                item.id
+                            )
+                        ) {
+
+                            return item;
+
+                        }
+
+
+                        return null;
+
+                    }
+                )
+                .filter(
+                    Boolean
+                )
+            : [];
+
+
+    // ========================================================
+    // MAKE PLACED TASKS AVAILABLE TO STAGE 7
+    // ========================================================
+
+    generatorData.placedTasks =
+        normalizedPlacedTasks;
 
 
     console.log(
@@ -19659,10 +19730,55 @@ function runStage7Repair(
     );
 
     console.log(
-        "STAGE 7: Existing placed tasks available for relocation:",
+        "STAGE 7: Actual placed tasks available for relocation:",
         generatorData.placedTasks.length
     );
 
+
+    // ========================================================
+    // DEBUG PLACED TASKS
+    // ========================================================
+
+    console.table(
+        generatorData.placedTasks.map(
+            task => ({
+
+                taskId:
+                    task?.taskId ||
+                    task?.id ||
+                    null,
+
+                taskType:
+                    task?.taskType ||
+                    task?.type ||
+                    null,
+
+                periodIds:
+                    Array.isArray(
+                        task?.periodIds
+                    )
+                        ? task.periodIds.join(
+                            ", "
+                        )
+                        : (
+                            task?.periodId ||
+                            task?.period_id ||
+                            ""
+                        ),
+
+                roomId:
+                    task?.roomId ||
+                    task?.room_id ||
+                    null
+
+            })
+        )
+    );
+
+
+    // ========================================================
+    // RESULT COLLECTIONS
+    // ========================================================
 
     const repaired = [];
 
@@ -19673,17 +19789,19 @@ function runStage7Repair(
     const moved = [];
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // WORKING COPY
-    // --------------------------------------------------------
+    // ========================================================
 
     let remainingTasks =
-        [...failedTasks];
+        [
+            ...failedTasks
+        ];
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // REPAIR PASSES
-    // --------------------------------------------------------
+    // ========================================================
 
     for (
         let pass = 1;
@@ -19708,6 +19826,10 @@ function runStage7Repair(
         const nextFailed = [];
 
 
+        // ====================================================
+        // PROCESS EACH FAILED TASK
+        // ====================================================
+
         for (
             const task of remainingTasks
         ) {
@@ -19726,29 +19848,37 @@ function runStage7Repair(
                 );
 
 
+            // ==================================================
+            // SUCCESS
+            // ==================================================
+
             if (
                 result &&
                 result.repaired
             ) {
 
+                repaired.push(
+                    task
+                );
 
-repaired.push(
-    task
-);
 
-if (
-    !generatorData.placedTasks.includes(
-        task
-    )
-) {
+                // ------------------------------------------------
+                // Keep the actual task object in placedTasks.
+                // ------------------------------------------------
 
-    generatorData.placedTasks.push(
-        task
-    );
+                if (
+                    !generatorData.placedTasks.includes(
+                        task
+                    )
+                ) {
 
-}
+                    generatorData.placedTasks.push(
+                        task
+                    );
 
-                
+                }
+
+
                 // ------------------------------------------------
                 // PRESERVE GENERATED ENTRIES
                 // ------------------------------------------------
@@ -19765,6 +19895,10 @@ if (
 
                 }
 
+
+                // ------------------------------------------------
+                // PRESERVE MOVED TASKS
+                // ------------------------------------------------
 
                 if (
                     Array.isArray(
@@ -19801,9 +19935,14 @@ if (
             nextFailed;
 
 
+        // ====================================================
+        // PASS SUMMARY
+        // ====================================================
+
         console.log(
             `STAGE 7 PASS ${pass}:`,
             {
+
                 repaired:
                     repaired.length,
 
@@ -19815,9 +19954,14 @@ if (
 
                 moved:
                     moved.length
+
             }
         );
 
+
+        // ====================================================
+        // ALL REPAIRED
+        // ====================================================
 
         if (
             remainingTasks.length === 0
@@ -19830,10 +19974,18 @@ if (
     }
 
 
+    // ========================================================
+    // FINAL FAILED TASKS
+    // ========================================================
+
     stillFailed.push(
         ...remainingTasks
     );
 
+
+    // ========================================================
+    // FINAL SUMMARY
+    // ========================================================
 
     console.log(
         "======================================"
@@ -19869,6 +20021,59 @@ if (
     );
 
 
+    // ========================================================
+    // FAILED TASK TABLE
+    // ========================================================
+
+    if (
+        stillFailed.length > 0
+    ) {
+
+        console.table(
+            stillFailed.map(
+                task => ({
+
+                    taskId:
+                        task?.taskId ||
+                        task?.id ||
+                        null,
+
+                    taskType:
+                        task?.taskType ||
+                        task?.type ||
+                        null,
+
+                    requirementId:
+                        task?.requirementId ||
+                        task?.requirement_id ||
+                        null,
+
+                    streamId:
+                        task?.streamId ||
+                        task?.stream_id ||
+                        null,
+
+                    subjectId:
+                        task?.subjectId ||
+                        task?.subject_id ||
+                        null,
+
+                    teacherId:
+                        task?.teacherId ||
+                        task?.teacher_id ||
+                        null
+
+                })
+            )
+        );
+
+    }
+
+
+    // ========================================================
+    // RETURN
+    // ========================================================
+
     return {
 
         repaired,
@@ -19888,6 +20093,7 @@ if (
     };
 
 }
+
 
 
 
