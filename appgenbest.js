@@ -13219,10 +13219,6 @@ function releaseReservedSlot(
         );
 
 
-    // ========================================================
-    // REQUIRED PERIOD ID
-    // ========================================================
-
     if (
         !periodId
     ) {
@@ -13234,10 +13230,6 @@ function releaseReservedSlot(
 
     // ========================================================
     // STREAM
-    // ========================================================
-    //
-    // Legacy stream-period occupancy.
-    //
     // ========================================================
 
     if (
@@ -13256,30 +13248,36 @@ function releaseReservedSlot(
     // STUDENT GROUPS
     // ========================================================
 
-   if (
-    indexes.dailyRequirementLessonKeys
-) {
-
-    const lessonId =
-        normalizeTimetableId(
-            task.taskId ??
-            task.task_id ??
-            task.id
-        );
-
-
     if (
-        lessonId
+        indexes.studentGroupPeriod
     ) {
 
-        indexes.dailyRequirementLessonKeys.delete(
-            `${requirementId}__${dayNumber}__${lessonId}`
-        );
+        const studentGroups =
+            getTaskStudentGroups(
+                task
+            );
 
-    }
 
-}
-         
+        studentGroups.forEach(
+            groupId => {
+
+                const normalizedGroupId =
+                    normalizeTimetableId(
+                        groupId
+                    );
+
+
+                if (
+                    normalizedGroupId
+                ) {
+
+                    indexes.studentGroupPeriod.delete(
+                        `${normalizedGroupId}__${periodId}`
+                    );
+
+                }
+
+            }
         );
 
     }
@@ -13298,12 +13296,6 @@ function releaseReservedSlot(
 
     // ========================================================
     // TEACHER PERIOD LESSON TRACKING
-    // ========================================================
-    //
-    // Remove ONLY this task's lesson record.
-    //
-    // Do not remove unrelated concurrent lessons.
-    //
     // ========================================================
 
     if (
@@ -13358,11 +13350,6 @@ function releaseReservedSlot(
                             );
 
 
-                        // ------------------------------------------------
-                        // Prefer task ID when available.
-                        // Otherwise use lesson ID.
-                        // ------------------------------------------------
-
                         if (
                             taskId
                         ) {
@@ -13386,12 +13373,6 @@ function releaseReservedSlot(
 
                         }
 
-
-                        // ------------------------------------------------
-                        // No reliable identity.
-                        //
-                        // Do not remove unrelated records.
-                        // ------------------------------------------------
 
                         return true;
 
@@ -13425,11 +13406,6 @@ function releaseReservedSlot(
     // ========================================================
     // TEACHER / PERIOD
     // ========================================================
-    //
-    // Remove teacher-period occupancy only when no lesson
-    // records remain for this teacher + period.
-    //
-    // ========================================================
 
     if (
         teacherId &&
@@ -13457,6 +13433,35 @@ function releaseReservedSlot(
 
             indexes.teacherPeriod.delete(
                 teacherKey
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // TEACHER + SUBJECT + PERIOD
+    // ========================================================
+
+    if (
+        teacherId &&
+        indexes.teacherSubjectPeriod
+    ) {
+
+        const subjectId =
+            normalizeTimetableId(
+                task.subjectId ??
+                task.subject_id
+            );
+
+
+        if (
+            subjectId
+        ) {
+
+            indexes.teacherSubjectPeriod.delete(
+                `${teacherId}__${subjectId}__${periodId}`
             );
 
         }
@@ -13495,24 +13500,6 @@ function releaseReservedSlot(
 
     // ========================================================
     // REQUIREMENT / DAY
-    // ========================================================
-    //
-    // A double lesson occupies TWO periods but counts as ONE
-    // lesson for the requirement daily limit.
-    //
-    // Therefore:
-    //
-    // - remove the daily count only when this was the final
-    //   remaining period for this task on this day
-    //
-    // - remove the EXACT unique daily lesson key:
-    //
-    //     requirementId__dayNumber__lessonId
-    //
-    // NOT:
-    //
-    //     requirementId__dayNumber
-    //
     // ========================================================
 
     const requirementId =
@@ -13554,7 +13541,7 @@ function releaseReservedSlot(
             normalizeTimetableId(
                 task.lessonId ??
                 task.lesson_id
-        );
+            );
 
 
         const lessonKey =
@@ -13567,13 +13554,13 @@ function releaseReservedSlot(
 
 
         // ====================================================
-        // CHECK WHETHER THE SAME TASK STILL OWNS ANOTHER
-        // PERIOD ON THE SAME DAY
+        // CHECK WHETHER ANOTHER PERIOD OF THE SAME TASK
+        // STILL EXISTS ON THE SAME DAY
         // ====================================================
 
         if (
             taskId &&
-            indexes.teacherPeriodLessons
+            indexes.teacherPeriodLessons instanceof Map
         ) {
 
             for (
@@ -13662,7 +13649,7 @@ function releaseReservedSlot(
                 }
 
 
-                const matchingTask =
+                const sameTaskRemains =
                     lessons.some(
                         lesson => {
 
@@ -13691,8 +13678,10 @@ function releaseReservedSlot(
 
                             if (
                                 lessonKey &&
-                                existingLessonId ===
-                                lessonKey
+                                (
+                                    existingLessonId ===
+                                    lessonKey
+                                )
                             ) {
 
                                 return true;
@@ -13707,7 +13696,7 @@ function releaseReservedSlot(
 
 
                 if (
-                    matchingTask
+                    sameTaskRemains
                 ) {
 
                     anotherTaskPeriodRemains =
@@ -13723,8 +13712,8 @@ function releaseReservedSlot(
 
 
         // ====================================================
-        // REMOVE DAILY COUNT ONLY WHEN THIS IS THE FINAL
-        // PERIOD FOR THE TASK ON THIS DAY
+        // REMOVE DAILY LESSON COUNT ONLY WHEN THIS IS THE
+        // FINAL PERIOD OF THIS TASK ON THIS DAY
         // ====================================================
 
         if (
@@ -13760,6 +13749,11 @@ function releaseReservedSlot(
 
             // =================================================
             // REMOVE EXACT UNIQUE DAILY LESSON KEY
+            //
+            // Format:
+            //
+            // requirementId__dayNumber__lessonId
+            //
             // =================================================
 
             if (
@@ -13770,7 +13764,8 @@ function releaseReservedSlot(
                     `${dailyKey}__`;
 
 
-                const keysToRemove = [];
+                const keysToRemove =
+                    [];
 
 
                 indexes.dailyRequirementLessonKeys.forEach(
@@ -13797,10 +13792,6 @@ function releaseReservedSlot(
                         }
 
 
-                        // ------------------------------------------------
-                        // Exact lesson/task match when available.
-                        // ------------------------------------------------
-
                         if (
                             lessonKey
                         ) {
@@ -13822,14 +13813,13 @@ function releaseReservedSlot(
 
 
                         // ------------------------------------------------
-                        // No lesson identity available.
-                        //
-                        // Remove only the first matching key for this
-                        // requirement/day rather than clearing all keys.
+                        // No identity available.
+                        // Remove only one matching key.
                         // ------------------------------------------------
 
                         if (
-                            keysToRemove.length === 0
+                            keysToRemove.length ===
+                            0
                         ) {
 
                             keysToRemove.push(
@@ -13862,6 +13852,7 @@ function releaseReservedSlot(
     return true;
 
 }
+
 
 // ============================================================
 // PLACE SELECTED TASK
