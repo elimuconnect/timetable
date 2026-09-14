@@ -14808,6 +14808,90 @@ function generateSmartTimetable(
     }
 
 
+
+
+
+// ========================================================
+// FAILURE REASON SUMMARY
+// ========================================================
+
+const failureReasonCounts =
+    new Map();
+
+
+result.failedTasks.forEach(
+    item => {
+
+        const reason =
+            item?.reason ||
+            "Unknown failure";
+
+
+        failureReasonCounts.set(
+            reason,
+            (
+                failureReasonCounts.get(
+                    reason
+                ) ||
+                0
+            ) + 1
+        );
+
+    }
+);
+
+
+console.log(
+    "======================================"
+);
+
+console.log(
+    "STAGE 6F — FAILURE REASON SUMMARY"
+);
+
+console.log(
+    "======================================"
+);
+
+
+console.table(
+    [
+        ...failureReasonCounts.entries()
+    ]
+    .map(
+        (
+            [
+                reason,
+                count
+            ]
+        ) => ({
+
+            count,
+
+            reason
+
+        })
+    )
+    .sort(
+        (
+            a,
+            b
+        ) =>
+            b.count -
+            a.count
+    )
+);
+
+
+
+
+
+
+
+
+
+    
+
     // ========================================================
     // SUCCESS TABLE
     // ========================================================
