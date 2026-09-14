@@ -6174,6 +6174,7 @@ function areConcurrentTeacherLessonsAllowed(
 // ============================================================
 
 
+
 function checkSingleSlotConflict(
     task,
     period,
@@ -6224,172 +6225,171 @@ function checkSingleSlotConflict(
 
 
     // ========================================================
-    // STUDENT GROUP
+    // STUDENT GROUP / STREAM
     // ========================================================
 
-   // ========================================================
-// STUDENT GROUP / STREAM
-// ========================================================
-
-const studentGroups =
-    getTaskStudentGroups(
-        task
-    );
+    const studentGroups =
+        getTaskStudentGroups(
+            task
+        );
 
 
-for (
-    const studentGroupId of studentGroups
-) {
-
-    if (
-        !studentGroupId
+    for (
+        const studentGroupId of studentGroups
     ) {
 
-        continue;
+        if (
+            !studentGroupId
+        ) {
 
-    }
+            continue;
 
-
-    const studentGroupKey =
-        `${studentGroupId}__${periodId}`;
-
-
-    if (
-        !indexes.studentGroupPeriod ||
-        !indexes.studentGroupPeriod.has(
-            studentGroupKey
-        )
-    ) {
-
-        continue;
-
-    }
+        }
 
 
-    // ====================================================
-    // CHECK WHETHER THIS IS VALID PARALLEL TEACHING
-    // ====================================================
+        const studentGroupKey =
+            `${studentGroupId}__${periodId}`;
 
-    const existingLessons =
-        indexes.studentGroupPeriodLessons
-            instanceof Map
-            ? (
-                indexes.studentGroupPeriodLessons.get(
-                    studentGroupKey
-                ) || []
+
+        if (
+            !indexes.studentGroupPeriod ||
+            !indexes.studentGroupPeriod.has(
+                studentGroupKey
             )
-            : [];
+        ) {
+
+            continue;
+
+        }
 
 
-    const taskSubjectId =
-        normalizeTimetableId(
-            task.subjectId ??
-            task.subject_id
-        );
+        // ====================================================
+        // CHECK WHETHER THIS IS VALID PARALLEL TEACHING
+        // ====================================================
+
+        const existingLessons =
+            indexes.studentGroupPeriodLessons
+                instanceof Map
+                ? (
+                    indexes.studentGroupPeriodLessons.get(
+                        studentGroupKey
+                    ) || []
+                )
+                : [];
 
 
-    const taskTeacherId =
-        normalizeTimetableId(
-            task.teacherId ??
-            task.teacher_id
-        );
+        const taskSubjectId =
+            normalizeTimetableId(
+                task.subjectId ??
+                task.subject_id
+            );
 
 
-    const taskParallelGroup =
-        normalizeTimetableId(
-            task.parallelGroup ??
-            task.parallel_group
-        );
+        const taskTeacherId =
+            normalizeTimetableId(
+                task.teacherId ??
+                task.teacher_id
+            );
 
 
-    const parallelTeachingAllowed =
-        existingLessons.length > 0 &&
-        existingLessons.every(
-            existingLesson => {
-
-                const existingSubjectId =
-                    normalizeTimetableId(
-                        existingLesson.subjectId
-                    );
+        const taskParallelGroup =
+            normalizeTimetableId(
+                task.parallelGroup ??
+                task.parallel_group
+            );
 
 
-                const existingTeacherId =
-                    normalizeTimetableId(
-                        existingLesson.teacherId
-                    );
+        const parallelTeachingAllowed =
+            existingLessons.length > 0 &&
+            existingLessons.every(
+                existingLesson => {
+
+                    const existingSubjectId =
+                        normalizeTimetableId(
+                            existingLesson.subjectId
+                        );
 
 
-                const existingParallelGroup =
-                    normalizeTimetableId(
-                        existingLesson.parallelGroup
-                    );
+                    const existingTeacherId =
+                        normalizeTimetableId(
+                            existingLesson.teacherId
+                        );
 
 
-                // Different subject required
-                if (
-                    !taskSubjectId ||
-                    !existingSubjectId ||
-                    taskSubjectId ===
-                    existingSubjectId
-                ) {
-
-                    return false;
-
-                }
+                    const existingParallelGroup =
+                        normalizeTimetableId(
+                            existingLesson.parallelGroup
+                        );
 
 
-                // Different teacher required
-                if (
-                    !taskTeacherId ||
-                    !existingTeacherId ||
-                    taskTeacherId ===
-                    existingTeacherId
-                ) {
+                    // Different subject required
 
-                    return false;
+                    if (
+                        !taskSubjectId ||
+                        !existingSubjectId ||
+                        taskSubjectId ===
+                        existingSubjectId
+                    ) {
 
-                }
+                        return false;
+
+                    }
 
 
-                // Explicit parallel group must match
-                if (
-                    taskParallelGroup ||
-                    existingParallelGroup
-                ) {
+                    // Different teacher required
 
-                    return (
-                        taskParallelGroup &&
-                        existingParallelGroup &&
-                        taskParallelGroup ===
+                    if (
+                        !taskTeacherId ||
+                        !existingTeacherId ||
+                        taskTeacherId ===
+                        existingTeacherId
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    // Explicit parallel group must match
+
+                    if (
+                        taskParallelGroup ||
                         existingParallelGroup
-                    );
+                    ) {
+
+                        return (
+                            taskParallelGroup &&
+                            existingParallelGroup &&
+                            taskParallelGroup ===
+                            existingParallelGroup
+                        );
+
+                    }
+
+
+                    return false;
 
                 }
+            );
 
 
-                return false;
+        if (
+            !parallelTeachingAllowed
+        ) {
 
-            }
-        );
+            return {
 
+                valid:
+                    false,
 
-    if (
-        !parallelTeachingAllowed
-    ) {
+                reason:
+                    "Student group is already occupied by a conflicting lesson in this period."
 
-        return {
+            };
 
-            valid:
-                false,
-
-            reason:
-                "Student group is already occupied by a conflicting lesson in this period."
-
-        };
+        }
 
     }
-
-}
 
 
     // ========================================================
@@ -6411,66 +6411,67 @@ for (
             `${teacherId}__${periodId}`;
 
 
+        const existingTeacherLessons =
+            indexes.teacherPeriod &&
+            indexes.teacherPeriod.has(
+                teacherKey
+            )
+                ? getTeacherLessonsAtPeriod(
+                    indexes,
+                    teacherId,
+                    periodId
+                )
+                : [];
+
+
+        // ====================================================
+        // DETERMINE WHETHER THIS IS A SHARED TEACHER SESSION
+        // ====================================================
+        //
+        // Same teacher + same subject + same period across
+        // streams is one teacher session, not two.
+        //
+        // If the existing lessons are all compatible
+        // concurrent lessons, the candidate does NOT add
+        // another teacher session.
+        //
+        // ====================================================
+
+        const teacherConcurrentSession =
+            existingTeacherLessons.length > 0 &&
+            existingTeacherLessons.every(
+                existingLesson =>
+                    areConcurrentTeacherLessonsAllowed(
+                        task,
+                        existingLesson
+                    )
+            );
+
+
         // ----------------------------------------------------
         // TEACHER PERIOD CONFLICT
         // ----------------------------------------------------
 
         if (
-            indexes.teacherPeriod &&
-            indexes.teacherPeriod.has(
-                teacherKey
-            )
+            existingTeacherLessons.length > 0 &&
+            !teacherConcurrentSession
         ) {
 
-            const existingTeacherLessons =
-                getTeacherLessonsAtPeriod(
-                    indexes,
-                    teacherId,
-                    periodId
-                );
+            return {
 
+                valid:
+                    false,
 
-            const concurrentAllowed =
-                existingTeacherLessons.length > 0 &&
-                existingTeacherLessons.every(
-                    existingLesson =>
-                        areConcurrentTeacherLessonsAllowed(
-                            task,
-                            existingLesson
-                        )
-                );
+                reason:
+                    "Teacher is already teaching a conflicting lesson in this period."
 
-
-            if (
-                !concurrentAllowed
-            ) {
-
-                return {
-
-                    valid:
-                        false,
-
-                    reason:
-                        "Teacher is already teaching a conflicting lesson in this period."
-
-                };
-
-            }
+            };
 
         }
 
 
         // ====================================================
-        // TEACHER DAILY LIMIT
-        // ====================================================
-        //
-        // A teacher cannot exceed:
-        //
-        //     maxLessonsPerDay
-        //
-        // The candidate period counts as one additional
-        // occupied teaching period.
-        //
+        // TEACHER LIMITS
         // ====================================================
 
         const teacherLimits =
@@ -6481,6 +6482,29 @@ for (
                 : null;
 
 
+        // ----------------------------------------------------
+        // IMPORTANT:
+        //
+        // A shared/concurrent lesson does NOT create another
+        // teacher session.
+        //
+        // Therefore:
+        //
+        //     concurrent session -> increment = 0
+        //     new teacher session -> increment = 1
+        //
+        // ----------------------------------------------------
+
+        const projectedTeacherSessionIncrement =
+            teacherConcurrentSession
+                ? 0
+                : 1;
+
+
+        // ====================================================
+        // TEACHER DAILY LIMIT
+        // ====================================================
+
         const maximumDailyLessons =
             Number(
                 teacherLimits?.maxLessonsPerDay
@@ -6488,7 +6512,8 @@ for (
 
 
         if (
-            maximumDailyLessons > 0
+            maximumDailyLessons > 0 &&
+            projectedTeacherSessionIncrement > 0
         ) {
 
             const dayNumber =
@@ -6514,7 +6539,8 @@ for (
 
 
                 if (
-                    currentDailyLessons + 1 >
+                    currentDailyLessons +
+                    projectedTeacherSessionIncrement >
                     maximumDailyLessons
                 ) {
 
@@ -6538,11 +6564,6 @@ for (
         // ====================================================
         // TEACHER WEEKLY LIMIT
         // ====================================================
-        //
-        // The candidate period counts as one additional
-        // occupied teaching period for the weekly limit.
-        //
-        // ====================================================
 
         const maximumWeeklyLessons =
             Number(
@@ -6551,7 +6572,8 @@ for (
 
 
         if (
-            maximumWeeklyLessons > 0
+            maximumWeeklyLessons > 0 &&
+            projectedTeacherSessionIncrement > 0
         ) {
 
             const currentWeeklyLessons =
@@ -6562,7 +6584,8 @@ for (
 
 
             if (
-                currentWeeklyLessons + 1 >
+                currentWeeklyLessons +
+                projectedTeacherSessionIncrement >
                 maximumWeeklyLessons
             ) {
 
@@ -6584,8 +6607,15 @@ for (
         // ====================================================
         // TEACHER CONSECUTIVE LIMIT
         // ====================================================
+        //
+        // A shared concurrent lesson does not create another
+        // teacher session, so it cannot increase a consecutive
+        // session count.
+        //
+        // ====================================================
 
         if (
+            !teacherConcurrentSession &&
             wouldExceedTeacherConsecutiveLimit(
                 task,
                 [
@@ -6730,6 +6760,9 @@ for (
     };
 
 }
+
+
+
 
 // ============================================================
 // RESERVE SLOT
