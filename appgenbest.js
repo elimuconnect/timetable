@@ -4364,6 +4364,9 @@ function createOccupancyIndexes(
         studentGroupPeriod:
             new Set(),
 
+         studentGroupPeriodLessons:
+        new Map(),
+
         taskPeriod:
             new Set(),
 
@@ -4944,6 +4947,68 @@ function createOccupancyIndexes(
             );
 
 
+
+
+// =================================================
+// STUDENT GROUP / PERIOD LESSON DETAILS
+// =================================================
+
+studentGroups.forEach(
+    studentGroupId => {
+
+        const studentGroupKey =
+            `${studentGroupId}__${periodId}`;
+
+
+        if (
+            !occupancy.studentGroupPeriodLessons.has(
+                studentGroupKey
+            )
+        ) {
+
+            occupancy.studentGroupPeriodLessons.set(
+                studentGroupKey,
+                []
+            );
+
+        }
+
+
+        occupancy.studentGroupPeriodLessons
+            .get(
+                studentGroupKey
+            )
+            .push({
+
+                taskId:
+                    taskId ||
+                    null,
+
+                subjectId:
+                    subjectId ||
+                    null,
+
+                teacherId:
+                    teacherId ||
+                    null,
+
+                parallelGroup:
+                    normalizeKey(
+                        entry.parallelGroup ??
+                        entry.parallel_group
+                    ) ||
+                    null
+
+            });
+
+    }
+);
+
+
+
+
+
+            
             // =================================================
             // DAY INDEXES
             // =================================================
@@ -6163,49 +6228,169 @@ function checkSingleSlotConflict(
     // STUDENT GROUP
     // ========================================================
 
-    const studentGroups =
-        getTaskStudentGroups(
-            task
+   // ========================================================
+// STUDENT GROUP / STREAM
+// ========================================================
+
+const studentGroups =
+    getTaskStudentGroups(
+        task
+    );
+
+
+for (
+    const studentGroupId of studentGroups
+) {
+
+    if (
+        !studentGroupId
+    ) {
+
+        continue;
+
+    }
+
+
+    const studentGroupKey =
+        `${studentGroupId}__${periodId}`;
+
+
+    if (
+        !indexes.studentGroupPeriod ||
+        !indexes.studentGroupPeriod.has(
+            studentGroupKey
+        )
+    ) {
+
+        continue;
+
+    }
+
+
+    // ====================================================
+    // CHECK WHETHER THIS IS VALID PARALLEL TEACHING
+    // ====================================================
+
+    const existingLessons =
+        indexes.studentGroupPeriodLessons
+            instanceof Map
+            ? (
+                indexes.studentGroupPeriodLessons.get(
+                    studentGroupKey
+                ) || []
+            )
+            : [];
+
+
+    const taskSubjectId =
+        normalizeTimetableId(
+            task.subjectId ??
+            task.subject_id
         );
 
 
-    for (
-        const studentGroupId of studentGroups
+    const taskTeacherId =
+        normalizeTimetableId(
+            task.teacherId ??
+            task.teacher_id
+        );
+
+
+    const taskParallelGroup =
+        normalizeTimetableId(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    const parallelTeachingAllowed =
+        existingLessons.length > 0 &&
+        existingLessons.every(
+            existingLesson => {
+
+                const existingSubjectId =
+                    normalizeTimetableId(
+                        existingLesson.subjectId
+                    );
+
+
+                const existingTeacherId =
+                    normalizeTimetableId(
+                        existingLesson.teacherId
+                    );
+
+
+                const existingParallelGroup =
+                    normalizeTimetableId(
+                        existingLesson.parallelGroup
+                    );
+
+
+                // Different subject required
+                if (
+                    !taskSubjectId ||
+                    !existingSubjectId ||
+                    taskSubjectId ===
+                    existingSubjectId
+                ) {
+
+                    return false;
+
+                }
+
+
+                // Different teacher required
+                if (
+                    !taskTeacherId ||
+                    !existingTeacherId ||
+                    taskTeacherId ===
+                    existingTeacherId
+                ) {
+
+                    return false;
+
+                }
+
+
+                // Explicit parallel group must match
+                if (
+                    taskParallelGroup ||
+                    existingParallelGroup
+                ) {
+
+                    return (
+                        taskParallelGroup &&
+                        existingParallelGroup &&
+                        taskParallelGroup ===
+                        existingParallelGroup
+                    );
+
+                }
+
+
+                return false;
+
+            }
+        );
+
+
+    if (
+        !parallelTeachingAllowed
     ) {
 
-        if (
-            !studentGroupId
-        ) {
+        return {
 
-            continue;
+            valid:
+                false,
 
-        }
+            reason:
+                "Student group is already occupied by a conflicting lesson in this period."
 
-
-        const studentGroupKey =
-            `${studentGroupId}__${periodId}`;
-
-
-        if (
-            indexes.studentGroupPeriod &&
-            indexes.studentGroupPeriod.has(
-                studentGroupKey
-            )
-        ) {
-
-            return {
-
-                valid:
-                    false,
-
-                reason:
-                    "Student group is already occupied in this period."
-
-            };
-
-        }
+        };
 
     }
+
+}
 
 
     // ========================================================
@@ -6644,27 +6829,93 @@ function reserveSlot(
         indexes.studentGroupPeriod
     ) {
 
-        for (
-            const studentGroupId of studentGroups
-        ) {
-
-            if (
-                !studentGroupId
-            ) {
-
-                continue;
-
-            }
 
 
-            indexes.studentGroupPeriod.add(
-                `${studentGroupId}__${periodId}`
-            );
 
-        }
+for (
+    const studentGroupId of studentGroups
+) {
+
+    if (
+        !studentGroupId
+    ) {
+
+        continue;
 
     }
 
+
+    const studentGroupKey =
+        `${studentGroupId}__${periodId}`;
+
+
+    indexes.studentGroupPeriod.add(
+        studentGroupKey
+    );
+
+
+    // ========================================================
+    // STUDENT GROUP / PERIOD LESSON DETAILS
+    // ========================================================
+
+    if (
+        !(indexes.studentGroupPeriodLessons instanceof Map)
+    ) {
+
+        indexes.studentGroupPeriodLessons =
+            new Map();
+
+    }
+
+
+    if (
+        !indexes.studentGroupPeriodLessons.has(
+            studentGroupKey
+        )
+    ) {
+
+        indexes.studentGroupPeriodLessons.set(
+            studentGroupKey,
+            []
+        );
+
+    }
+
+
+    indexes.studentGroupPeriodLessons
+        .get(
+            studentGroupKey
+        )
+        .push({
+
+            taskId:
+                task.taskId ??
+                task.task_id ??
+                task.id ??
+                null,
+
+            subjectId:
+                task.subjectId ??
+                task.subject_id ??
+                null,
+
+            teacherId:
+                task.teacherId ??
+                task.teacher_id ??
+                null,
+
+            parallelGroup:
+                task.parallelGroup ??
+                task.parallel_group ??
+                null
+
+        });
+
+}
+
+
+
+        
 
     // ========================================================
     // TEACHER / PERIOD
@@ -13005,36 +13256,30 @@ function releaseReservedSlot(
     // STUDENT GROUPS
     // ========================================================
 
+   if (
+    indexes.dailyRequirementLessonKeys
+) {
+
+    const lessonId =
+        normalizeTimetableId(
+            task.taskId ??
+            task.task_id ??
+            task.id
+        );
+
+
     if (
-        indexes.studentGroupPeriod
+        lessonId
     ) {
 
-        const studentGroups =
-            getTaskStudentGroups(
-                task
-            );
+        indexes.dailyRequirementLessonKeys.delete(
+            `${requirementId}__${dayNumber}__${lessonId}`
+        );
 
+    }
 
-        studentGroups.forEach(
-            groupId => {
-
-                const normalizedGroupId =
-                    normalizeTimetableId(
-                        groupId
-                    );
-
-
-                if (
-                    normalizedGroupId
-                ) {
-
-                    indexes.studentGroupPeriod.delete(
-                        `${normalizedGroupId}__${periodId}`
-                    );
-
-                }
-
-            }
+}
+         
         );
 
     }
@@ -20597,6 +20842,7 @@ function buildStage7RoomCandidates(
 // ============================================================
 
 
+
 function placeStage7Task(
     task,
     period,
@@ -20607,7 +20853,8 @@ function placeStage7Task(
     if (
         !task ||
         !period ||
-        !generatorData
+        !generatorData ||
+        !generatorData.indexes
     ) {
 
         return false;
@@ -20615,52 +20862,87 @@ function placeStage7Task(
     }
 
 
-    // --------------------------------------------------------
-    // REUSE EXISTING PLACEMENT ENGINE
-    // --------------------------------------------------------
+    // ========================================================
+    // STAGE 7 ONLY REPAIRS SINGLE LESSONS HERE
+    // ========================================================
+
+    const taskType =
+        task.taskType ||
+        task.type ||
+        null;
+
 
     if (
-        typeof placeTaskInSlot ===
-        "function"
+        taskType === "double" ||
+        task.isDouble === true
     ) {
 
-        return Boolean(
-            placeTaskInSlot(
-                task,
-                period,
-                room,
-                generatorData
-            )
+        console.warn(
+            "STAGE 7: Double lesson placement adapter is not enabled.",
+            task.taskId
         );
+
+        return false;
 
     }
 
 
+    // ========================================================
+    // BUILD SMART CANDIDATE SHAPE
+    // ========================================================
+
+    const candidate = {
+
+        taskId:
+            task.taskId ||
+            task.id ||
+            null,
+
+        period,
+
+        room:
+
+            room ||
+            null,
+
+        score:
+            0,
+
+        reasons:
+            [
+                "Stage 7 repair candidate."
+            ]
+
+    };
+
+
+    // ========================================================
+    // USE EXISTING SMART PLACEMENT FUNCTION
+    // ========================================================
+
+    const placement =
+        placeSelectedSingleTask(
+            task,
+            candidate,
+            generatorData.indexes
+        );
+
+
     if (
-        typeof placeSingleTask ===
-        "function"
+        !placement ||
+        placement.placed !== true
     ) {
 
-        return Boolean(
-            placeSingleTask(
-                task,
-                period,
-                room,
-                generatorData
-            )
-        );
+        return false;
 
     }
 
 
-    console.error(
-        "STAGE 7: Existing placement function not found."
-    );
-
-
-    return false;
+    return true;
 
 }
+
+
 
 
 // ============================================================
