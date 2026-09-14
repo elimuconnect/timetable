@@ -17138,21 +17138,6 @@ function normalizeGeneratedTimetableEntry(
                 entry.task_id
             ),
 
-        // ====================================================
-        // PARALLEL GROUP
-        // ====================================================
-        //
-        // Required by stream-conflict auditing.
-        //
-        // Valid parallel lessons can share the same
-        // stream + period when they have:
-        //
-        //     - different subjects
-        //     - different teachers
-        //     - the same explicit parallel group
-        //
-        // ====================================================
-
         parallelGroup:
             normalizeTimetableId(
                 entry.parallelGroup ??
@@ -17162,8 +17147,6 @@ function normalizeGeneratedTimetableEntry(
     };
 
 }
-
-
 
 
 // ============================================================
