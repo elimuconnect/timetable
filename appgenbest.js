@@ -15151,30 +15151,256 @@ function placeSelectedSmartTask(
 }
 
 
+
 // ============================================================
-// SELECT NEXT SMART TASK
+// STAGE 6E — COUNT AVAILABLE DAYS FOR TASK
 // ============================================================
 //
-// Connects:
+// A requirement such as:
 //
-//     6B — Task Priority
-//     6C — Single Candidate Scoring
-//     6D — Double Candidate Scoring
+//     lessonsPerWeek = 5
+//     maxLessonsPerDay = 1
 //
-// Determines:
+// needs FIVE DIFFERENT DAYS.
 //
-//     1. Which task is most restricted
-//     2. Its current valid candidates
-//     3. Its best candidate
+// Candidate count alone is therefore not enough.
+//
+// This function counts the distinct school days represented
+// by the currently valid candidates.
+// ============================================================
+
+function getTaskAvailableDayCount(
+    task,
+    candidates
+) {
+
+    if (
+        !task ||
+        !Array.isArray(candidates) ||
+        candidates.length === 0
+    ) {
+
+        return 0;
+
+    }
+
+
+    const days =
+        new Set();
+
+
+    candidates.forEach(
+        candidate => {
+
+            if (
+                !candidate
+            ) {
+
+                return;
+
+            }
+
+
+            // ------------------------------------------------
+            // SINGLE LESSON CANDIDATE
+            // ------------------------------------------------
+
+            const singlePeriod =
+                candidate.period ||
+                null;
+
+
+            // ------------------------------------------------
+            // DOUBLE LESSON CANDIDATE
+            // ------------------------------------------------
+
+            const doublePeriod =
+                candidate.firstPeriod ||
+                null;
+
+
+            const period =
+                singlePeriod ||
+                doublePeriod;
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const dayNumber =
+                Number(
+                    period.dayNumber ??
+                    period.day_number
+                );
+
+
+            if (
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                days.add(
+                    dayNumber
+                );
+
+            }
+
+        }
+    );
+
+
+    return days.size;
+
+}
+
+
+// ============================================================
+// STAGE 6E — CALCULATE TASK DAY PRESSURE
+// ============================================================
+//
+// Measures whether a task is running out of usable school
+// days.
+//
+// Example:
+//
+//     lessonsPerWeek = 5
+//     maxPerDay      = 1
+//     availableDays  = 5
+//
+//     requiredDays   = 5
+//     deficit        = 0
+//
+// If only four days remain:
+//
+//     requiredDays   = 5
+//     availableDays  = 4
+//     deficit        = 1
+//
+// That task must be protected and scheduled urgently.
+// ============================================================
+
+function getTaskDayPressure(
+    task,
+    data,
+    candidates
+) {
+
+    if (
+        !task ||
+        !data
+    ) {
+
+        return {
+
+            requiredDays:
+                0,
+
+            availableDays:
+                0,
+
+            deficit:
+                0
+
+        };
+
+    }
+
+
+    const requirement =
+        getTaskRequirement(
+            task,
+            data.lookup
+        );
+
+
+    const lessonsPerWeek =
+        Number(
+            requirement?.lessonsPerWeek
+        ) || 0;
+
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 1;
+
+
+    // --------------------------------------------------------
+    // Minimum distinct days required.
+    // --------------------------------------------------------
+    //
+    // Example:
+    //
+    // 5 lessons / max 1 per day = 5 days
+    // 5 lessons / max 2 per day = 3 days
+    // 5 lessons / max 3 per day = 2 days
+    //
+    // --------------------------------------------------------
+
+    const requiredDays =
+        maxPerDay > 0
+            ? Math.ceil(
+                lessonsPerWeek /
+                maxPerDay
+            )
+            : lessonsPerWeek;
+
+
+    const availableDays =
+        getTaskAvailableDayCount(
+            task,
+            candidates
+        );
+
+
+    const deficit =
+        Math.max(
+            0,
+            requiredDays -
+            availableDays
+        );
+
+
+    return {
+
+        requiredDays,
+
+        availableDays,
+
+        deficit
+
+    };
+
+}
+
+
+// ============================================================
+// STAGE 6E — SELECT NEXT SMART TASK
+// ============================================================
+//
+// Combines:
+//
+// 1. Day pressure
+// 2. Candidate availability
+// 3. Stage 6B priority
+// 4. Best candidate score
+// 5. Task duration
+// 6. Room requirement
 //
 // IMPORTANT:
 //
-// Returns ALL ranked candidates.
+// The scheduler now protects requirements that need
+// different days before flexible tasks consume those days.
 //
-// That allows Stage 6F to try:
-//
-//     BEST → SECOND BEST → THIRD BEST → ...
-//
+// The final tie-break is deterministic.
+// No Math.random() is used here.
 // ============================================================
 
 function selectNextSmartTask(
@@ -15216,7 +15442,7 @@ function selectNextSmartTask(
 
 
             // ==================================================
-            // TASK PRIORITY FROM 6B
+            // TASK PRIORITY FROM STAGE 6B
             // ==================================================
 
             const priority =
@@ -15276,6 +15502,18 @@ function selectNextSmartTask(
 
 
             // ==================================================
+            // DAY PRESSURE
+            // ==================================================
+
+            const dayPressure =
+                getTaskDayPressure(
+                    task,
+                    data,
+                    candidates
+                );
+
+
+            // ==================================================
             // STORE COMPLETE ANALYSIS
             // ==================================================
 
@@ -15290,7 +15528,16 @@ function selectNextSmartTask(
                 candidateCount,
 
                 candidate:
-                    bestCandidate
+                    bestCandidate,
+
+                requiredDays:
+                    dayPressure.requiredDays,
+
+                availableDays:
+                    dayPressure.availableDays,
+
+                dayDeficit:
+                    dayPressure.deficit
 
             });
 
@@ -15314,16 +15561,6 @@ function selectNextSmartTask(
     // ========================================================
     // SORT TASKS
     // ========================================================
-    //
-    // Priority:
-    //
-    // 1. Fewest candidates
-    // 2. Higher 6B priority
-    // 3. Better candidate score
-    // 4. Longer task
-    // 5. Room-required
-    //
-    // ========================================================
 
     taskCandidates.sort(
         (
@@ -15332,7 +15569,46 @@ function selectNextSmartTask(
         ) => {
 
             // ------------------------------------------------
-            // FEWEST CANDIDATES FIRST
+            // 1. CRITICAL DAY DEFICIT FIRST
+            // ------------------------------------------------
+            //
+            // If a task already has fewer available days than
+            // it needs, protect it immediately.
+            //
+            // ------------------------------------------------
+
+            if (
+                a.dayDeficit !==
+                b.dayDeficit
+            ) {
+
+                return (
+                    b.dayDeficit -
+                    a.dayDeficit
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 2. FEWEST AVAILABLE DAYS FIRST
+            // ------------------------------------------------
+
+            if (
+                a.availableDays !==
+                b.availableDays
+            ) {
+
+                return (
+                    a.availableDays -
+                    b.availableDays
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 3. FEWEST VALID CANDIDATES FIRST
             // ------------------------------------------------
 
             if (
@@ -15349,7 +15625,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // HIGHER TASK PRIORITY
+            // 4. HIGHER TASK PRIORITY
             // ------------------------------------------------
 
             if (
@@ -15366,7 +15642,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // BETTER CANDIDATE SCORE
+            // 5. BETTER CANDIDATE SCORE
             // ------------------------------------------------
 
             const scoreA =
@@ -15393,7 +15669,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // DOUBLE FIRST
+            // 6. DOUBLE LESSON FIRST
             // ------------------------------------------------
 
             if (
@@ -15410,7 +15686,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // ROOM REQUIRED FIRST
+            // 7. ROOM-REQUIRED FIRST
             // ------------------------------------------------
 
             if (
@@ -15426,12 +15702,23 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // RANDOM TIE BREAK
+            // 8. DETERMINISTIC FINAL TIE-BREAK
+            // ------------------------------------------------
+            //
+            // No Math.random().
+            //
+            // This makes repeated runs easier to compare.
+            //
             // ------------------------------------------------
 
-            return (
-                Math.random() -
-                0.5
+            return String(
+                a.task.taskId ||
+                ""
+            ).localeCompare(
+                String(
+                    b.task.taskId ||
+                    ""
+                )
             );
 
         }
@@ -15460,7 +15747,7 @@ function selectNextSmartTask(
     // ========================================================
 
     console.log(
-        "SMART TASK SELECTION:",
+        "STAGE 6E — SMART TASK SELECTION:",
         {
 
             taskId:
@@ -15469,11 +15756,23 @@ function selectNextSmartTask(
             taskType:
                 selected.task?.taskType,
 
+            requirementId:
+                selected.task?.requirementId,
+
             priority:
                 selected.priority,
 
             availableCandidates:
                 selected.candidateCount,
+
+            requiredDays:
+                selected.requiredDays,
+
+            availableDays:
+                selected.availableDays,
+
+            dayDeficit:
+                selected.dayDeficit,
 
             bestCandidateScore:
                 selected.candidate?.score ??
@@ -15502,7 +15801,16 @@ function selectNextSmartTask(
             selected.priority,
 
         candidateCount:
-            selected.candidateCount
+            selected.candidateCount,
+
+        requiredDays:
+            selected.requiredDays,
+
+        availableDays:
+            selected.availableDays,
+
+        dayDeficit:
+            selected.dayDeficit
 
     };
 
