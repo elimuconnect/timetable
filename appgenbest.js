@@ -23796,6 +23796,40 @@ function findTaskRoom(
 // STAGE 7 — MOVE TASK
 // ============================================================
 
+
+
+
+
+// ============================================================
+// STAGE 7 — MOVE TASK
+// ============================================================
+//
+// Moves an EXISTING SINGLE lesson from its current slot to:
+//
+//     newPeriod
+//     newRoom
+//
+// This implementation does NOT depend on:
+//
+//     moveTaskToSlot()
+//     removeTaskFromSlot()
+//     placeTaskInSlot()
+//
+// It directly uses the existing Stage 6 occupancy engine:
+//
+//     releaseReservedSlot()
+//     checkSingleSlotConflict()
+//     reserveSlot()
+//     createGeneratedEntry()
+//
+// IMPORTANT:
+//
+// This function is intended for SINGLE lessons only.
+// Double lessons are not moved by the current Stage 7
+// configuration.
+//
+// ============================================================
+
 function moveStage7Task(
     task,
     newPeriod,
@@ -23808,7 +23842,8 @@ function moveStage7Task(
     if (
         !task ||
         !newPeriod ||
-        !generatorData
+        !generatorData ||
+        !generatorData.indexes
     ) {
 
         return false;
@@ -23816,116 +23851,281 @@ function moveStage7Task(
     }
 
 
-    // --------------------------------------------------------
-    // PREFER EXISTING MOVE FUNCTION
-    // --------------------------------------------------------
+    const indexes =
+        generatorData.indexes;
+
+
+    // ========================================================
+    // NORMALIZE TASK TYPE
+    // ========================================================
+
+    const taskType =
+        task.taskType ||
+        task.type ||
+        null;
+
+
+    // ========================================================
+    // DO NOT MOVE DOUBLE LESSONS
+    // ========================================================
 
     if (
-        typeof moveTaskToSlot ===
-        "function"
+        taskType === "double" ||
+        task.isDouble === true
     ) {
 
-        return Boolean(
-            moveTaskToSlot(
-                task,
-                newPeriod,
-                newRoom,
-                generatorData
-            )
+        console.warn(
+            "STAGE 7: Double lesson movement is disabled:",
+            task?.taskId ||
+            task?.id
         );
+
+        return false;
 
     }
 
 
-    // --------------------------------------------------------
-    // FALLBACK: REMOVE + PLACE
-    // --------------------------------------------------------
+    // ========================================================
+    // FIND CURRENT SLOT
+    // ========================================================
+
+    const oldPeriod =
+        rollbackPeriod ||
+        findTaskPeriod(
+            task,
+            generatorData
+        );
+
+
+    const oldRoom =
+        rollbackPeriod
+            ? rollbackRoom
+            : findTaskRoom(
+                task,
+                generatorData
+            );
+
 
     if (
-        typeof removeTaskFromSlot ===
-            "function" &&
-        typeof placeTaskInSlot ===
-            "function"
+        !oldPeriod
     ) {
 
-        const removed =
-            removeTaskFromSlot(
-                task,
-                generatorData
-            );
-
-
-        if (
-            !removed
-        ) {
-
-            return false;
-
-        }
-
-
-        const placed =
-            placeTaskInSlot(
-                task,
-                newPeriod,
-                newRoom,
-                generatorData
-            );
-
-
-        if (
-            placed
-        ) {
-
-            return true;
-
-        }
-
-
-        // ====================================================
-        // ROLLBACK
-        // ====================================================
-
-        if (
-            rollbackPeriod
-        ) {
-
-            const restored =
-                placeTaskInSlot(
-                    task,
-                    rollbackPeriod,
-                    rollbackRoom,
-                    generatorData
-                );
-
-
-            if (
-                !restored
-            ) {
-
-                console.error(
-                    "STAGE 7: CRITICAL — task rollback failed.",
-                    {
-                        taskId:
-                            task?.taskId ||
-                            task?.id,
-
-                        rollbackPeriod:
-                            rollbackPeriod?.id,
-
-                        rollbackRoom:
-                            rollbackRoom?.id ||
-                            null
-                    }
-                );
-
+        console.warn(
+            "STAGE 7: Cannot move task because its current period was not found.",
+            {
+                taskId:
+                    task?.taskId ||
+                    task?.id
             }
+        );
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // DO NOT MOVE TO THE SAME SLOT
+    // ========================================================
+
+    if (
+        String(
+            oldPeriod.id
+        ) ===
+        String(
+            newPeriod.id
+        ) &&
+        String(
+            oldRoom?.id ||
+            ""
+        ) ===
+        String(
+            newRoom?.id ||
+            ""
+        )
+    ) {
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // FINAL SAFETY CHECK
+    // ========================================================
+    //
+    // At this stage the OLD slot is still occupied.
+    //
+    // Therefore we must temporarily release it before testing
+    // the new slot. Otherwise occupancy indexes can reject
+    // valid moves unnecessarily.
+    //
+    // ========================================================
+
+    const released =
+        releaseReservedSlot(
+            task,
+            oldPeriod,
+            oldRoom,
+            indexes
+        );
+
+
+    if (
+        !released
+    ) {
+
+        console.warn(
+            "STAGE 7: Failed to release existing task slot.",
+            {
+                taskId:
+                    task?.taskId ||
+                    task?.id,
+
+                oldPeriod:
+                    oldPeriod?.id,
+
+                oldRoom:
+                    oldRoom?.id ||
+                    null
+            }
+        );
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // CHECK NEW SLOT
+    // ========================================================
+
+    const conflict =
+        checkSingleSlotConflict(
+            task,
+            newPeriod,
+            newRoom,
+            indexes
+        );
+
+
+    if (
+        !conflict ||
+        conflict.valid !== true
+    ) {
+
+        // ----------------------------------------------------
+        // NEW SLOT INVALID
+        //
+        // Restore the task to its original slot.
+        // ----------------------------------------------------
+
+        const restored =
+            checkSingleSlotConflict(
+                task,
+                oldPeriod,
+                oldRoom,
+                indexes
+            );
+
+
+        if (
+            restored &&
+            restored.valid === true
+        ) {
+
+            reserveSlot(
+                task,
+                oldPeriod,
+                oldRoom,
+                indexes
+            );
 
         }
         else {
 
             console.error(
-                "STAGE 7: Cannot rollback task movement because original period was not supplied.",
+                "STAGE 7: CRITICAL — original task slot could not be restored.",
+                {
+                    taskId:
+                        task?.taskId ||
+                        task?.id,
+
+                    oldPeriod:
+                        oldPeriod?.id,
+
+                    oldRoom:
+                        oldRoom?.id ||
+                        null,
+
+                    newPeriod:
+                        newPeriod?.id,
+
+                    newRoom:
+                        newRoom?.id ||
+                        null,
+
+                    reason:
+                        conflict?.reason ||
+                        "Unknown conflict"
+                }
+            );
+
+        }
+
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // RESERVE NEW SLOT
+    // ========================================================
+
+    const reserved =
+        reserveSlot(
+            task,
+            newPeriod,
+            newRoom,
+            indexes
+        );
+
+
+    if (
+        !reserved
+    ) {
+
+        // ----------------------------------------------------
+        // Restore original slot.
+        // ----------------------------------------------------
+
+        const restored =
+            checkSingleSlotConflict(
+                task,
+                oldPeriod,
+                oldRoom,
+                indexes
+            );
+
+
+        if (
+            restored &&
+            restored.valid === true
+        ) {
+
+            reserveSlot(
+                task,
+                oldPeriod,
+                oldRoom,
+                indexes
+            );
+
+        }
+        else {
+
+            console.error(
+                "STAGE 7: CRITICAL — failed to reserve new slot and original slot is no longer valid.",
                 {
                     taskId:
                         task?.taskId ||
@@ -23941,16 +24141,180 @@ function moveStage7Task(
     }
 
 
-    console.error(
-        "STAGE 7: No task movement implementation available."
+    // ========================================================
+    // CREATE NEW GENERATED ENTRY
+    // ========================================================
+
+    const newEntry =
+        createGeneratedEntry(
+            task,
+            newPeriod,
+            newRoom
+        );
+
+
+    // ========================================================
+    // ENTRY CREATION FAILURE
+    // ========================================================
+
+    if (
+        !newEntry
+    ) {
+
+        // ----------------------------------------------------
+        // Remove the new reservation.
+        // ----------------------------------------------------
+
+        releaseReservedSlot(
+            task,
+            newPeriod,
+            newRoom,
+            indexes
+        );
+
+
+        // ----------------------------------------------------
+        // Restore original reservation.
+        // ----------------------------------------------------
+
+        const restored =
+            checkSingleSlotConflict(
+                task,
+                oldPeriod,
+                oldRoom,
+                indexes
+            );
+
+
+        if (
+            restored &&
+            restored.valid === true
+        ) {
+
+            reserveSlot(
+                task,
+                oldPeriod,
+                oldRoom,
+                indexes
+            );
+
+        }
+        else {
+
+            console.error(
+                "STAGE 7: CRITICAL — original slot could not be restored after entry creation failure.",
+                {
+                    taskId:
+                        task?.taskId ||
+                        task?.id,
+
+                    oldPeriod:
+                        oldPeriod?.id,
+
+                    oldRoom:
+                        oldRoom?.id ||
+                        null
+                }
+            );
+
+        }
+
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // UPDATE TASK LOCATION
+    // ========================================================
+
+    task.placed =
+        true;
+
+
+    task.periodIds =
+        [
+            newPeriod.id
+        ];
+
+
+    task.periodId =
+        newPeriod.id;
+
+
+    task.period_id =
+        newPeriod.id;
+
+
+    task.firstPeriodId =
+        null;
+
+
+    task.secondPeriodId =
+        null;
+
+
+    task.roomId =
+        newRoom?.id ||
+        null;
+
+
+    task.room_id =
+        newRoom?.id ||
+        null;
+
+
+    // ========================================================
+    // KEEP GENERATOR ENTRY STATE IN SYNC
+    // ========================================================
+    //
+    // Stage 7 needs the moved lesson's new entry available
+    // to the caller.
+    //
+    // Store it temporarily on the task.
+    //
+    // ========================================================
+
+    task.stage7MovedEntry =
+        newEntry;
+
+
+    // ========================================================
+    // LOG
+    // ========================================================
+
+    console.log(
+        "STAGE 7 TASK MOVED:",
+        {
+
+            taskId:
+                task?.taskId ||
+                task?.id,
+
+            fromPeriod:
+                oldPeriod?.id ||
+                null,
+
+            fromRoom:
+                oldRoom?.id ||
+                null,
+
+            toPeriod:
+                newPeriod?.id ||
+                null,
+
+            toRoom:
+                newRoom?.id ||
+                null
+
+        }
     );
 
 
-    return false;
+    return true;
 
 }
-
-
 
 
 
