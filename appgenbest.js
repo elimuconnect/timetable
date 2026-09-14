@@ -17582,6 +17582,7 @@ function auditDuplicateGeneratedEntries(
 // AUDIT STREAM / PERIOD CONFLICTS
 // ============================================================
 
+
 function auditStreamPeriodConflicts(
     entries,
     audit
@@ -17590,147 +17591,6 @@ function auditStreamPeriodConflicts(
     const occupied =
         new Map();
 
-
-    // ========================================================
-    // CHECK WHETHER TWO LESSONS MAY SHARE THE SAME STREAM
-    // + PERIOD
-    // ========================================================
-    //
-    // Valid parallel teaching requires:
-    //
-    // 1. Different subjects
-    // 2. Different teachers
-    // 3. Same explicit parallel group
-    //
-    // Anything else is a true stream conflict.
-    //
-    // ========================================================
-
-    function areParallelLessonsAllowed(
-        firstEntry,
-        secondEntry
-    ) {
-
-        if (
-            !firstEntry ||
-            !secondEntry
-        ) {
-
-            return false;
-
-        }
-
-
-        const firstSubjectId =
-            normalizeTimetableId(
-                firstEntry.subjectId ??
-                firstEntry.subject_id ??
-                firstEntry.subject ??
-                ""
-            );
-
-
-        const secondSubjectId =
-            normalizeTimetableId(
-                secondEntry.subjectId ??
-                secondEntry.subject_id ??
-                secondEntry.subject ??
-                ""
-            );
-
-
-        const firstTeacherId =
-            normalizeTimetableId(
-                firstEntry.teacherId ??
-                firstEntry.teacher_id ??
-                firstEntry.teacher ??
-                ""
-            );
-
-
-        const secondTeacherId =
-            normalizeTimetableId(
-                secondEntry.teacherId ??
-                secondEntry.teacher_id ??
-                secondEntry.teacher ??
-                ""
-            );
-
-
-        const firstParallelGroup =
-            normalizeTimetableId(
-                firstEntry.parallelGroup ??
-                firstEntry.parallel_group ??
-                ""
-            );
-
-
-        const secondParallelGroup =
-            normalizeTimetableId(
-                secondEntry.parallelGroup ??
-                secondEntry.parallel_group ??
-                ""
-            );
-
-
-        // ====================================================
-        // SUBJECTS MUST BE DIFFERENT
-        // ====================================================
-
-        if (
-            !firstSubjectId ||
-            !secondSubjectId ||
-            firstSubjectId ===
-            secondSubjectId
-        ) {
-
-            return false;
-
-        }
-
-
-        // ====================================================
-        // TEACHERS MUST BE DIFFERENT
-        // ====================================================
-
-        if (
-            !firstTeacherId ||
-            !secondTeacherId ||
-            firstTeacherId ===
-            secondTeacherId
-        ) {
-
-            return false;
-
-        }
-
-
-        // ====================================================
-        // BOTH LESSONS MUST HAVE THE SAME
-        // EXPLICIT PARALLEL GROUP
-        // ====================================================
-
-        if (
-            !firstParallelGroup ||
-            !secondParallelGroup
-        ) {
-
-            return false;
-
-        }
-
-
-        return (
-            firstParallelGroup ===
-            secondParallelGroup
-        );
-
-    }
-
-
-    // ========================================================
-    // INDEX ENTRIES BY STREAM + PERIOD
-    // ========================================================
 
     entries.forEach(
         (
@@ -17759,9 +17619,9 @@ function auditStreamPeriodConflicts(
                 `${normalized.streamId}__${normalized.periodId}`;
 
 
-            // ==================================================
-            // FIRST LESSON IN THIS STREAM/PERIOD
-            // ==================================================
+            // ====================================================
+            // FIRST LESSON FOR THIS STREAM + PERIOD
+            // ====================================================
 
             if (
                 !occupied.has(
@@ -17774,98 +17634,177 @@ function auditStreamPeriodConflicts(
                     [
                         {
                             index,
+
                             entry,
+
                             normalized
+
                         }
                     ]
                 );
-
 
                 return;
 
             }
 
 
-            // ==================================================
-            // THERE ARE ALREADY LESSONS HERE
-            // ==================================================
+            // ====================================================
+            // EXISTING LESSONS IN THIS STREAM + PERIOD
+            // ====================================================
 
-            const existingEntries =
+            const existingLessons =
                 occupied.get(
                     key
                 );
 
 
-            let conflictFound =
-                false;
+            // ====================================================
+            // CHECK WHETHER THIS LESSON CAN RUN IN PARALLEL
+            // ====================================================
+            //
+            // Allowed only when:
+            //
+            // 1. Subjects are different
+            // 2. Teachers are different
+            // 3. Both have the SAME explicit parallel group
+            //
+            // Example:
+            //
+            //     Mathematics / Teacher A / GROUP-1
+            //     English     / Teacher B / GROUP-1
+            //
+            // Same stream + same period is valid because the
+            // stream is intentionally split for parallel teaching.
+            //
+            // ====================================================
 
+            let parallelAllowed =
+                true;
 
-            // ==================================================
-            // COMPARE AGAINST EVERY EXISTING LESSON
-            // ==================================================
 
             for (
-                const existing of existingEntries
+                const existingLesson
+                of existingLessons
             ) {
 
-                const parallelAllowed =
-                    areParallelLessonsAllowed(
-                        existing.normalized,
-                        normalized
+                const existing =
+                    existingLesson.normalized;
+
+
+                const sameSubject =
+                    Boolean(
+                        normalized.subjectId &&
+                        existing.subjectId &&
+                        normalized.subjectId ===
+                        existing.subjectId
                     );
 
+
+                const sameTeacher =
+                    Boolean(
+                        normalized.teacherId &&
+                        existing.teacherId &&
+                        normalized.teacherId ===
+                        existing.teacherId
+                    );
+
+
+                const sameParallelGroup =
+                    Boolean(
+                        normalized.parallelGroup &&
+                        existing.parallelGroup &&
+                        normalized.parallelGroup ===
+                        existing.parallelGroup
+                    );
+
+
+                // ------------------------------------------------
+                // A duplicate subject OR duplicate teacher is
+                // NOT valid parallel teaching.
+                // ------------------------------------------------
 
                 if (
-                    !parallelAllowed
+                    sameSubject ||
+                    sameTeacher ||
+                    !sameParallelGroup
                 ) {
 
-                    conflictFound =
-                        true;
+                    parallelAllowed =
+                        false;
 
-
-                    addTimetableAuditError(
-                        audit,
-                        "streamConflicts",
-                        "Stream has more than one conflicting lesson in the same period.",
-                        {
-
-                            streamId:
-                                normalized.streamId,
-
-                            periodId:
-                                normalized.periodId,
-
-                            firstEntryIndex:
-                                existing.index,
-
-                            secondEntryIndex:
-                                index,
-
-                            firstEntry:
-                                existing.entry,
-
-                            secondEntry:
-                                entry
-
-                        }
-                    );
+                    break;
 
                 }
 
             }
 
 
-            // ==================================================
-            // KEEP THE ENTRY IN THE INDEX
-            // ==================================================
-            //
-            // Even when it is valid parallel teaching, it must
-            // remain indexed so a third lesson is also checked
-            // against it.
-            //
-            // ==================================================
+            // ====================================================
+            // VALID PARALLEL LESSON
+            // ====================================================
 
-            existingEntries.push({
+            if (
+                parallelAllowed
+            ) {
+
+                existingLessons.push({
+
+                    index,
+
+                    entry,
+
+                    normalized
+
+                });
+
+                return;
+
+            }
+
+
+            // ====================================================
+            // TRUE STREAM CONFLICT
+            // ====================================================
+
+            const firstLesson =
+                existingLessons[0];
+
+
+            addTimetableAuditError(
+                audit,
+                "streamConflicts",
+                "Stream has more than one conflicting lesson in the same period.",
+                {
+
+                    streamId:
+                        normalized.streamId,
+
+                    periodId:
+                        normalized.periodId,
+
+                    firstEntryIndex:
+                        firstLesson.index,
+
+                    secondEntryIndex:
+                        index,
+
+                    firstEntry:
+                        firstLesson.entry,
+
+                    secondEntry:
+                        entry
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // Keep the conflicting lesson in the occupancy
+            // list so additional conflicts against it are
+            // also detected.
+            // ------------------------------------------------
+
+            existingLessons.push({
 
                 index,
 
@@ -17879,6 +17818,8 @@ function auditStreamPeriodConflicts(
     );
 
 }
+
+
 
 // ============================================================
 // AUDIT TEACHER / PERIOD CONFLICTS
