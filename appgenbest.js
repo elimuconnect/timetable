@@ -9841,10 +9841,25 @@ function prepareSmartLessonTaskOrder(
 // ============================================================
 
 
+
+
+
 // ============================================================
 // GET TEACHER DAILY LESSON COUNT
 // ============================================================
-
+//
+// IMPORTANT:
+//
+// This counts UNIQUE TEACHER SESSIONS.
+//
+// A teacher teaching the SAME subject to multiple streams
+// in the SAME period counts as ONE teaching session.
+//
+// Session identity:
+//
+//     teacher + period + subject
+//
+// ============================================================
 
 function getTeacherDailyLessonCount(
     teacherId,
@@ -9868,61 +9883,29 @@ function getTeacherDailyLessonCount(
     }
 
 
-    let count =
-        0;
+    // ========================================================
+    // THIS HELPER USES GLOBAL OCCUPANCY WHEN AVAILABLE
+    // ========================================================
+
+    const indexes =
+        timetableState?.occupancy;
 
 
-    periods.forEach(
-        period => {
+    if (
+        indexes
+    ) {
 
-            if (
-                !period ||
-                Number(
-                    period.dayNumber
-                ) !== Number(
-                    dayNumber
-                )
-            ) {
+        return getTeacherDailyLessonCountFromPeriods(
+            indexes,
+            normalizedTeacherId,
+            dayNumber,
+            periods
+        );
 
-                return;
-
-            }
+    }
 
 
-            const periodId =
-                normalizeTimetableId(
-                    period.id
-                );
-
-
-            if (
-                !periodId
-            ) {
-
-                return;
-
-            }
-
-
-            const teacherKey =
-                `${normalizedTeacherId}__${periodId}`;
-
-
-            if (
-                timetableState.occupancy?.teacherPeriod?.has(
-                    teacherKey
-                )
-            ) {
-
-                count++;
-
-            }
-
-        }
-    );
-
-
-    return count;
+    return 0;
 
 }
 
@@ -9932,8 +9915,20 @@ function getTeacherDailyLessonCount(
 // GET TEACHER DAILY LESSON COUNT FROM PERIODS
 // ============================================================
 //
-// This version uses the actual normalized periods supplied
-// by the generator instead of depending on global state.
+// Uses the actual occupancy indexes supplied by the generator.
+//
+// Counts UNIQUE teacher sessions:
+//
+//     teacher + period + subject
+//
+// Therefore:
+//
+//     Teacher + Biology + P1 + 10E
+//     Teacher + Biology + P1 + 10M
+//
+// counts as:
+//
+//     ONE teacher lesson.
 //
 // ============================================================
 
@@ -9961,8 +9956,18 @@ function getTeacherDailyLessonCountFromPeriods(
         );
 
 
-    let count = 0;
+    if (
+        !normalizedTeacherId
+    ) {
 
+        return 0;
+
+    }
+
+
+    // ========================================================
+    // BUILD PERIOD LOOKUP
+    // ========================================================
 
     const periodMap =
         new Map();
@@ -9970,6 +9975,17 @@ function getTeacherDailyLessonCountFromPeriods(
 
     periods.forEach(
         period => {
+
+            if (
+                !period ||
+                period.id === null ||
+                period.id === undefined
+            ) {
+
+                return;
+
+            }
+
 
             periodMap.set(
                 normalizeTimetableId(
@@ -9982,57 +9998,260 @@ function getTeacherDailyLessonCountFromPeriods(
     );
 
 
-    const prefix =
-        `${normalizedTeacherId}__`;
+    // ========================================================
+    // UNIQUE SESSION SET
+    // ========================================================
+    //
+    // Key:
+    //
+    //     periodId + subjectId
+    //
+    // Teacher ID is already fixed by the function argument.
+    //
+    // ========================================================
+
+    const uniqueSessions =
+        new Set();
 
 
-    indexes.teacherPeriod.forEach(
-        key => {
+    // ========================================================
+    // PREFERRED SOURCE:
+    // TEACHER PERIOD LESSON DETAILS
+    // ========================================================
 
-            if (
-                !key.startsWith(
-                    prefix
-                )
-            ) {
+    if (
+        indexes.teacherPeriodLessons instanceof Map
+    ) {
 
-                return;
+        indexes.teacherPeriodLessons.forEach(
+            (
+                lessons,
+                teacherPeriodKey
+            ) => {
 
-            }
+                if (
+                    !Array.isArray(lessons)
+                ) {
+
+                    return;
+
+                }
 
 
-            const periodId =
-                key.substring(
-                    prefix.length
+                const prefix =
+                    `${normalizedTeacherId}__`;
+
+
+                if (
+                    !teacherPeriodKey.startsWith(
+                        prefix
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodId =
+                    teacherPeriodKey.substring(
+                        prefix.length
+                    );
+
+
+                const period =
+                    periodMap.get(
+                        periodId
+                    );
+
+
+                if (
+                    !period
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodDay =
+                    Number(
+                        period.dayNumber ??
+                        period.day_number
+                    );
+
+
+                if (
+                    periodDay !==
+                    Number(dayNumber)
+                ) {
+
+                    return;
+
+                }
+
+
+                // ------------------------------------------------
+                // A teacher's multiple entries in this period
+                // may represent concurrent teaching of the same
+                // subject to different streams.
+                // ------------------------------------------------
+
+                lessons.forEach(
+                    lesson => {
+
+                        if (
+                            !lesson
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const subjectId =
+                            normalizeTimetableId(
+                                lesson.subjectId ??
+                                lesson.subject_id
+                            );
+
+
+                        // ------------------------------------------------
+                        // Subject is the important session identity.
+                        //
+                        // If subject is missing, use the task/lesson
+                        // identity as a safe fallback rather than
+                        // incorrectly merging unrelated lessons.
+                        // ------------------------------------------------
+
+                        const sessionSubject =
+                            subjectId ||
+                            normalizeTimetableId(
+                                lesson.lessonId ??
+                                lesson.taskId
+                            );
+
+
+                        if (
+                            !sessionSubject
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        uniqueSessions.add(
+                            `${periodId}__${sessionSubject}`
+                        );
+
+                    }
                 );
 
+            }
+        );
 
-            const period =
-                periodMap.get(
-                    periodId
+    }
+
+
+    // ========================================================
+    // FALLBACK
+    // ========================================================
+    //
+    // Older occupancy data may not have teacherPeriodLessons.
+    //
+    // In that case, count teacher-period occupancy directly.
+    // This is less precise for concurrent shared teaching, but
+    // preserves compatibility.
+    //
+    // ========================================================
+
+    if (
+        uniqueSessions.size === 0 &&
+        indexes.teacherPeriod instanceof Set
+    ) {
+
+        indexes.teacherPeriod.forEach(
+            key => {
+
+                const prefix =
+                    `${normalizedTeacherId}__`;
+
+
+                if (
+                    !key.startsWith(
+                        prefix
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodId =
+                    key.substring(
+                        prefix.length
+                    );
+
+
+                const period =
+                    periodMap.get(
+                        periodId
+                    );
+
+
+                if (
+                    !period
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodDay =
+                    Number(
+                        period.dayNumber ??
+                        period.day_number
+                    );
+
+
+                if (
+                    periodDay !==
+                    Number(dayNumber)
+                ) {
+
+                    return;
+
+                }
+
+
+                uniqueSessions.add(
+                    `${periodId}__NO_SUBJECT`
                 );
 
-
-            if (
-                period &&
-                Number(period.dayNumber) ===
-                Number(dayNumber)
-            ) {
-
-                count++;
-
             }
+        );
 
-        }
-    );
+    }
 
 
-    return count;
+    return uniqueSessions.size;
 
 }
 
 
+
 // ============================================================
 // GET TEACHER WEEKLY LESSON COUNT
+// ============================================================
+//
+// Counts UNIQUE teacher teaching sessions across the week.
+//
+// Same teacher + same subject + same period across multiple
+// streams = ONE teaching session.
+//
 // ============================================================
 
 function getTeacherWeeklyLessonCount(
@@ -10056,33 +10275,160 @@ function getTeacherWeeklyLessonCount(
         );
 
 
-    const prefix =
-        `${normalizedTeacherId}__`;
+    if (
+        !normalizedTeacherId
+    ) {
+
+        return 0;
+
+    }
 
 
-    let count = 0;
+    const uniqueSessions =
+        new Set();
 
 
-    indexes.teacherPeriod.forEach(
-        key => {
+    // ========================================================
+    // PREFERRED SOURCE:
+    // DETAILED TEACHER LESSON INDEX
+    // ========================================================
 
-            if (
-                key.startsWith(
-                    prefix
-                )
-            ) {
+    if (
+        indexes.teacherPeriodLessons instanceof Map
+    ) {
 
-                count++;
+        indexes.teacherPeriodLessons.forEach(
+            (
+                lessons,
+                teacherPeriodKey
+            ) => {
+
+                const prefix =
+                    `${normalizedTeacherId}__`;
+
+
+                if (
+                    !teacherPeriodKey.startsWith(
+                        prefix
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !Array.isArray(lessons)
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodId =
+                    teacherPeriodKey.substring(
+                        prefix.length
+                    );
+
+
+                lessons.forEach(
+                    lesson => {
+
+                        if (
+                            !lesson
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const subjectId =
+                            normalizeTimetableId(
+                                lesson.subjectId ??
+                                lesson.subject_id
+                            );
+
+
+                        const sessionSubject =
+                            subjectId ||
+                            normalizeTimetableId(
+                                lesson.lessonId ??
+                                lesson.taskId
+                            );
+
+
+                        if (
+                            !sessionSubject
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        uniqueSessions.add(
+                            `${periodId}__${sessionSubject}`
+                        );
+
+                    }
+                );
 
             }
+        );
 
-        }
-    );
+    }
 
 
-    return count;
+    // ========================================================
+    // FALLBACK
+    // ========================================================
+
+    if (
+        uniqueSessions.size === 0 &&
+        indexes.teacherPeriod instanceof Set
+    ) {
+
+        indexes.teacherPeriod.forEach(
+            key => {
+
+                const prefix =
+                    `${normalizedTeacherId}__`;
+
+
+                if (
+                    !key.startsWith(
+                        prefix
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodId =
+                    key.substring(
+                        prefix.length
+                    );
+
+
+                uniqueSessions.add(
+                    `${periodId}__NO_SUBJECT`
+                );
+
+            }
+        );
+
+    }
+
+
+    return uniqueSessions.size;
 
 }
+
 
 
 // ============================================================
@@ -18572,10 +18918,21 @@ function auditDailyRequirementLimits(
 
 
 
+
 // ============================================================
 // AUDIT TEACHER DAILY LIMITS
 // ============================================================
-
+//
+// Counts UNIQUE teacher teaching sessions.
+//
+// A teacher teaching the SAME subject to multiple streams
+// during the SAME period counts as ONE teaching session.
+//
+// Session identity:
+//
+//     teacher + period + subject
+//
+// ============================================================
 
 function auditTeacherDailyLimits(
     data,
@@ -18584,29 +18941,8 @@ function auditTeacherDailyLimits(
     lookups
 ) {
 
-    // ========================================================
-    // COUNT UNIQUE TEACHER SESSIONS
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // A teacher may legitimately appear in multiple streams
-    // during the same period when teaching the same subject
-    // concurrently.
-    //
-    // Therefore we must NOT count raw timetable entries.
-    //
-    // One teacher session is identified by:
-    //
-    //     teacher + period + subject
-    //
-    // Multiple streams/classes using that same session count
-    // as ONE teacher lesson.
-    //
-    // ========================================================
-
     const sessions =
-        new Map();
+        new Set();
 
 
     entries.forEach(
@@ -18644,50 +18980,59 @@ function auditTeacherDailyLimits(
             }
 
 
+            const dayNumber =
+                Number(
+                    period.dayNumber ??
+                    period.day_number
+                );
+
+
+            if (
+                !Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                return;
+
+            }
+
+
             const subjectId =
-                normalized.subjectId ||
-                "NO_SUBJECT";
+                normalizeTimetableId(
+                    normalized.subjectId
+                );
+
+
+            // ------------------------------------------------
+            // Use subject as the teaching-session identity.
+            //
+            // Same teacher + same period + same subject
+            // across several streams = ONE session.
+            //
+            // ------------------------------------------------
+
+            const sessionSubject =
+                subjectId ||
+                `ENTRY_${normalized.taskId || Math.random()}`;
 
 
             const sessionKey =
                 `${normalized.teacherId}__` +
                 `${normalized.periodId}__` +
-                `${subjectId}`;
+                `${sessionSubject}`;
 
 
-            if (
-                !sessions.has(
-                    sessionKey
-                )
-            ) {
-
-                sessions.set(
-                    sessionKey,
-                    {
-                        teacherId:
-                            normalized.teacherId,
-
-                        periodId:
-                            normalized.periodId,
-
-                        dayNumber:
-                            Number(
-                                period.dayNumber ??
-                                period.day_number
-                            ),
-
-                        subjectId
-                    }
-                );
-
-            }
+            sessions.add(
+                sessionKey
+            );
 
         }
     );
 
 
     // ========================================================
-    // COUNT UNIQUE SESSIONS PER TEACHER / DAY
+    // COUNT UNIQUE SESSIONS BY TEACHER + DAY
     // ========================================================
 
     const counts =
@@ -18695,13 +19040,56 @@ function auditTeacherDailyLimits(
 
 
     sessions.forEach(
-        session => {
+        sessionKey => {
+
+            const parts =
+                sessionKey.split(
+                    "__"
+                );
+
 
             if (
-                !session ||
-                !session.teacherId ||
+                parts.length < 3
+            ) {
+
+                return;
+
+            }
+
+
+            const teacherId =
+                parts[0];
+
+
+            const periodId =
+                parts[1];
+
+
+            const period =
+                lookups.periods.get(
+                    periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const dayNumber =
+                Number(
+                    period.dayNumber ??
+                    period.day_number
+                );
+
+
+            if (
                 !Number.isFinite(
-                    session.dayNumber
+                    dayNumber
                 )
             ) {
 
@@ -18711,7 +19099,7 @@ function auditTeacherDailyLimits(
 
 
             const key =
-                `${session.teacherId}__${session.dayNumber}`;
+                `${teacherId}__${dayNumber}`;
 
 
             counts.set(
@@ -18737,19 +19125,33 @@ function auditTeacherDailyLimits(
             key
         ) => {
 
-            const parts =
-                key.split(
+            const separatorIndex =
+                key.lastIndexOf(
                     "__"
                 );
 
 
+            if (
+                separatorIndex === -1
+            ) {
+
+                return;
+
+            }
+
+
             const teacherId =
-                parts[0];
+                key.substring(
+                    0,
+                    separatorIndex
+                );
 
 
             const dayNumber =
                 Number(
-                    parts[1]
+                    key.substring(
+                        separatorIndex + 2
+                    )
                 );
 
 
@@ -18811,21 +19213,21 @@ function auditTeacherDailyLimits(
 // ============================================================
 // AUDIT TEACHER WEEKLY LIMITS
 // ============================================================
+//
+// Counts UNIQUE:
+//
+//     teacher + period + subject
+//
+// Same-subject concurrent teaching to multiple streams
+// therefore counts as ONE teacher session.
+//
+// ============================================================
 
 function auditTeacherWeeklyLimits(
     entries,
     audit,
     lookups
 ) {
-
-    // ========================================================
-    // UNIQUE TEACHER SESSIONS
-    // ========================================================
-    //
-    // Same teacher + same subject + same period across
-    // multiple streams = ONE teacher session.
-    //
-    // ========================================================
 
     const sessions =
         new Set();
@@ -18852,14 +19254,20 @@ function auditTeacherWeeklyLimits(
 
 
             const subjectId =
-                normalized.subjectId ||
-                "NO_SUBJECT";
+                normalizeTimetableId(
+                    normalized.subjectId
+                );
+
+
+            const sessionSubject =
+                subjectId ||
+                `ENTRY_${normalized.taskId || Math.random()}`;
 
 
             const sessionKey =
                 `${normalized.teacherId}__` +
                 `${normalized.periodId}__` +
-                `${subjectId}`;
+                `${sessionSubject}`;
 
 
             sessions.add(
@@ -18881,23 +19289,34 @@ function auditTeacherWeeklyLimits(
     sessions.forEach(
         sessionKey => {
 
-            const parts =
-                sessionKey.split(
+            const separatorIndex1 =
+                sessionKey.indexOf(
                     "__"
                 );
 
 
-            const teacherId =
-                parts[0];
+            const separatorIndex2 =
+                sessionKey.indexOf(
+                    "__",
+                    separatorIndex1 + 2
+                );
 
 
             if (
-                !teacherId
+                separatorIndex1 === -1 ||
+                separatorIndex2 === -1
             ) {
 
                 return;
 
             }
+
+
+            const teacherId =
+                sessionKey.substring(
+                    0,
+                    separatorIndex1
+                );
 
 
             counts.set(
@@ -18914,7 +19333,7 @@ function auditTeacherWeeklyLimits(
 
 
     // ========================================================
-    // CHECK WEEKLY LIMIT
+    // CHECK LIMITS
     // ========================================================
 
     counts.forEach(
@@ -18973,6 +19392,8 @@ function auditTeacherWeeklyLimits(
     );
 
 }
+
+
 
 
 // ============================================================
