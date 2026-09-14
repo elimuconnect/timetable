@@ -18576,6 +18576,7 @@ function auditDailyRequirementLimits(
 // AUDIT TEACHER DAILY LIMITS
 // ============================================================
 
+
 function auditTeacherDailyLimits(
     data,
     entries,
@@ -18583,7 +18584,28 @@ function auditTeacherDailyLimits(
     lookups
 ) {
 
-    const counts =
+    // ========================================================
+    // COUNT UNIQUE TEACHER SESSIONS
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // A teacher may legitimately appear in multiple streams
+    // during the same period when teaching the same subject
+    // concurrently.
+    //
+    // Therefore we must NOT count raw timetable entries.
+    //
+    // One teacher session is identified by:
+    //
+    //     teacher + period + subject
+    //
+    // Multiple streams/classes using that same session count
+    // as ONE teacher lesson.
+    //
+    // ========================================================
+
+    const sessions =
         new Map();
 
 
@@ -18598,7 +18620,8 @@ function auditTeacherDailyLimits(
 
             if (
                 !normalized ||
-                !normalized.teacherId
+                !normalized.teacherId ||
+                !normalized.periodId
             ) {
 
                 return;
@@ -18621,8 +18644,74 @@ function auditTeacherDailyLimits(
             }
 
 
+            const subjectId =
+                normalized.subjectId ||
+                "NO_SUBJECT";
+
+
+            const sessionKey =
+                `${normalized.teacherId}__` +
+                `${normalized.periodId}__` +
+                `${subjectId}`;
+
+
+            if (
+                !sessions.has(
+                    sessionKey
+                )
+            ) {
+
+                sessions.set(
+                    sessionKey,
+                    {
+                        teacherId:
+                            normalized.teacherId,
+
+                        periodId:
+                            normalized.periodId,
+
+                        dayNumber:
+                            Number(
+                                period.dayNumber ??
+                                period.day_number
+                            ),
+
+                        subjectId
+                    }
+                );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // COUNT UNIQUE SESSIONS PER TEACHER / DAY
+    // ========================================================
+
+    const counts =
+        new Map();
+
+
+    sessions.forEach(
+        session => {
+
+            if (
+                !session ||
+                !session.teacherId ||
+                !Number.isFinite(
+                    session.dayNumber
+                )
+            ) {
+
+                return;
+
+            }
+
+
             const key =
-                `${normalized.teacherId}__${Number(period.dayNumber)}`;
+                `${session.teacherId}__${session.dayNumber}`;
 
 
             counts.set(
@@ -18637,6 +18726,10 @@ function auditTeacherDailyLimits(
         }
     );
 
+
+    // ========================================================
+    // CHECK LIMITS
+    // ========================================================
 
     counts.forEach(
         (
@@ -18677,7 +18770,8 @@ function auditTeacherDailyLimits(
 
             const maximum =
                 Number(
-                    teacher.maxLessonsPerDay
+                    teacher.maxLessonsPerDay ??
+                    teacher.max_lessons_per_day
                 ) || 0;
 
 
@@ -18692,6 +18786,7 @@ function auditTeacherDailyLimits(
                     "teacherDailyLimits",
                     "Teacher exceeds maximum lessons per day.",
                     {
+
                         teacherId,
 
                         dayNumber,
@@ -18712,6 +18807,7 @@ function auditTeacherDailyLimits(
 }
 
 
+
 // ============================================================
 // AUDIT TEACHER WEEKLY LIMITS
 // ============================================================
@@ -18722,8 +18818,17 @@ function auditTeacherWeeklyLimits(
     lookups
 ) {
 
-    const counts =
-        new Map();
+    // ========================================================
+    // UNIQUE TEACHER SESSIONS
+    // ========================================================
+    //
+    // Same teacher + same subject + same period across
+    // multiple streams = ONE teacher session.
+    //
+    // ========================================================
+
+    const sessions =
+        new Set();
 
 
     entries.forEach(
@@ -18737,7 +18842,57 @@ function auditTeacherWeeklyLimits(
 
             if (
                 !normalized ||
-                !normalized.teacherId
+                !normalized.teacherId ||
+                !normalized.periodId
+            ) {
+
+                return;
+
+            }
+
+
+            const subjectId =
+                normalized.subjectId ||
+                "NO_SUBJECT";
+
+
+            const sessionKey =
+                `${normalized.teacherId}__` +
+                `${normalized.periodId}__` +
+                `${subjectId}`;
+
+
+            sessions.add(
+                sessionKey
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // COUNT UNIQUE SESSIONS PER TEACHER
+    // ========================================================
+
+    const counts =
+        new Map();
+
+
+    sessions.forEach(
+        sessionKey => {
+
+            const parts =
+                sessionKey.split(
+                    "__"
+                );
+
+
+            const teacherId =
+                parts[0];
+
+
+            if (
+                !teacherId
             ) {
 
                 return;
@@ -18746,10 +18901,10 @@ function auditTeacherWeeklyLimits(
 
 
             counts.set(
-                normalized.teacherId,
+                teacherId,
                 (
                     counts.get(
-                        normalized.teacherId
+                        teacherId
                     ) || 0
                 ) + 1
             );
@@ -18757,6 +18912,10 @@ function auditTeacherWeeklyLimits(
         }
     );
 
+
+    // ========================================================
+    // CHECK WEEKLY LIMIT
+    // ========================================================
 
     counts.forEach(
         (
@@ -18781,7 +18940,8 @@ function auditTeacherWeeklyLimits(
 
             const maximum =
                 Number(
-                    teacher.maxLessonsPerWeek
+                    teacher.maxLessonsPerWeek ??
+                    teacher.max_lessons_per_week
                 ) || 0;
 
 
@@ -18796,6 +18956,7 @@ function auditTeacherWeeklyLimits(
                     "teacherWeeklyLimits",
                     "Teacher exceeds maximum lessons per week.",
                     {
+
                         teacherId,
 
                         actual:
@@ -21863,6 +22024,7 @@ function buildStage7RoomCandidates(
 
 
 
+
 function placeStage7Task(
     task,
     period,
@@ -21877,13 +22039,24 @@ function placeStage7Task(
         !generatorData.indexes
     ) {
 
-        return false;
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Invalid Stage 7 placement data."
+
+        };
 
     }
 
 
     // ========================================================
-    // STAGE 7 ONLY REPAIRS SINGLE LESSONS HERE
+    // STAGE 7 CURRENTLY REPAIRS SINGLE LESSONS ONLY
     // ========================================================
 
     const taskType =
@@ -21899,10 +22072,22 @@ function placeStage7Task(
 
         console.warn(
             "STAGE 7: Double lesson placement adapter is not enabled.",
-            task.taskId
+            task.taskId ||
+            task.id
         );
 
-        return false;
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Stage 7 double-lesson relocation is disabled."
+
+        };
 
     }
 
@@ -21921,7 +22106,6 @@ function placeStage7Task(
         period,
 
         room:
-
             room ||
             null,
 
@@ -21937,7 +22121,7 @@ function placeStage7Task(
 
 
     // ========================================================
-    // USE EXISTING SMART PLACEMENT FUNCTION
+    // USE THE EXISTING SINGLE-LESSON PLACEMENT ENGINE
     // ========================================================
 
     const placement =
@@ -21948,17 +22132,52 @@ function placeStage7Task(
         );
 
 
+    // ========================================================
+    // PLACEMENT FAILED
+    // ========================================================
+
     if (
         !placement ||
         placement.placed !== true
     ) {
 
-        return false;
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                placement?.reason ||
+                "Stage 7 single-lesson placement failed."
+
+        };
 
     }
 
 
-    return true;
+    // ========================================================
+    // SUCCESS
+    // ========================================================
+
+    return {
+
+        placed:
+            true,
+
+        entries:
+            Array.isArray(
+                placement.entries
+            )
+                ? placement.entries
+                : [],
+
+        reason:
+            ""
+
+    };
 
 }
 
