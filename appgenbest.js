@@ -23894,6 +23894,7 @@ function attemptStage7Relocation(
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
 // ============================================================
 
+
 function findAlternativeSlotForExistingTask(
     existingTask,
     failedTask,
@@ -23951,6 +23952,48 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
+    // BUILD PERIOD CANDIDATES FOR THE EXISTING TASK
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // candidatePeriods was originally generated for the
+    // failed task.
+    //
+    // It must NOT restrict where the existing task can move.
+    //
+    // The existing task needs its own valid period candidates.
+    //
+    // ========================================================
+
+    const allPeriods =
+        Array.isArray(
+            generatorData.periods
+        )
+            ? generatorData.periods
+            : [];
+
+
+    const existingTaskCandidatePeriods =
+        buildStage7PeriodCandidates(
+            existingTask,
+            allPeriods
+        );
+
+
+    if (
+        !Array.isArray(
+            existingTaskCandidatePeriods
+        ) ||
+        existingTaskCandidatePeriods.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
     // BUILD ROOMS FOR EXISTING TASK
     // ========================================================
 
@@ -23974,30 +24017,26 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
-    // BUILD ROOMS FOR FAILED TASK
+    // SEARCH FOR A VALID NEW LOCATION
     // ========================================================
     //
-    // IMPORTANT:
+    // We only need to find a valid location for the existing
+    // task first.
     //
-    // We intentionally DO NOT check the failed task here.
+    // The failed task is deliberately NOT checked here because
+    // the existing task is still occupying its original slot.
     //
-    // The existing task is still occupying oldPeriod/oldRoom
-    // at this stage, so checking the failed task now can
-    // incorrectly reject a relocation that becomes valid once
-    // the existing task is moved.
-    //
-    // The definitive failed-task check happens inside
-    // attemptStage7Relocation() after the move.
+    // After the move, attemptStage7Relocation() performs the
+    // definitive failed-task conflict check in the freed slot.
     //
     // ========================================================
-
 
     for (
-        const period of candidatePeriods
+        const period of existingTaskCandidatePeriods
     ) {
 
         // ----------------------------------------------------
-        // DO NOT RETURN THE SAME PERIOD
+        // Do not move to the same period.
         // ----------------------------------------------------
 
         if (
@@ -24015,7 +24054,7 @@ function findAlternativeSlotForExistingTask(
         ) {
 
             // ------------------------------------------------
-            // CHECK EXISTING TASK AT NEW LOCATION
+            // Check the existing task at its new location.
             // ------------------------------------------------
 
             const existingTaskConflict =
@@ -24038,9 +24077,9 @@ function findAlternativeSlotForExistingTask(
 
 
             // ------------------------------------------------
-            // A VALID NEW LOCATION HAS BEEN FOUND.
+            // Valid relocation candidate found.
             //
-            // Do not check the failed task yet.
+            // Do not check failedTask here.
             // ------------------------------------------------
 
             return {
@@ -24063,7 +24102,6 @@ function findAlternativeSlotForExistingTask(
     return null;
 
 }
-
 
 // ============================================================
 // FIND CURRENT PERIOD OF TASK
