@@ -15828,6 +15828,720 @@ function selectNextSmartTask(
 
 
 
+// ============================================================
+// STAGE 6F — ROLLBACK ONE TASK PLACEMENT
+// ============================================================
+//
+// Completely releases one task from the occupancy indexes.
+//
+// Used by the backtracking search when a later task cannot
+// be placed and an earlier decision must be undone.
+// ============================================================
+
+function stage6fRollbackTask(
+    task,
+    indexes,
+    rooms
+) {
+
+    if (
+        !task ||
+        !indexes
+    ) {
+
+        return false;
+
+    }
+
+
+    const periodIds =
+        Array.isArray(
+            task.periodIds
+        )
+            ? [...task.periodIds]
+            : [];
+
+
+    if (
+        periodIds.length === 0
+    ) {
+
+        task.placed =
+            false;
+
+        task.periodIds =
+            [];
+
+        task.periodId =
+            null;
+
+        task.firstPeriodId =
+            null;
+
+        task.secondPeriodId =
+            null;
+
+        task.roomId =
+            null;
+
+        return true;
+
+    }
+
+
+    const roomId =
+        task.roomId ||
+        null;
+
+
+    const room =
+        roomId
+            ? (
+                Array.isArray(rooms)
+                    ? rooms.find(
+                        item =>
+                            item &&
+                            String(item.id) ===
+                            String(roomId)
+                    )
+                    : null
+            )
+            : null;
+
+
+    // ========================================================
+    // RELEASE EVERY RESERVED PERIOD
+    // ========================================================
+
+    periodIds.forEach(
+        periodId => {
+
+            const period =
+                getIndexedPeriod(
+                    indexes,
+                    periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            releaseReservedSlot(
+                task,
+                period,
+                room,
+                indexes
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // RESET TASK PLACEMENT STATE
+    // ========================================================
+
+    task.placed =
+        false;
+
+    task.periodIds =
+        [];
+
+    task.periodId =
+        null;
+
+    task.firstPeriodId =
+        null;
+
+    task.secondPeriodId =
+        null;
+
+    task.roomId =
+        null;
+
+
+    return true;
+
+}
+
+
+// ============================================================
+// STAGE 6F — SELECT MOST CONSTRAINED TASK
+// ============================================================
+//
+// Chooses the task that is currently hardest to place.
+//
+// Priority:
+//
+// 1. No-candidate tasks
+// 2. Day deficit
+// 3. Fewest available days
+// 4. Fewest candidate slots
+// 5. Higher task priority
+// 6. Double lesson
+// ============================================================
+
+function stage6fSelectTask(
+    remainingTasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(
+            remainingTasks
+        ) ||
+        remainingTasks.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    const analysis = [];
+
+
+    remainingTasks.forEach(
+        task => {
+
+            if (
+                !task ||
+                task.placed
+            ) {
+
+                return;
+
+            }
+
+
+            const candidates =
+                getSmartCandidatesForTask(
+                    task,
+                    data,
+                    indexes
+                );
+
+
+            const dayPressure =
+                getTaskDayPressure(
+                    task,
+                    data,
+                    candidates
+                );
+
+
+            const priority =
+                calculateTaskPriorityScore(
+                    task,
+                    data
+                );
+
+
+            analysis.push({
+
+                task,
+
+                candidates,
+
+                candidateCount:
+                    candidates.length,
+
+                requiredDays:
+                    dayPressure.requiredDays,
+
+                availableDays:
+                    dayPressure.availableDays,
+
+                dayDeficit:
+                    dayPressure.deficit,
+
+                priority:
+
+                    priority
+
+            });
+
+        }
+    );
+
+
+    if (
+        analysis.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    analysis.sort(
+        (
+            a,
+            b
+        ) => {
+
+            // ------------------------------------------------
+            // NO CANDIDATES FIRST
+            // ------------------------------------------------
+
+            const aImpossible =
+                a.candidateCount === 0;
+
+
+            const bImpossible =
+                b.candidateCount === 0;
+
+
+            if (
+                aImpossible !==
+                bImpossible
+            ) {
+
+                return aImpossible
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // DAY DEFICIT
+            // ------------------------------------------------
+
+            if (
+                a.dayDeficit !==
+                b.dayDeficit
+            ) {
+
+                return (
+                    b.dayDeficit -
+                    a.dayDeficit
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // FEWEST AVAILABLE DAYS
+            // ------------------------------------------------
+
+            if (
+                a.availableDays !==
+                b.availableDays
+            ) {
+
+                return (
+                    a.availableDays -
+                    b.availableDays
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // FEWEST CANDIDATES
+            // ------------------------------------------------
+
+            if (
+                a.candidateCount !==
+                b.candidateCount
+            ) {
+
+                return (
+                    a.candidateCount -
+                    b.candidateCount
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // HIGHER PRIORITY
+            // ------------------------------------------------
+
+            if (
+                a.priority !==
+                b.priority
+            ) {
+
+                return (
+                    b.priority -
+                    a.priority
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // DOUBLE FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.duration !==
+                b.task.duration
+            ) {
+
+                return (
+                    b.task.duration -
+                    a.task.duration
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // ROOM REQUIRED FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.requiresRoom !==
+                b.task.requiresRoom
+            ) {
+
+                return a.task.requiresRoom
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // DETERMINISTIC TIE BREAK
+            // ------------------------------------------------
+
+            return String(
+                a.task.taskId ||
+                ""
+            ).localeCompare(
+                String(
+                    b.task.taskId ||
+                    ""
+                )
+            );
+
+        }
+    );
+
+
+    return analysis[0];
+
+}
+
+
+// ============================================================
+// STAGE 6F — BACKTRACKING SEARCH
+// ============================================================
+//
+// Attempts to find a COMPLETE timetable.
+//
+// Unlike the old greedy engine:
+//
+//     candidate failure
+//         ≠
+/*
+            permanent task failure
+*/
+//
+//
+// Instead:
+//
+//     candidate failure
+//          ↓
+//     undo earlier placement
+//          ↓
+//     try another candidate
+// ============================================================
+
+function stage6fSearchComplete(
+    remainingTasks,
+    data,
+    indexes,
+    rooms,
+    state,
+    depth = 0
+) {
+
+    // ========================================================
+    // NODE LIMIT
+    // ========================================================
+
+    if (
+        state.nodes >=
+        state.maxNodes
+    ) {
+
+        state.limitReached =
+            true;
+
+        return false;
+
+    }
+
+
+    state.nodes++;
+
+
+    // ========================================================
+    // COMPLETE
+    // ========================================================
+
+    if (
+        remainingTasks.length === 0
+    ) {
+
+        return true;
+
+    }
+
+
+    // ========================================================
+    // SELECT MOST CONSTRAINED TASK
+    // ========================================================
+
+    const selection =
+        stage6fSelectTask(
+            remainingTasks,
+            data,
+            indexes
+        );
+
+
+    if (
+        !selection
+    ) {
+
+        return false;
+
+    }
+
+
+    const task =
+        selection.task;
+
+
+    const candidates =
+        selection.candidates;
+
+
+    // ========================================================
+    // NO CANDIDATES
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // This does NOT permanently fail the task.
+    //
+    // It tells the previous recursion level:
+    //
+    // "Your previous placement caused this dead end."
+    //
+    // The previous level then rolls back and tries another
+    // candidate.
+    // ========================================================
+
+    if (
+        candidates.length === 0
+    ) {
+
+        state.deadEnds++;
+
+
+        if (
+            depth <= 8
+        ) {
+
+            console.warn(
+                "STAGE 6F BACKTRACK DEAD END:",
+                {
+
+                    depth,
+
+                    taskId:
+                        task.taskId,
+
+                    requirementId:
+                        task.requirementId,
+
+                    streamId:
+                        task.streamId,
+
+                    subjectId:
+                        task.subjectId
+
+                }
+            );
+
+        }
+
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // TRY CANDIDATES
+    // ========================================================
+    //
+    // The candidates are already scored by 6C / 6D.
+    //
+    // Try the best candidate first, then alternatives.
+    // ========================================================
+
+    const candidateLimit =
+        Math.min(
+            candidates.length,
+            100
+        );
+
+
+    for (
+        let i = 0;
+        i < candidateLimit;
+        i++
+    ) {
+
+        if (
+            state.nodes >=
+            state.maxNodes
+        ) {
+
+            state.limitReached =
+                true;
+
+            return false;
+
+        }
+
+
+        const candidate =
+            candidates[i];
+
+
+        // ====================================================
+        // FINAL SAFETY CHECK BEFORE PLACEMENT
+        // ====================================================
+
+        const selectionForPlacement = {
+
+            task,
+
+            candidate
+
+        };
+
+
+        const placement =
+            placeSelectedSmartTask(
+                selectionForPlacement,
+                indexes
+            );
+
+
+        if (
+            !placement ||
+            placement.placed !== true
+        ) {
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // RECORD PLACEMENT
+        // ====================================================
+
+        state.placements.push({
+
+            task,
+
+            placement,
+
+            candidate
+
+        });
+
+
+        // ====================================================
+        // REMOVE THIS TASK FROM REMAINING TASKS
+        // ====================================================
+
+        const nextRemaining =
+            remainingTasks.filter(
+                item =>
+                    item !== task
+            );
+
+
+        // ====================================================
+        // RECURSE
+        // ====================================================
+
+        const solved =
+            stage6fSearchComplete(
+                nextRemaining,
+                data,
+                indexes,
+                rooms,
+                state,
+                depth + 1
+            );
+
+
+        if (
+            solved
+        ) {
+
+            return true;
+
+        }
+
+
+        // ====================================================
+        // BACKTRACK
+        // ====================================================
+
+        state.backtracks++;
+
+
+        stage6fRollbackTask(
+            task,
+            indexes,
+            rooms
+        );
+
+
+        state.placements.pop();
+
+
+        // ----------------------------------------------------
+        // Continue to the NEXT candidate.
+        // ----------------------------------------------------
+
+    }
+
+
+    return false;
+
+}
+
+
+// ============================================================
+// STAGE 6F — SMART TIMETABLE GENERATION
+// ============================================================
+//
+// REPLACE YOUR ENTIRE OLD generateSmartTimetable()
+// WITH THIS FUNCTION.
+// ============================================================
+
 function generateSmartTimetable(
     data
 ) {
@@ -15851,8 +16565,12 @@ function generateSmartTimetable(
 
     if (
         !data ||
-        !Array.isArray(data.lessonTasks) ||
-        !Array.isArray(data.periods)
+        !Array.isArray(
+            data.lessonTasks
+        ) ||
+        !Array.isArray(
+            data.periods
+        )
     ) {
 
         throw new Error(
@@ -15875,22 +16593,6 @@ function generateSmartTimetable(
     // ========================================================
     // BUILD TEACHER LIMIT INDEX
     // ========================================================
-    //
-    // The conflict functions use:
-    //
-    //     indexes.teacherLimits
-    //
-    // for:
-    //
-    //     - maxLessonsPerDay
-    //     - maxLessonsPerWeek
-    //     - maxConsecutiveLessons
-    //
-    // createOccupancyIndexes() does not need to own the
-    // normalized teacher-limit construction, so we prepare it
-    // here from the already normalized generator data.
-    //
-    // ========================================================
 
     if (
         !(indexes.teacherLimits instanceof Map)
@@ -15903,7 +16605,9 @@ function generateSmartTimetable(
 
 
     if (
-        Array.isArray(data.teachers)
+        Array.isArray(
+            data.teachers
+        )
     ) {
 
         data.teachers.forEach(
@@ -15963,6 +16667,99 @@ function generateSmartTimetable(
 
 
     // ========================================================
+    // RESET ALL TASK PLACEMENT STATE
+    // ========================================================
+
+    data.lessonTasks.forEach(
+        task => {
+
+            if (
+                !task ||
+                typeof task !== "object"
+            ) {
+
+                return;
+
+            }
+
+
+            task.placed =
+                false;
+
+            task.periodIds =
+                [];
+
+            task.periodId =
+                null;
+
+            task.firstPeriodId =
+                null;
+
+            task.secondPeriodId =
+                null;
+
+            task.roomId =
+                null;
+
+        }
+    );
+
+
+    // ========================================================
+    // SEARCH STATE
+    // ========================================================
+
+    const state = {
+
+        nodes:
+            0,
+
+        maxNodes:
+            1000000,
+
+        backtracks:
+            0,
+
+        deadEnds:
+            0,
+
+        limitReached:
+            false,
+
+        placements:
+            []
+
+    };
+
+
+    // ========================================================
+    // COPY TASKS
+    // ========================================================
+
+    const remainingTasks =
+        data.lessonTasks.filter(
+            task =>
+                task &&
+                !task.placed
+        );
+
+
+    // ========================================================
+    // START SEARCH
+    // ========================================================
+
+    const solved =
+        stage6fSearchComplete(
+            remainingTasks,
+            data,
+            indexes,
+            data.rooms || [],
+            state,
+            0
+        );
+
+
+    // ========================================================
     // CREATE RESULT
     // ========================================================
 
@@ -15975,957 +16772,321 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // COPY ACTIVE TASKS
-    // ========================================================
-    //
-    // Do NOT modify the original task ordering here.
-    //
+    // COMPLETE SOLUTION FOUND
     // ========================================================
 
-    const remainingTasks =
-        data.lessonTasks.filter(
-            task =>
-                task &&
-                !task.placed
-        );
-
-
-    // ========================================================
-    // SAFETY LIMIT
-    // ========================================================
-
-    const maximumIterations =
-        Math.max(
-            remainingTasks.length * 3,
-            100
-        );
-
-
-    let iteration =
-        0;
-
-
-    // ========================================================
-    // MAIN PLACEMENT LOOP
-    // ========================================================
-
-    while (
-        remainingTasks.length > 0 &&
-        iteration < maximumIterations
+    if (
+        solved
     ) {
 
-        iteration++;
+        state.placements.forEach(
+            record => {
 
+                const task =
+                    record.task;
 
-        // ====================================================
-        // SELECT NEXT TASK
-        // ====================================================
 
-        const selection =
-            selectNextSmartTask(
-                remainingTasks,
-                data,
-                indexes
-            );
+                const placement =
+                    record.placement;
 
 
-        // ====================================================
-        // NO TASK
-        // ====================================================
+                const entries =
+                    Array.isArray(
+                        placement.entries
+                    )
+                        ? placement.entries
+                        : [];
 
-        if (
-            !selection
-        ) {
-
-            break;
-
-        }
-
-
-        const task =
-            selection.task;
-
-
-        // ====================================================
-        // NO CANDIDATES
-        // ====================================================
-
-        if (
-            selection.candidateCount === 0
-        ) {
-
-            console.warn(
-                "SMART PLACEMENT — NO CANDIDATE:",
-                {
-
-                    taskId:
-                        task.taskId,
-
-                    taskType:
-                        task.taskType,
-
-                    streamId:
-                        task.streamId,
-
-                    subjectId:
-                        task.subjectId,
-
-                    teacherId:
-                        task.teacherId,
-
-                    requirementId:
-                        task.requirementId
-
-                }
-            );
-
-
-            result.failedTasks.push({
-
-                task,
-
-                reason:
-                    "No valid placement candidate exists."
-
-            });
-
-
-            task.placed =
-                false;
-
-
-            task.periodIds =
-                [];
-
-
-            task.roomId =
-                null;
-
-
-            // ------------------------------------------------
-            // REMOVE FROM ACTIVE TASKS
-            // ------------------------------------------------
-
-            const failedIndex =
-                remainingTasks.indexOf(
-                    task
-                );
-
-
-            if (
-                failedIndex >= 0
-            ) {
-
-                remainingTasks.splice(
-                    failedIndex,
-                    1
-                );
-
-            }
-
-
-            continue;
-
-        }
-
-
-        // ====================================================
-        // TRY ALL RANKED CANDIDATES
-        // ====================================================
-        //
-        // IMPORTANT:
-        //
-        // We do NOT fail the task after candidate #1 fails.
-        //
-        // We try every candidate returned by 6C / 6D.
-        //
-        // ====================================================
-
-        let successfulPlacement =
-            null;
-
-
-        let successfulCandidate =
-            null;
-
-
-        let lastFailureReason =
-            "All candidates failed.";
-
-
-        for (
-            const candidate of selection.candidates
-        ) {
-
-            const candidateSelection = {
-
-                task,
-
-                candidate
-
-            };
-
-
-            const attempt =
-                placeSelectedSmartTask(
-                    candidateSelection,
-                    indexes
-                );
-
-
-            // =================================================
-            // SUCCESS
-            // =================================================
-
-            if (
-                attempt &&
-                attempt.placed
-            ) {
-
-                successfulPlacement =
-                    attempt;
-
-
-                successfulCandidate =
-                    candidate;
-
-
-                break;
-
-            }
-
-
-            // =================================================
-            // FAILED CANDIDATE
-            // =================================================
-
-            lastFailureReason =
-                attempt?.reason ||
-                lastFailureReason;
-
-
-            console.warn(
-                "SMART CANDIDATE REJECTED:",
-                {
-
-                    taskId:
-                        task.taskId,
-
-                    taskType:
-                        task.taskType,
-
-                    candidateScore:
-                        candidate?.score,
-
-                    reason:
-                        attempt?.reason ||
-                        "Candidate rejected."
-
-                }
-            );
-
-        }
-
-
-        // ====================================================
-        // SUCCESSFUL TASK
-        // ====================================================
-
-        if (
-            successfulPlacement &&
-            successfulPlacement.placed
-        ) {
-
-            // ------------------------------------------------
-            // ADD GENERATED ENTRIES
-            // ------------------------------------------------
-
-            if (
-                Array.isArray(
-                    successfulPlacement.entries
-                )
-            ) {
 
                 result.entries.push(
-                    ...successfulPlacement.entries
+                    ...entries
                 );
 
+
+                result.placedTasks.push({
+
+                    task,
+
+                    entries,
+
+                    candidate:
+                        record.candidate
+
+                });
+
             }
+        );
 
 
-            // ------------------------------------------------
-            // TRACK PLACED TASK
-            // ------------------------------------------------
+        result.failedTasks =
+            [];
+
+
+        result.statistics.placedTasks =
+            result.placedTasks.length;
+
+
+        result.statistics.failedTasks =
+            0;
+
+
+        result.statistics.totalPeriodsPlaced =
+            result.entries.length;
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "✅ STAGE 6F — COMPLETE TIMETABLE FOUND"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "Total tasks:",
+            result.statistics.totalTasks
+        );
+
+        console.log(
+            "Placed tasks:",
+            result.statistics.placedTasks
+        );
+
+        console.log(
+            "Failed tasks:",
+            0
+        );
+
+        console.log(
+            "Generated entries:",
+            result.entries.length
+        );
+
+        console.log(
+            "Search nodes:",
+            state.nodes
+        );
+
+        console.log(
+            "Backtracks:",
+            state.backtracks
+        );
+
+        console.log(
+            "Dead ends:",
+            state.deadEnds
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        return {
+
+            ...result,
+
+            indexes
+
+        };
+
+    }
+
+
+    // ========================================================
+    // COMPLETE SOLUTION NOT FOUND
+    // ========================================================
+    //
+    // We deliberately keep the partial result only for
+    // diagnostics. Stage 6G will still block it.
+    // ========================================================
+
+    const placedTaskSet =
+        new Set(
+            state.placements.map(
+                record =>
+                    record.task
+            )
+        );
+
+
+    state.placements.forEach(
+        record => {
+
+            const task =
+                record.task;
+
+
+            const placement =
+                record.placement;
+
+
+            const entries =
+                Array.isArray(
+                    placement?.entries
+                )
+                    ? placement.entries
+                    : [];
+
+
+            result.entries.push(
+                ...entries
+            );
+
 
             result.placedTasks.push({
 
                 task,
 
-                entries:
-                    successfulPlacement.entries,
+                entries,
 
                 candidate:
-                    successfulCandidate
+                    record.candidate
 
             });
 
-
-            result.statistics.placedTasks++;
-
-
-            // =================================================
-            // TASK DURATION IS AUTHORITATIVE
-            // =================================================
-            //
-            // Single:
-            //     duration = 1
-            //
-            // Double:
-            //     duration = 2
-            //
-            // =================================================
-
-            result.statistics.totalPeriodsPlaced +=
-                Number(
-                    task.duration
-                ) || 0;
-
-
-            // -------------------------------------------------
-            // REMOVE PLACED TASK
-            // -------------------------------------------------
-
-            const placedIndex =
-                remainingTasks.indexOf(
-                    task
-                );
-
-
-            if (
-                placedIndex >= 0
-            ) {
-
-                remainingTasks.splice(
-                    placedIndex,
-                    1
-                );
-
-            }
-
-
-            console.log(
-                "SMART PLACEMENT SUCCESS:",
-                {
-
-                    taskId:
-                        task.taskId,
-
-                    type:
-                        task.taskType,
-
-                    requirementId:
-                        task.requirementId,
-
-                    periods:
-                        task.periodIds,
-
-                    room:
-                        task.roomId,
-
-                    score:
-                        successfulCandidate?.score ??
-                        null
-
-                }
-            );
-
-
-            continue;
-
         }
+    );
 
 
-        // ====================================================
-        // ALL CANDIDATES FAILED
-        // ====================================================
-
-        console.warn(
-            "SMART PLACEMENT — ALL CANDIDATES FAILED:",
-            {
-
-                taskId:
-                    task.taskId,
-
-                taskType:
-                    task.taskType,
-
-                requirementId:
-                    task.requirementId,
-
-                teacherId:
-                    task.teacherId,
-
-                reason:
-                    lastFailureReason
-
-            }
-        );
-
-
-        result.failedTasks.push({
-
-            task,
-
-            reason:
-                lastFailureReason
-
-        });
-
-
-        task.placed =
-            false;
-
-
-        task.periodIds =
-            [];
-
-
-        task.roomId =
-            null;
-
-
-        // ----------------------------------------------------
-        // REMOVE FAILED TASK
-        // ----------------------------------------------------
-
-        const failedIndex =
-            remainingTasks.indexOf(
-                task
-            );
-
-
-        if (
-            failedIndex >= 0
-        ) {
-
-            remainingTasks.splice(
-                failedIndex,
-                1
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // HANDLE SAFETY LIMIT
-    // ========================================================
-
-    if (
-        iteration >=
-        maximumIterations &&
-        remainingTasks.length > 0
-    ) {
-
-        remainingTasks.forEach(
-            task => {
-
-                if (
-                    !task
-                ) {
-
-                    return;
-
-                }
-
-
-                result.failedTasks.push({
+    result.failedTasks =
+        data.lessonTasks
+            .filter(
+                task =>
+                    !placedTaskSet.has(
+                        task
+                    )
+            )
+            .map(
+                task => ({
 
                     task,
 
                     reason:
-                        "Generator safety iteration limit reached."
+                        state.limitReached
+                            ? "Backtracking search limit reached before a complete timetable was found."
+                            : "No complete timetable was found under the current hard constraints."
 
-                });
-
-
-                task.placed =
-                    false;
-
-
-                task.periodIds =
-                    [];
+                })
+            );
 
 
-                task.roomId =
-                    null;
+    result.statistics.placedTasks =
+        result.placedTasks.length;
 
-            }
-        );
-
-
-        // ----------------------------------------------------
-        // Make sure the active queue does not retain tasks
-        // after they have been recorded as failed.
-        // ----------------------------------------------------
-
-        remainingTasks.length =
-            0;
-
-    }
-
-
-    // ========================================================
-    // FINAL STATISTICS
-    // ========================================================
 
     result.statistics.failedTasks =
         result.failedTasks.length;
 
 
-    // ========================================================
-    // LOG RESULT
-    // ========================================================
+    result.statistics.totalPeriodsPlaced =
+        result.entries.length;
 
-    console.log(
+
+    console.error(
         "======================================"
     );
 
-    console.log(
-        "STAGE 6F — GENERATION COMPLETE"
+    console.error(
+        "❌ STAGE 6F — COMPLETE TIMETABLE NOT FOUND"
     );
 
-    console.log(
+    console.error(
         "======================================"
     );
 
-    console.log(
+    console.error(
         "Total tasks:",
         result.statistics.totalTasks
     );
 
-    console.log(
+    console.error(
         "Placed tasks:",
         result.statistics.placedTasks
     );
 
-    console.log(
+    console.error(
         "Failed tasks:",
         result.statistics.failedTasks
     );
 
-    console.log(
-        "Teaching periods placed:",
-        result.statistics.totalPeriodsPlaced
+    console.error(
+        "Generated entries:",
+        result.entries.length
     );
 
-    console.log(
-        "Iterations:",
-        iteration
+    console.error(
+        "Search nodes:",
+        state.nodes
     );
 
-    console.log(
-        "======================================"
+    console.error(
+        "Backtracks:",
+        state.backtracks
     );
 
-
-    // ========================================================
-    // FAILED TASK TABLE
-    // ========================================================
-
-    if (
-        result.failedTasks.length > 0
-    ) {
-
-        console.table(
-            result.failedTasks.map(
-                item => ({
-
-                    taskId:
-                        item.task?.taskId ||
-                        null,
-
-                    type:
-                        item.task?.taskType ||
-                        null,
-
-                    streamId:
-                        item.task?.streamId ||
-                        null,
-
-                    subjectId:
-                        item.task?.subjectId ||
-                        null,
-
-                    teacherId:
-                        item.task?.teacherId ||
-                        null,
-
-                    requirementId:
-                        item.task?.requirementId ||
-                        null,
-
-                    reason:
-                        item.reason
-
-                })
-            )
-        );
-
-    }
-
-
-
-
-
-// ========================================================
-// FAILURE REASON SUMMARY
-// ========================================================
-
-const failureReasonCounts =
-    new Map();
-
-
-result.failedTasks.forEach(
-    item => {
-
-        const reason =
-            item?.reason ||
-            "Unknown failure";
-
-
-        failureReasonCounts.set(
-            reason,
-            (
-                failureReasonCounts.get(
-                    reason
-                ) ||
-                0
-            ) + 1
-        );
-
-    }
-);
-
-
-console.log(
-    "======================================"
-);
-
-console.log(
-    "STAGE 6F — FAILURE REASON SUMMARY"
-);
-
-console.log(
-    "======================================"
-);
-
-
-
-
-console.table(
-    [
-        ...failureReasonCounts.entries()
-    ]
-    .map(
-        (
-            [
-                reason,
-                count
-            ]
-        ) => ({
-
-            count,
-
-            reason
-
-        })
-    )
-    .sort(
-        (
-            a,
-            b
-        ) =>
-            b.count -
-            a.count
-    )
-);
-
-
-// ============================================================
-// STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
-// ============================================================
-//
-// Shows exactly which requirements still have unplaced tasks.
-//
-// This is especially useful when Stage 6F completes with:
-//
-//     "No valid placement candidate exists."
-//
-// ============================================================
-
-if (
-    result.failedTasks.length > 0
-) {
-
-    const failedRequirementMap =
-        new Map();
-
-
-    result.failedTasks.forEach(
-        item => {
-
-            const task =
-                item?.task ||
-                item;
-
-
-            if (
-                !task
-            ) {
-
-                return;
-
-            }
-
-
-            const requirementId =
-                task.requirementId ??
-                task.requirement_id ??
-                null;
-
-
-            if (
-                !requirementId
-            ) {
-
-                return;
-
-            }
-
-
-            if (
-                !failedRequirementMap.has(
-                    requirementId
-                )
-            ) {
-
-                failedRequirementMap.set(
-                    requirementId,
-                    []
-                );
-
-            }
-
-
-            failedRequirementMap
-                .get(
-                    requirementId
-                )
-                .push({
-
-                    taskId:
-                        task.taskId ??
-                        task.task_id ??
-                        task.id ??
-                        null,
-
-                    taskType:
-                        task.taskType ??
-                        task.type ??
-                        null,
-
-                    streamId:
-                        task.streamId ??
-                        task.stream_id ??
-                        null,
-
-                    subjectId:
-                        task.subjectId ??
-                        task.subject_id ??
-                        null,
-
-                    teacherId:
-                        task.teacherId ??
-                        task.teacher_id ??
-                        null,
-
-                    reason:
-                        item?.reason ||
-                        "Unknown"
-
-                });
-
-        }
+    console.error(
+        "Dead ends:",
+        state.deadEnds
     );
 
-
-    console.log(
-        "======================================"
+    console.error(
+        "Search limit reached:",
+        state.limitReached
     );
 
-    console.log(
-        "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
-    );
-
-    console.log(
+    console.error(
         "======================================"
     );
 
 
     console.table(
-        [
-            ...failedRequirementMap.entries()
-        ]
-        .map(
-            (
-                [
-                    requirementId,
-                    tasks
-                ]
-            ) => ({
-
-                requirementId,
-
-                failedTasks:
-                    tasks.length,
-
-                taskIds:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                taskTypes:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskType
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                streams:
-                    tasks
-                        .map(
-                            task =>
-                                task.streamId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                subjects:
-                    tasks
-                        .map(
-                            task =>
-                                task.subjectId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                teachers:
-                    tasks
-                        .map(
-                            task =>
-                                task.teacherId
-                        )
-                        .join(
-                            ", "
-                        )
-
-            })
-        )
-    );
-
-
-    console.log(
-        "======================================"
-    );
-
-}
-
-
-// ============================================================
-// SUCCESS TABLE
-// ============================================================
-
-if (
-    result.placedTasks.length > 0
-) {
-
-    console.table(
-        result.placedTasks.map(
+        result.failedTasks.map(
             item => ({
 
                 taskId:
                     item.task?.taskId ||
                     null,
 
-                type:
-                    item.task?.taskType ||
-                    null,
-
                 requirementId:
                     item.task?.requirementId ||
                     null,
 
-                periods:
-                    item.task?.periodIds?.join(
-                        ", "
-                    ) ||
-                    "",
-
-                room:
-                    item.task?.roomId ||
+                streamId:
+                    item.task?.streamId ||
                     null,
 
-                score:
-                    item.candidate?.score ??
-                    null
+                subjectId:
+                    item.task?.subjectId ||
+                    null,
+
+                teacherId:
+                    item.task?.teacherId ||
+                    null,
+
+                reason:
+                    item.reason
 
             })
         )
     );
 
-}
 
+    return {
 
-// ============================================================
-// RETURN COMPLETE RESULT
-// ============================================================
+        ...result,
 
-return {
+        indexes
 
-    ...result,
-
-    indexes
-
-};
+    };
 
 }
 
 
-// ============================================================
-// GENERATE TIMETABLE — APPLICATION ENTRY POINT
-// ============================================================
-//
-// STAGE FLOW:
-//
-// 1. Prepare generator data
-// 2. Prepare task order
-// 3. Stage 6F — Smart generation
-// 4. Stage 6G — Final audit
-// 5. Stage 7 — SAVE + DISPLAY + APPLICATION STATE
-//
-// ============================================================
 
 
 
