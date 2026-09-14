@@ -7350,6 +7350,7 @@ for (
 // CREATE GENERATED ENTRY
 // ============================================================
 
+
 function createGeneratedEntry(
     task,
     period,
@@ -7416,6 +7417,20 @@ function createGeneratedEntry(
             task.taskId ??
             task.task_id ??
             task.id ??
+            null,
+
+        // ====================================================
+        // PARALLEL GROUP
+        // ====================================================
+        //
+        // Required by Stage 6G stream-conflict auditing.
+        //
+        // Without this field, valid parallel teaching
+        // cannot be distinguished from a true stream conflict.
+        //
+        parallel_group:
+            task.parallelGroup ??
+            task.parallel_group ??
             null,
 
         student_group_ids:
@@ -17058,6 +17073,7 @@ function addTimetableAuditWarning(
 //
 // ============================================================
 
+
 function normalizeGeneratedTimetableEntry(
     entry
 ) {
@@ -17120,11 +17136,33 @@ function normalizeGeneratedTimetableEntry(
             normalizeTimetableId(
                 entry.taskId ??
                 entry.task_id
+            ),
+
+        // ====================================================
+        // PARALLEL GROUP
+        // ====================================================
+        //
+        // Required by stream-conflict auditing.
+        //
+        // Valid parallel lessons can share the same
+        // stream + period when they have:
+        //
+        //     - different subjects
+        //     - different teachers
+        //     - the same explicit parallel group
+        //
+        // ====================================================
+
+        parallelGroup:
+            normalizeTimetableId(
+                entry.parallelGroup ??
+                entry.parallel_group
             )
 
     };
 
 }
+
 
 
 
