@@ -13594,6 +13594,7 @@ function placeSelectedDoubleTask(
 
 
 
+
 function releaseReservedSlot(
     task,
     period,
@@ -13945,23 +13946,18 @@ function releaseReservedSlot(
                         // ------------------------------------------------
 
                         if (
+                            taskId &&
+                            existingTaskId ===
                             taskId
                         ) {
 
-                            if (
-                                existingTaskId ===
-                                taskId
-                            ) {
-
-                                return false;
-
-                            }
+                            return false;
 
                         }
 
 
                         // ------------------------------------------------
-                        // Fall back / additionally check lesson identity.
+                        // Also remove matching lesson identity.
                         // ------------------------------------------------
 
                         if (
@@ -14840,48 +14836,38 @@ function releaseReservedSlot(
             taskId;
 
 
+        // ====================================================
+        // CHECK WHETHER THE SAME TASK STILL OCCUPIES ANOTHER
+        // PERIOD ON THIS DAY.
+        //
+        // taskPeriod is now the authoritative task/period
+        // occupancy index.
+        // ====================================================
+
         let anotherTaskPeriodRemains =
             false;
 
 
-        // ====================================================
-        // CHECK ALL REMAINING TEACHER LESSONS FOR THIS TASK
-        // ON THE SAME DAY.
-        // ====================================================
-
         if (
             taskId &&
-            indexes.teacherPeriodLessons instanceof Map
+            indexes.taskPeriod instanceof Set
         ) {
 
+            const taskPrefix =
+                `${taskId}__`;
+
+
             for (
-                const [
-                    teacherPeriodKey,
-                    lessons
-                ]
-                of indexes.teacherPeriodLessons.entries()
+                const indexedTaskPeriod of
+                indexes.taskPeriod
             ) {
 
                 if (
-                    !Array.isArray(
-                        lessons
-                    ) ||
-                    lessons.length === 0
-                ) {
-
-                    continue;
-
-                }
-
-
-                const separatorIndex =
-                    teacherPeriodKey.lastIndexOf(
-                        "__"
-                    );
-
-
-                if (
-                    separatorIndex === -1
+                    typeof indexedTaskPeriod !==
+                    "string" ||
+                    !indexedTaskPeriod.startsWith(
+                        taskPrefix
+                    )
                 ) {
 
                     continue;
@@ -14890,8 +14876,8 @@ function releaseReservedSlot(
 
 
                 const remainingPeriodId =
-                    teacherPeriodKey.slice(
-                        separatorIndex + 2
+                    indexedTaskPeriod.slice(
+                        taskPrefix.length
                     );
 
 
@@ -14929,64 +14915,11 @@ function releaseReservedSlot(
 
 
                 if (
-                    !Number.isFinite(
+                    Number.isFinite(
                         remainingDay
-                    ) ||
-                    remainingDay !==
+                    ) &&
+                    remainingDay ===
                     dayNumber
-                ) {
-
-                    continue;
-
-                }
-
-
-                const sameTaskRemains =
-                    lessons.some(
-                        lesson => {
-
-                            const existingTaskId =
-                                normalizeTimetableId(
-                                    lesson?.taskId
-                                );
-
-
-                            const existingLessonId =
-                                normalizeTimetableId(
-                                    lesson?.lessonId
-                                );
-
-
-                            if (
-                                taskId &&
-                                existingTaskId ===
-                                taskId
-                            ) {
-
-                                return true;
-
-                            }
-
-
-                            if (
-                                lessonKey &&
-                                existingLessonId ===
-                                lessonKey
-                            ) {
-
-                                return true;
-
-                            }
-
-
-                            return false;
-
-                        }
-                    );
-
-
-                if (
-                    sameTaskRemains
                 ) {
 
                     anotherTaskPeriodRemains =
@@ -15138,7 +15071,7 @@ function releaseReservedSlot(
 
 }
 
-    
+
 
 // ============================================================
 // PLACE SELECTED TASK
