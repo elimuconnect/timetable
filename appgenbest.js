@@ -23667,7 +23667,6 @@ function attemptStage7Relocation(
 
 
 
-
 function findAlternativeSlotForExistingTask(
     existingTask,
     failedTask,
@@ -23748,19 +23747,37 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
+    // BUILD ROOMS FOR FAILED TASK
+    // ========================================================
+
+    const failedTaskRooms =
+        buildStage7RoomCandidates(
+            failedTask,
+            rooms
+        );
+
+
+    if (
+        !Array.isArray(
+            failedTaskRooms
+        ) ||
+        failedTaskRooms.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
     // TEMPORARILY RELEASE EXISTING TASK
     // ========================================================
     //
-    // IMPORTANT:
+    // We must remove the existing task from the occupancy
+    // indexes before testing relocation candidates.
     //
-    // The existing task must NOT remain counted in the
-    // occupancy indexes while we test whether it can move.
-    //
-    // Otherwise teacher/day/week constraints may count the
-    // same lesson against itself and reject valid moves.
-    //
-    // The original reservation is restored immediately after
-    // candidate testing.
+    // This allows the candidate check to represent the state
+    // that will actually exist after the move.
     //
     // ========================================================
 
@@ -23805,7 +23822,20 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
-    // SEARCH FOR ALTERNATIVE LOCATION
+    // SEARCH FOR A VALID RELOCATION
+    // ========================================================
+    //
+    // A relocation is only acceptable when BOTH conditions
+    // are satisfied:
+    //
+    // 1. Existing task can move to the new period/room.
+    //
+    // 2. Failed task can then use the freed old period with
+    //    a valid room.
+    //
+    // This prevents Stage 7 from performing a move that must
+    // immediately be rolled back.
+    //
     // ========================================================
 
     for (
@@ -23836,10 +23866,6 @@ function findAlternativeSlotForExistingTask(
 
             // ------------------------------------------------
             // CHECK EXISTING TASK AT NEW LOCATION
-            //
-            // The original task is temporarily released, so
-            // this conflict check represents the state that
-            // will actually exist after the move.
             // ------------------------------------------------
 
             const existingTaskConflict =
@@ -23862,27 +23888,69 @@ function findAlternativeSlotForExistingTask(
 
 
             // ------------------------------------------------
-            // A VALID NEW LOCATION HAS BEEN FOUND.
+            // CHECK FAILED TASK IN THE FREED SLOT
+            // ------------------------------------------------
             //
-            // Do not check the failed task here.
-            // The caller will move the existing task first,
-            // then test the failed task in the freed slot.
+            // The existing task is still released here.
+            // Therefore this check represents the occupancy
+            // state after the existing task has moved away.
+            //
             // ------------------------------------------------
 
-            alternative = {
-
-                period,
-
-                room,
-
-                oldPeriod,
-
-                oldRoom
-
-            };
+            let failedTaskCanUseFreedSlot =
+                false;
 
 
-            break;
+            for (
+                const failedRoom of failedTaskRooms
+            ) {
+
+                const failedTaskConflict =
+                    checkSingleSlotConflict(
+                        failedTask,
+                        oldPeriod,
+                        failedRoom,
+                        indexes
+                    );
+
+
+                if (
+                    failedTaskConflict &&
+                    failedTaskConflict.valid === true
+                ) {
+
+                    failedTaskCanUseFreedSlot =
+                        true;
+
+                    alternative = {
+
+                        period,
+
+                        room,
+
+                        oldPeriod,
+
+                        oldRoom,
+
+                        failedRoom
+
+                    };
+
+
+                    break;
+
+                }
+
+            }
+
+
+            if (
+                failedTaskCanUseFreedSlot
+            ) {
+
+                break;
+
+            }
 
         }
 
@@ -23905,8 +23973,8 @@ function findAlternativeSlotForExistingTask(
     // The actual move is performed later by
     // moveStage7Task().
     //
-    // Therefore this function must leave the indexes in
-    // their original state before returning.
+    // Therefore this function must always leave the indexes
+    // in their original state before returning.
     //
     // ========================================================
 
@@ -23945,6 +24013,10 @@ function findAlternativeSlotForExistingTask(
 
                 alternativeRoom:
                     alternative?.room?.id ||
+                    null,
+
+                failedRoom:
+                    alternative?.failedRoom?.id ||
                     null
 
             }
@@ -23996,6 +24068,8 @@ function findAlternativeSlotForExistingTask(
     return alternative;
 
 }
+
+
 
 // ============================================================
 // FIND CURRENT PERIOD OF TASK
