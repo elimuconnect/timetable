@@ -10696,6 +10696,7 @@ function getPeriodPositionScore(
 //
 // ============================================================
 
+
 function calculateCandidateSlotScore(
     task,
     period,
@@ -10739,6 +10740,135 @@ function calculateCandidateSlotScore(
         Number(
             period.dayNumber
         );
+
+
+    // ========================================================
+    // PARALLEL GROUP SYNCHRONIZATION
+    // ========================================================
+    //
+    // If another lesson belonging to the SAME explicit
+    // parallel group is already placed in this stream and
+    // period, strongly prefer this period.
+    //
+    // This keeps all members of a parallel group together.
+    //
+    // IMPORTANT:
+    //
+    // This is ONLY a scoring preference.
+    //
+    // The final validity decision is still made by:
+    //
+    //     checkSingleSlotConflict()
+    //
+    // Therefore this does not weaken any existing conflict
+    // validation.
+    //
+    // ========================================================
+
+    const taskParallelGroup =
+        normalizeTimetableId(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    if (
+        taskParallelGroup
+    ) {
+
+        const studentGroups =
+            getTaskStudentGroups(
+                task
+            );
+
+
+        let parallelGroupMatches =
+            0;
+
+
+        for (
+            const studentGroupId of studentGroups
+        ) {
+
+            if (
+                !studentGroupId
+            ) {
+
+                continue;
+
+            }
+
+
+            const studentGroupKey =
+                `${studentGroupId}__${normalizeTimetableId(period.id)}`;
+
+
+            const existingLessons =
+                indexes.studentGroupPeriodLessons instanceof Map
+                    ? (
+                        indexes.studentGroupPeriodLessons.get(
+                            studentGroupKey
+                        ) || []
+                    )
+                    : [];
+
+
+            for (
+                const existingLesson of existingLessons
+            ) {
+
+                if (
+                    !existingLesson
+                ) {
+
+                    continue;
+
+                }
+
+
+                const existingParallelGroup =
+                    normalizeTimetableId(
+                        existingLesson.parallelGroup
+                    );
+
+
+                if (
+                    existingParallelGroup &&
+                    existingParallelGroup ===
+                        taskParallelGroup
+                ) {
+
+                    parallelGroupMatches++;
+
+                }
+
+            }
+
+        }
+
+
+        if (
+            parallelGroupMatches > 0
+        ) {
+
+            // ------------------------------------------------
+            // Very strong preference:
+            //
+            // Keep all members of an explicit parallel group
+            // in the same period.
+            // ------------------------------------------------
+
+            score +=
+                1000;
+
+
+            reasons.push(
+                "Matches an existing lesson in the same parallel group and period."
+            );
+
+        }
+
+    }
 
 
     // ========================================================
