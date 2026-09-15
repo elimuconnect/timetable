@@ -13936,6 +13936,8 @@ function releaseReservedSlot(
         );
 
 
+    
+
     // ========================================================
     // TEACHER PERIOD LESSON TRACKING
     // ========================================================
@@ -13959,7 +13961,7 @@ function releaseReservedSlot(
             Array.isArray(
                 teacherLessons
             )
-        {
+        ) {
 
             const remainingLessons =
                 teacherLessons.filter(
@@ -15063,13 +15065,7 @@ function releaseReservedSlot(
 
 }
 
-// ============================================================
-// PLACE SELECTED TASK
-// ============================================================
-//
-// Routes the task to the correct placement function.
-//
-// ============================================================
+
 
 function placeSelectedSmartTask(
     selection,
