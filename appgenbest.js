@@ -6789,6 +6789,7 @@ function checkSingleSlotConflict(
 //
 // ============================================================
 
+
 function reserveSlot(
     task,
     period,
@@ -6841,6 +6842,47 @@ function reserveSlot(
 
 
     // ========================================================
+    // TASK / PERIOD
+    // ========================================================
+    //
+    // Keep a direct record of every task occupying a period.
+    //
+    // releaseReservedSlot() uses this index when determining
+    // whether a task still occupies another period on the same
+    // day, especially for double lessons.
+    //
+    // ========================================================
+
+    const taskId =
+        normalizeTimetableId(
+            task.taskId ??
+            task.task_id ??
+            task.id
+        );
+
+
+    if (
+        taskId
+    ) {
+
+        if (
+            !(indexes.taskPeriod instanceof Set)
+        ) {
+
+            indexes.taskPeriod =
+                new Set();
+
+        }
+
+
+        indexes.taskPeriod.add(
+            `${taskId}__${periodId}`
+        );
+
+    }
+
+
+    // ========================================================
     // STREAM / PERIOD
     // ========================================================
 
@@ -6870,93 +6912,92 @@ function reserveSlot(
         indexes.studentGroupPeriod
     ) {
 
+        for (
+            const studentGroupId of studentGroups
+        ) {
+
+            if (
+                !studentGroupId
+            ) {
+
+                continue;
+
+            }
 
 
+            const studentGroupKey =
+                `${studentGroupId}__${periodId}`;
 
-for (
-    const studentGroupId of studentGroups
-) {
 
-    if (
-        !studentGroupId
-    ) {
+            indexes.studentGroupPeriod.add(
+                studentGroupKey
+            );
 
-        continue;
+
+            // ========================================================
+            // STUDENT GROUP / PERIOD LESSON DETAILS
+            // ========================================================
+
+            if (
+                !(
+                    indexes.studentGroupPeriodLessons
+                    instanceof Map
+                )
+            ) {
+
+                indexes.studentGroupPeriodLessons =
+                    new Map();
+
+            }
+
+
+            if (
+                !indexes.studentGroupPeriodLessons.has(
+                    studentGroupKey
+                )
+            ) {
+
+                indexes.studentGroupPeriodLessons.set(
+                    studentGroupKey,
+                    []
+                );
+
+            }
+
+
+            indexes.studentGroupPeriodLessons
+                .get(
+                    studentGroupKey
+                )
+                .push({
+
+                    taskId:
+                        task.taskId ??
+                        task.task_id ??
+                        task.id ??
+                        null,
+
+                    subjectId:
+                        task.subjectId ??
+                        task.subject_id ??
+                        null,
+
+                    teacherId:
+                        task.teacherId ??
+                        task.teacher_id ??
+                        null,
+
+                    parallelGroup:
+                        task.parallelGroup ??
+                        task.parallel_group ??
+                        null
+
+                });
+
+        }
 
     }
 
-
-    const studentGroupKey =
-        `${studentGroupId}__${periodId}`;
-
-
-    indexes.studentGroupPeriod.add(
-        studentGroupKey
-    );
-
-
-    // ========================================================
-    // STUDENT GROUP / PERIOD LESSON DETAILS
-    // ========================================================
-
-    if (
-        !(indexes.studentGroupPeriodLessons instanceof Map)
-    ) {
-
-        indexes.studentGroupPeriodLessons =
-            new Map();
-
-    }
-
-
-    if (
-        !indexes.studentGroupPeriodLessons.has(
-            studentGroupKey
-        )
-    ) {
-
-        indexes.studentGroupPeriodLessons.set(
-            studentGroupKey,
-            []
-        );
-
-    }
-
-
-    indexes.studentGroupPeriodLessons
-        .get(
-            studentGroupKey
-        )
-        .push({
-
-            taskId:
-                task.taskId ??
-                task.task_id ??
-                task.id ??
-                null,
-
-            subjectId:
-                task.subjectId ??
-                task.subject_id ??
-                null,
-
-            teacherId:
-                task.teacherId ??
-                task.teacher_id ??
-                null,
-
-            parallelGroup:
-                task.parallelGroup ??
-                task.parallel_group ??
-                null
-
-        });
-
-}
-
-    }
-
-        
 
     // ========================================================
     // TEACHER / PERIOD
@@ -6993,7 +7034,10 @@ for (
         // ----------------------------------------------------
 
         if (
-            !(indexes.teacherPeriodLessons instanceof Map)
+            !(
+                indexes.teacherPeriodLessons
+                instanceof Map
+            )
         ) {
 
             indexes.teacherPeriodLessons =
@@ -7331,7 +7375,10 @@ for (
     ) {
 
         if (
-            !(indexes.dailyRequirementLessonKeys instanceof Set)
+            !(
+                indexes.dailyRequirementLessonKeys
+                instanceof Set
+            )
         ) {
 
             indexes.dailyRequirementLessonKeys =
@@ -7385,7 +7432,6 @@ for (
     return true;
 
 }
-
 
 
 // ============================================================
@@ -13509,6 +13555,7 @@ function placeSelectedDoubleTask(
 // This is required so failed double-lesson attempts do not
 // leave stale conflict reservations behind.
 //
+
 function releaseReservedSlot(
     task,
     period,
@@ -13577,15 +13624,89 @@ function releaseReservedSlot(
     // ========================================================
     // STREAM / PERIOD
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Multiple legitimate parallel lessons can occupy the
+    // same stream + period.
+    //
+    // Therefore we must NOT blindly delete streamPeriod.
+    //
+    // First determine whether another lesson still occupies
+    // one of this task's student groups in this period.
+    //
+    // ========================================================
 
     if (
         streamId &&
         indexes.streamPeriod
     ) {
 
-        indexes.streamPeriod.delete(
-            `${streamId}__${periodId}`
-        );
+        let streamStillOccupied =
+            false;
+
+
+        if (
+            indexes.studentGroupPeriodLessons instanceof Map
+        ) {
+
+            for (
+                const groupId of studentGroups
+            ) {
+
+                const normalizedGroupId =
+                    normalizeTimetableId(
+                        groupId
+                    );
+
+
+                if (
+                    !normalizedGroupId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const studentGroupKey =
+                    `${normalizedGroupId}__${periodId}`;
+
+
+                const remainingLessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        studentGroupKey
+                    );
+
+
+                if (
+                    Array.isArray(
+                        remainingLessons
+                    ) &&
+                    remainingLessons.length > 0
+                ) {
+
+                    streamStillOccupied =
+                        true;
+
+                    break;
+
+                }
+
+            }
+
+        }
+
+
+        if (
+            !streamStillOccupied
+        ) {
+
+            indexes.streamPeriod.delete(
+                `${streamId}__${periodId}`
+            );
+
+        }
 
     }
 
@@ -13594,7 +13715,8 @@ function releaseReservedSlot(
     // TASK / PERIOD
     // ========================================================
     //
-    // Must mirror reserveSlot().
+    // Must mirror the task-specific occupancy index when it
+    // exists.
     //
     // ========================================================
 
@@ -13837,7 +13959,7 @@ function releaseReservedSlot(
             Array.isArray(
                 teacherLessons
             )
-        ) {
+        {
 
             const remainingLessons =
                 teacherLessons.filter(
@@ -13855,10 +13977,6 @@ function releaseReservedSlot(
                             );
 
 
-                        // ------------------------------------------------
-                        // Prefer task identity when available.
-                        // ------------------------------------------------
-
                         if (
                             taskId &&
                             existingTaskId ===
@@ -13869,10 +13987,6 @@ function releaseReservedSlot(
 
                         }
 
-
-                        // ------------------------------------------------
-                        // Also remove matching lesson identity.
-                        // ------------------------------------------------
 
                         if (
                             lessonId &&
@@ -13917,15 +14031,6 @@ function releaseReservedSlot(
     // ========================================================
     // TEACHER / PERIOD
     // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // Only delete teacherPeriod when there are NO remaining
-    // teacher lessons in this period.
-    //
-    // This preserves legitimate concurrent/shared teaching.
-    //
-    // ========================================================
 
     if (
         teacherId &&
@@ -13962,11 +14067,6 @@ function releaseReservedSlot(
 
     // ========================================================
     // TEACHER + SUBJECT + PERIOD
-    // ========================================================
-    //
-    // Only remove this index when no remaining lesson with the
-    // same teacher + subject + period exists.
-    //
     // ========================================================
 
     if (
@@ -14750,14 +14850,6 @@ function releaseReservedSlot(
             taskId;
 
 
-        // ====================================================
-        // CHECK WHETHER THE SAME TASK STILL OCCUPIES ANOTHER
-        // PERIOD ON THIS DAY.
-        //
-        // taskPeriod is now the authoritative task/period
-        // occupancy index.
-        // ====================================================
-
         let anotherTaskPeriodRemains =
             false;
 
@@ -14848,11 +14940,6 @@ function releaseReservedSlot(
         }
 
 
-        // ====================================================
-        // REMOVE DAILY LESSON COUNT ONLY WHEN THIS IS THE
-        // FINAL PERIOD OF THIS TASK ON THIS DAY.
-        // ====================================================
-
         if (
             !anotherTaskPeriodRemains
         ) {
@@ -14883,10 +14970,6 @@ function releaseReservedSlot(
 
             }
 
-
-            // =================================================
-            // REMOVE EXACT UNIQUE DAILY LESSON KEY
-            // =================================================
 
             if (
                 indexes.dailyRequirementLessonKeys instanceof Set
@@ -14944,11 +15027,6 @@ function releaseReservedSlot(
                         }
 
 
-                        // ------------------------------------------------
-                        // No identity available.
-                        // Remove only one matching key.
-                        // ------------------------------------------------
-
                         if (
                             keysToRemove.length ===
                             0
@@ -14984,10 +15062,6 @@ function releaseReservedSlot(
     return true;
 
 }
-
-
-
-
 
 // ============================================================
 // PLACE SELECTED TASK
