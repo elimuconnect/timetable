@@ -23131,6 +23131,10 @@ function placeStage7Task(
 //
 // ============================================================
 
+
+
+
+
 function attemptStage7Relocation(
     failedTask,
     candidatePeriods,
@@ -23202,16 +23206,6 @@ function attemptStage7Relocation(
     ) {
 
         if (
-            moveAttempts >=
-            STAGE7_CONFIG.maxMovesPerTask
-        ) {
-
-            break;
-
-        }
-
-
-        if (
             !existingTask
         ) {
 
@@ -23244,11 +23238,16 @@ function attemptStage7Relocation(
         }
 
 
-        moveAttempts++;
-
-
         // ====================================================
         // FIND SAFE NEW LOCATION
+        // ====================================================
+        //
+        // Do NOT consume the move-attempt limit merely because
+        // this task was inspected.
+        //
+        // An attempt only counts when an actual alternative
+        // location is found and we are going to try moving it.
+        //
         // ====================================================
 
         const alternative =
@@ -23268,6 +23267,19 @@ function attemptStage7Relocation(
             continue;
 
         }
+
+
+        if (
+            moveAttempts >=
+            STAGE7_CONFIG.maxMovesPerTask
+        ) {
+
+            break;
+
+        }
+
+
+        moveAttempts++;
 
 
         // ====================================================
@@ -23644,8 +23656,6 @@ function attemptStage7Relocation(
             []
 
     };
-
-}
 
 
 
