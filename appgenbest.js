@@ -23665,6 +23665,9 @@ function attemptStage7Relocation(
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
 // ============================================================
 
+
+
+
 function findAlternativeSlotForExistingTask(
     existingTask,
     failedTask,
@@ -23745,23 +23748,65 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
-    // BUILD ROOMS FOR FAILED TASK
+    // TEMPORARILY RELEASE EXISTING TASK
     // ========================================================
     //
     // IMPORTANT:
     //
-    // We intentionally DO NOT check the failed task here.
+    // The existing task must NOT remain counted in the
+    // occupancy indexes while we test whether it can move.
     //
-    // The existing task is still occupying oldPeriod/oldRoom
-    // at this stage, so checking the failed task now can
-    // incorrectly reject a relocation that becomes valid once
-    // the existing task is moved.
+    // Otherwise teacher/day/week constraints may count the
+    // same lesson against itself and reject valid moves.
     //
-    // The definitive failed-task check happens inside
-    // attemptStage7Relocation() after the move.
+    // The original reservation is restored immediately after
+    // candidate testing.
     //
     // ========================================================
 
+    const released =
+        releaseReservedSlot(
+            existingTask,
+            oldPeriod,
+            oldRoom,
+            indexes
+        );
+
+
+    if (
+        released !== true
+    ) {
+
+        console.warn(
+            "STAGE 7: Could not temporarily release existing task while searching for an alternative.",
+            {
+
+                taskId:
+                    existingTask?.taskId ||
+                    existingTask?.id,
+
+                oldPeriod:
+                    oldPeriod?.id,
+
+                oldRoom:
+                    oldRoom?.id ||
+                    null
+
+            }
+        );
+
+        return null;
+
+    }
+
+
+    let alternative =
+        null;
+
+
+    // ========================================================
+    // SEARCH FOR ALTERNATIVE LOCATION
+    // ========================================================
 
     for (
         const period of candidatePeriods
@@ -23772,8 +23817,12 @@ function findAlternativeSlotForExistingTask(
         // ----------------------------------------------------
 
         if (
-            String(period.id) ===
-            String(oldPeriod.id)
+            String(
+                period.id
+            ) ===
+            String(
+                oldPeriod.id
+            )
         ) {
 
             continue;
@@ -23787,6 +23836,10 @@ function findAlternativeSlotForExistingTask(
 
             // ------------------------------------------------
             // CHECK EXISTING TASK AT NEW LOCATION
+            //
+            // The original task is temporarily released, so
+            // this conflict check represents the state that
+            // will actually exist after the move.
             // ------------------------------------------------
 
             const existingTaskConflict =
@@ -23811,10 +23864,12 @@ function findAlternativeSlotForExistingTask(
             // ------------------------------------------------
             // A VALID NEW LOCATION HAS BEEN FOUND.
             //
-            // Do not check the failed task yet.
+            // Do not check the failed task here.
+            // The caller will move the existing task first,
+            // then test the failed task in the freed slot.
             // ------------------------------------------------
 
-            return {
+            alternative = {
 
                 period,
 
@@ -23826,12 +23881,119 @@ function findAlternativeSlotForExistingTask(
 
             };
 
+
+            break;
+
+        }
+
+
+        if (
+            alternative
+        ) {
+
+            break;
+
         }
 
     }
 
 
-    return null;
+    // ========================================================
+    // RESTORE ORIGINAL RESERVATION
+    // ========================================================
+    //
+    // The actual move is performed later by
+    // moveStage7Task().
+    //
+    // Therefore this function must leave the indexes in
+    // their original state before returning.
+    //
+    // ========================================================
+
+    const restored =
+        checkSingleSlotConflict(
+            existingTask,
+            oldPeriod,
+            oldRoom,
+            indexes
+        );
+
+
+    if (
+        !restored ||
+        restored.valid !== true
+    ) {
+
+        console.error(
+            "STAGE 7: CRITICAL — original task slot became invalid while searching for relocation.",
+            {
+
+                taskId:
+                    existingTask?.taskId ||
+                    existingTask?.id,
+
+                oldPeriod:
+                    oldPeriod?.id,
+
+                oldRoom:
+                    oldRoom?.id ||
+                    null,
+
+                alternativePeriod:
+                    alternative?.period?.id ||
+                    null,
+
+                alternativeRoom:
+                    alternative?.room?.id ||
+                    null
+
+            }
+        );
+
+
+        return null;
+
+    }
+
+
+    const restoredReservation =
+        reserveSlot(
+            existingTask,
+            oldPeriod,
+            oldRoom,
+            indexes
+        );
+
+
+    if (
+        restoredReservation !== true
+    ) {
+
+        console.error(
+            "STAGE 7: CRITICAL — failed to restore original task reservation after alternative search.",
+            {
+
+                taskId:
+                    existingTask?.taskId ||
+                    existingTask?.id,
+
+                oldPeriod:
+                    oldPeriod?.id,
+
+                oldRoom:
+                    oldRoom?.id ||
+                    null
+
+            }
+        );
+
+
+        return null;
+
+    }
+
+
+    return alternative;
 
 }
 
