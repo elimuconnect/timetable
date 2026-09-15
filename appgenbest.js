@@ -22683,17 +22683,15 @@ function repairSingleFailedTask(
 }
 
 
-// ============================================================
-// BUILD STAGE 7 PERIOD CANDIDATES
-// ============================================================
-
 function buildStage7PeriodCandidates(
     task,
     periods
 ) {
 
     if (
-        !Array.isArray(periods)
+        !Array.isArray(
+            periods
+        )
     ) {
 
         return [];
@@ -22701,8 +22699,41 @@ function buildStage7PeriodCandidates(
     }
 
 
+    // ========================================================
+    // STAGE 7 MUST USE TEACHING PERIODS ONLY
+    // ========================================================
+    //
+    // Do not allow breaks, assemblies, lunch, or other
+    // non-teaching periods to become repair candidates.
+    //
+    // Use the same teaching-period helper as Stage 6.
+    //
+    // ========================================================
+
+    const teachingPeriods =
+        getTeachingPeriods(
+            periods
+        );
+
+
+    if (
+        !Array.isArray(
+            teachingPeriods
+        ) ||
+        teachingPeriods.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // BUILD SORTED CANDIDATES
+    // ========================================================
+
     const candidates =
-        periods
+        teachingPeriods
             .filter(
                 period =>
                     period &&
@@ -22716,12 +22747,17 @@ function buildStage7PeriodCandidates(
 
                     const dayA =
                         Number(
-                            a.day_number || 0
+                            a.dayNumber ??
+                            a.day_number ??
+                            0
                         );
+
 
                     const dayB =
                         Number(
-                            b.day_number || 0
+                            b.dayNumber ??
+                            b.day_number ??
+                            0
                         );
 
 
@@ -22738,7 +22774,9 @@ function buildStage7PeriodCandidates(
 
                     const orderA =
                         Number(
+                            a.periodOrder ??
                             a.period_order ??
+                            a.periodNumber ??
                             a.period_number ??
                             0
                         );
@@ -22746,7 +22784,9 @@ function buildStage7PeriodCandidates(
 
                     const orderB =
                         Number(
+                            b.periodOrder ??
                             b.period_order ??
+                            b.periodNumber ??
                             b.period_number ??
                             0
                         );
@@ -22764,9 +22804,6 @@ function buildStage7PeriodCandidates(
 
 }
 
-// ============================================================
-// BUILD STAGE 7 ROOM CANDIDATES
-// ============================================================
 
 
 
