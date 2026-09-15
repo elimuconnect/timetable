@@ -6177,6 +6177,9 @@ function areConcurrentTeacherLessonsAllowed(
 
 
 
+
+
+
 function checkSingleSlotConflict(
     task,
     period,
@@ -6324,9 +6327,7 @@ function checkSingleSlotConflict(
                         );
 
 
-                    // ------------------------------------------------
-                    // DIFFERENT SUBJECT REQUIRED
-                    // ------------------------------------------------
+                    // Different subject required
 
                     if (
                         !taskSubjectId ||
@@ -6340,9 +6341,7 @@ function checkSingleSlotConflict(
                     }
 
 
-                    // ------------------------------------------------
-                    // DIFFERENT TEACHER REQUIRED
-                    // ------------------------------------------------
+                    // Different teacher required
 
                     if (
                         !taskTeacherId ||
@@ -6356,18 +6355,7 @@ function checkSingleSlotConflict(
                     }
 
 
-                    // ------------------------------------------------
-                    // EXPLICIT PARALLEL GROUP
-                    // ------------------------------------------------
-                    //
-                    // If either lesson specifies a parallel group,
-                    // both lessons must specify the SAME group.
-                    //
-                    // If neither specifies a parallel group,
-                    // different-subject / different-teacher
-                    // parallel teaching is allowed.
-                    //
-                    // ------------------------------------------------
+                    // Explicit parallel group must match
 
                     if (
                         taskParallelGroup ||
@@ -6375,8 +6363,8 @@ function checkSingleSlotConflict(
                     ) {
 
                         return (
-                            !!taskParallelGroup &&
-                            !!existingParallelGroup &&
+                            taskParallelGroup &&
+                            existingParallelGroup &&
                             taskParallelGroup ===
                             existingParallelGroup
                         );
@@ -6384,16 +6372,7 @@ function checkSingleSlotConflict(
                     }
 
 
-                    // ------------------------------------------------
-                    // NO EXPLICIT PARALLEL GROUP
-                    // ------------------------------------------------
-                    //
-                    // Different subject + different teacher is
-                    // sufficient for valid parallel teaching.
-                    //
-                    // ------------------------------------------------
-
-                    return true;
+                    return false;
 
                 }
             );
@@ -6786,6 +6765,12 @@ function checkSingleSlotConflict(
     };
 
 }
+
+
+
+
+
+
 
 
 // ============================================================
