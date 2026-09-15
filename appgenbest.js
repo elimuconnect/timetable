@@ -23132,9 +23132,6 @@ function placeStage7Task(
 // ============================================================
 
 
-
-
-
 function attemptStage7Relocation(
     failedTask,
     candidatePeriods,
@@ -23656,6 +23653,9 @@ function attemptStage7Relocation(
             []
 
     };
+
+}
+
 
 
 
