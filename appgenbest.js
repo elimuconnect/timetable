@@ -13587,14 +13587,6 @@ function placeSelectedDoubleTask(
 // This is required so failed double-lesson attempts do not
 // leave stale conflict reservations behind.
 //
-
-
-
-
-
-
-
-
 function releaseReservedSlot(
     task,
     period,
@@ -15070,6 +15062,8 @@ function releaseReservedSlot(
     return true;
 
 }
+
+
 
 
 
