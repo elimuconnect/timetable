@@ -23132,6 +23132,7 @@ function placeStage7Task(
 // ============================================================
 
 
+
 function attemptStage7Relocation(
     failedTask,
     candidatePeriods,
@@ -23238,14 +23239,6 @@ function attemptStage7Relocation(
         // ====================================================
         // FIND SAFE NEW LOCATION
         // ====================================================
-        //
-        // Do NOT consume the move-attempt limit merely because
-        // this task was inspected.
-        //
-        // An attempt only counts when an actual alternative
-        // location is found and we are going to try moving it.
-        //
-        // ====================================================
 
         const alternative =
             findAlternativeSlotForExistingTask(
@@ -23282,13 +23275,6 @@ function attemptStage7Relocation(
         // ====================================================
         // MOVE EXISTING TASK
         // ====================================================
-        //
-        // CONTRACT:
-        //
-        //     true  = moved successfully
-        //     false = move failed and rollback attempted
-        //
-        // ====================================================
 
         const moved =
             moveStage7Task(
@@ -23312,12 +23298,6 @@ function attemptStage7Relocation(
 
         // ====================================================
         // CAPTURE MOVED ENTRY
-        // ====================================================
-        //
-        // moveStage7Task() stores the new generated entry at:
-        //
-        //     existingTask.stage7MovedEntry
-        //
         // ====================================================
 
         const movedEntry =
@@ -23345,7 +23325,6 @@ function attemptStage7Relocation(
 
             // ------------------------------------------------
             // Failed task has no usable room option.
-            //
             // Restore the moved existing task.
             // ------------------------------------------------
 
@@ -23401,6 +23380,65 @@ function attemptStage7Relocation(
 
 
         // ====================================================
+        // BUILD ORDERED FAILED-TASK ROOMS
+        // ====================================================
+        //
+        // findAlternativeSlotForExistingTask() has already
+        // identified a room that was valid for the failed task
+        // while the original slot was temporarily freed.
+        //
+        // Try that exact room first.
+        //
+        // Then try the remaining rooms as a fallback.
+        //
+        // ====================================================
+
+        const orderedFailedTaskRooms = [];
+
+
+        if (
+            alternative.failedRoom
+        ) {
+
+            orderedFailedTaskRooms.push(
+                alternative.failedRoom
+            );
+
+        }
+
+
+        for (
+            const failedRoom of failedTaskRoomCandidates
+        ) {
+
+            const alreadyIncluded =
+                orderedFailedTaskRooms.some(
+                    candidate =>
+                        candidate &&
+                        failedRoom &&
+                        String(
+                            candidate.id
+                        ) ===
+                        String(
+                            failedRoom.id
+                        )
+                );
+
+
+            if (
+                !alreadyIncluded
+            ) {
+
+                orderedFailedTaskRooms.push(
+                    failedRoom
+                );
+
+            }
+
+        }
+
+
+        // ====================================================
         // TRY FAILED TASK IN FREED ORIGINAL SLOT
         // ====================================================
 
@@ -23409,7 +23447,7 @@ function attemptStage7Relocation(
 
 
         for (
-            const failedRoom of failedTaskRoomCandidates
+            const failedRoom of orderedFailedTaskRooms
         ) {
 
             const failedTaskConflict =
@@ -23443,21 +23481,6 @@ function attemptStage7Relocation(
                     generatorData
                 );
 
-
-            // ------------------------------------------------
-            // IMPORTANT:
-            //
-            // placeStage7Task() returns an OBJECT.
-            //
-            // Therefore check:
-            //
-            //     placement.placed === true
-            //
-            // NOT:
-            //
-            //     if (placement)
-            //
-            // ------------------------------------------------
 
             if (
                 placement &&
@@ -23652,12 +23675,9 @@ function attemptStage7Relocation(
         moved:
             []
 
-    };
+        };
 
 }
-
-
-
 
 
 
