@@ -22683,6 +22683,7 @@ function repairSingleFailedTask(
 }
 
 
+
 function buildStage7PeriodCandidates(
     task,
     periods
@@ -22699,41 +22700,8 @@ function buildStage7PeriodCandidates(
     }
 
 
-    // ========================================================
-    // STAGE 7 MUST USE TEACHING PERIODS ONLY
-    // ========================================================
-    //
-    // Do not allow breaks, assemblies, lunch, or other
-    // non-teaching periods to become repair candidates.
-    //
-    // Use the same teaching-period helper as Stage 6.
-    //
-    // ========================================================
-
-    const teachingPeriods =
-        getTeachingPeriods(
-            periods
-        );
-
-
-    if (
-        !Array.isArray(
-            teachingPeriods
-        ) ||
-        teachingPeriods.length === 0
-    ) {
-
-        return [];
-
-    }
-
-
-    // ========================================================
-    // BUILD SORTED CANDIDATES
-    // ========================================================
-
     const candidates =
-        teachingPeriods
+        periods
             .filter(
                 period =>
                     period &&
@@ -22747,26 +22715,26 @@ function buildStage7PeriodCandidates(
 
                     const dayA =
                         Number(
-                            a.dayNumber ??
-                            a.day_number ??
+                            a.day_number ||
                             0
                         );
 
 
                     const dayB =
                         Number(
-                            b.dayNumber ??
-                            b.day_number ??
+                            b.day_number ||
                             0
                         );
 
 
                     if (
-                        dayA !== dayB
+                        dayA !==
+                        dayB
                     ) {
 
                         return (
-                            dayA - dayB
+                            dayA -
+                            dayB
                         );
 
                     }
@@ -22774,9 +22742,7 @@ function buildStage7PeriodCandidates(
 
                     const orderA =
                         Number(
-                            a.periodOrder ??
                             a.period_order ??
-                            a.periodNumber ??
                             a.period_number ??
                             0
                         );
@@ -22784,16 +22750,15 @@ function buildStage7PeriodCandidates(
 
                     const orderB =
                         Number(
-                            b.periodOrder ??
                             b.period_order ??
-                            b.periodNumber ??
                             b.period_number ??
                             0
                         );
 
 
                     return (
-                        orderA - orderB
+                        orderA -
+                        orderB
                     );
 
                 }
@@ -22803,7 +22768,6 @@ function buildStage7PeriodCandidates(
     return candidates;
 
 }
-
 
 
 
