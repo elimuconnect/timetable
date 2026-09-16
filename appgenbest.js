@@ -10743,6 +10743,7 @@ function getPeriodPositionScore(
 // ============================================================
 
 
+
 function calculateCandidateSlotScore(
     task,
     period,
@@ -10874,7 +10875,8 @@ function calculateCandidateSlotScore(
 
                 const existingParallelGroup =
                     normalizeTimetableId(
-                        existingLesson.parallelGroup
+                        existingLesson.parallelGroup ??
+                        existingLesson.parallel_group
                     );
 
 
@@ -11255,8 +11257,6 @@ function calculateCandidateSlotScore(
 
 }
 
-
-// ============================================================
 // SCORE SINGLE LESSON CANDIDATES
 // ============================================================
 //
@@ -11265,6 +11265,7 @@ function calculateCandidateSlotScore(
 // Nothing is reserved here.
 //
 // ============================================================
+
 
 function getScoredSingleLessonCandidates(
     task,
@@ -11307,6 +11308,143 @@ function getScoredSingleLessonCandidates(
 
 
     const candidates = [];
+
+
+    // ========================================================
+    // IDENTIFY EXISTING PARALLEL-GROUP PERIODS
+    // ========================================================
+    //
+    // If another lesson belonging to the same explicit
+    // parallel group has already been placed for the same
+    // student group, prefer that period.
+    //
+    // This is a synchronization preference only.
+    //
+    // Final validity is still determined by
+    // checkSingleSlotConflict().
+    //
+    // ========================================================
+
+    const taskParallelGroup =
+        normalizeTimetableId(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    const synchronizedPeriodIds =
+        new Set();
+
+
+    if (
+        taskParallelGroup &&
+        indexes.studentGroupPeriodLessons instanceof Map
+    ) {
+
+        const studentGroups =
+            getTaskStudentGroups(
+                task
+            );
+
+
+        for (
+            const studentGroupId of studentGroups
+        ) {
+
+            if (
+                !studentGroupId
+            ) {
+
+                continue;
+
+            }
+
+
+            for (
+                const period of teachingPeriods
+            ) {
+
+                if (
+                    !period ||
+                    !period.id
+                ) {
+
+                    continue;
+
+                }
+
+
+                const periodId =
+                    normalizeTimetableId(
+                        period.id
+                    );
+
+
+                if (
+                    !periodId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const key =
+                    `${studentGroupId}__${periodId}`;
+
+
+                const existingLessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        key
+                    ) ||
+                    [];
+
+
+                const hasMatchingParallelLesson =
+                    existingLessons.some(
+                        existingLesson => {
+
+                            if (
+                                !existingLesson
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            const existingParallelGroup =
+                                normalizeTimetableId(
+                                    existingLesson.parallelGroup ??
+                                    existingLesson.parallel_group
+                                );
+
+
+                            return (
+                                existingParallelGroup &&
+                                existingParallelGroup ===
+                                taskParallelGroup
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    hasMatchingParallelLesson
+                ) {
+
+                    synchronizedPeriodIds.add(
+                        periodId
+                    );
+
+                }
+
+            }
+
+        }
+
+    }
 
 
     // ========================================================
@@ -11354,6 +11492,60 @@ function getScoredSingleLessonCandidates(
                         );
 
 
+                    const periodId =
+                        normalizeTimetableId(
+                            period.id
+                        );
+
+
+                    const isSynchronized =
+                        taskParallelGroup &&
+                        synchronizedPeriodIds.has(
+                            periodId
+                        );
+
+
+                    let score =
+                        Number(
+                            scoring.score
+                        ) || 0;
+
+
+                    const reasons =
+                        Array.isArray(
+                            scoring.reasons
+                        )
+                            ? [
+                                ...scoring.reasons
+                            ]
+                            : [];
+
+
+                    // ------------------------------------------------
+                    // STRONG PARALLEL SYNCHRONIZATION PREFERENCE
+                    // ------------------------------------------------
+                    //
+                    // Keep this as a scoring preference rather than
+                    // bypassing checkSingleSlotConflict().
+                    //
+                    // The candidate remains valid only when the
+                    // existing conflict engine approves it.
+                    //
+                    if (
+                        isSynchronized
+                    ) {
+
+                        score +=
+                            100000;
+
+
+                        reasons.push(
+                            "Matches an existing lesson in the same parallel group and period."
+                        );
+
+                    }
+
+
                     candidates.push({
 
                         taskId:
@@ -11363,11 +11555,9 @@ function getScoredSingleLessonCandidates(
 
                         room,
 
-                        score:
-                            scoring.score,
+                        score,
 
-                        reasons:
-                            scoring.reasons
+                        reasons
 
                     });
 
