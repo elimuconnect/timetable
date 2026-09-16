@@ -2833,7 +2833,60 @@ console.log(
 );
 
 
+console.log(
+    "======================================"
+);
 
+console.log(
+    "DEBUG — LESSON TASKS AFTER CREATION"
+);
+
+console.log(
+    "======================================"
+);
+
+console.table(
+    lessonTasks.map(
+        task => ({
+            taskId:
+                task.taskId,
+
+            requirementId:
+                task.requirementId,
+
+            streamId:
+                task.streamId,
+
+            subjectId:
+                task.subjectId,
+
+            taskType:
+                task.taskType,
+
+            parallelGroup:
+                task.parallelGroup,
+
+            parallelGroupSize:
+                task.parallelGroupSize
+        })
+    )
+);
+
+console.log(
+    "Lesson tasks WITH parallel groups:",
+    lessonTasks.filter(
+        task =>
+            task.parallelGroup
+    ).length
+);
+
+console.log(
+    "Lesson tasks WITHOUT parallel groups:",
+    lessonTasks.filter(
+        task =>
+            !task.parallelGroup
+    ).length
+);
     
     // ========================================================
     // STEP 7 — VALIDATE LESSON TASKS
