@@ -16386,6 +16386,22 @@ function generateSmartTimetable(
     // ========================================================
     // BUILD TEACHER LIMIT INDEX
     // ========================================================
+    //
+    // The conflict functions use:
+    //
+    //     indexes.teacherLimits
+    //
+    // for:
+    //
+    //     - maxLessonsPerDay
+    //     - maxLessonsPerWeek
+    //     - maxConsecutiveLessons
+    //
+    // createOccupancyIndexes() does not need to own the
+    // normalized teacher-limit construction, so we prepare it
+    // here from the already normalized generator data.
+    //
+    // ========================================================
 
     if (
         !(indexes.teacherLimits instanceof Map)
@@ -16472,6 +16488,10 @@ function generateSmartTimetable(
     // ========================================================
     // COPY ACTIVE TASKS
     // ========================================================
+    //
+    // Do NOT modify the original task ordering here.
+    //
+    // ========================================================
 
     const remainingTasks =
         data.lessonTasks.filter(
@@ -16519,6 +16539,10 @@ function generateSmartTimetable(
                 indexes
             );
 
+
+        // ====================================================
+        // NO TASK
+        // ====================================================
 
         if (
             !selection
@@ -16589,6 +16613,10 @@ function generateSmartTimetable(
                 null;
 
 
+            // ------------------------------------------------
+            // REMOVE FROM ACTIVE TASKS
+            // ------------------------------------------------
+
             const failedIndex =
                 remainingTasks.indexOf(
                     task
@@ -16615,54 +16643,142 @@ function generateSmartTimetable(
         // ====================================================
         // DETERMINE PARALLEL GROUP
         // ====================================================
+        //
+        // A parallel group is treated as an ATOMIC PLACEMENT
+        // UNIT.
+        //
+        // If task A belongs to group X, every other currently
+        // unplaced task in group X must be placed into the same
+        // period as task A.
+        //
+        // Rooms may differ between group members.
+        //
+        // ====================================================
+
+        const selectedTaskId =
+            task?.taskId ||
+            task?.task_id ||
+            task?.id ||
+            null;
+
+
+        const canonicalTask =
+            selectedTaskId
+                ? data.lessonTasks.find(
+                    originalTask =>
+                        originalTask &&
+                        String(
+                            originalTask.taskId ||
+                            originalTask.task_id ||
+                            originalTask.id ||
+                            ""
+                        ) ===
+                        String(
+                            selectedTaskId
+                        )
+                )
+                : null;
+
 
         const taskParallelGroup =
             normalizeTimetableId(
                 task.parallelGroup ??
-                task.parallel_group
+                task.parallel_group ??
+                canonicalTask?.parallelGroup ??
+                canonicalTask?.parallel_group
             );
 
 
-        // ====================================================
-        // IDENTIFY THE CURRENT PARALLEL OCCURRENCE
-        // ====================================================
-        //
-        // A parallel group may contain several weekly lessons.
-        //
-        // Therefore:
-        //
-        //     parallelGroup alone
-        //
-        // is NOT enough to identify one atomic occurrence.
-        //
-        // We first match the same sequence where available.
-        //
-        // This prevents:
-        //
-        //     Geography S1
-        //     Geography S2
-        //     Geography S3
-        //
-        // from being incorrectly combined with all other
-        // occurrences of the same parallel group.
-        //
-        // ========================================================
+        // ----------------------------------------------------
+        // DETERMINE WEEKLY OCCURRENCE
+        // ----------------------------------------------------
 
-        const taskSequence =
+        let taskSequence =
             Number(
-                task.sequence
+                task.sequence ??
+                task.sequence_number ??
+                canonicalTask?.sequence ??
+                canonicalTask?.sequence_number
             );
-
-
-        let parallelGroupTasks = [];
 
 
         if (
-            taskParallelGroup
+            !Number.isFinite(
+                taskSequence
+            ) ||
+            taskSequence <= 0
         ) {
 
-            parallelGroupTasks =
-                remainingTasks.filter(
+            const taskIdText =
+                String(
+                    selectedTaskId ||
+                    ""
+                );
+
+
+            const sequenceMatch =
+                taskIdText.match(
+                    /-S(\d+)$/i
+                );
+
+
+            if (
+                sequenceMatch
+            ) {
+
+                taskSequence =
+                    Number(
+                        sequenceMatch[1]
+                    );
+
+            }
+
+        }
+
+
+        console.log(
+            "STAGE 6F — PARALLEL GROUP DEBUG",
+            {
+                taskId:
+                    selectedTaskId,
+
+                subjectId:
+                    task?.subjectId,
+
+                subject:
+                    task?.subjectName ||
+                    task?.subject_name ||
+                    null,
+
+                streamId:
+                    task?.streamId,
+
+                parallelGroup:
+                    task?.parallelGroup ??
+                    task?.parallel_group ??
+                    null,
+
+                canonicalParallelGroup:
+                    canonicalTask?.parallelGroup ??
+                    canonicalTask?.parallel_group ??
+                    null,
+
+                normalizedParallelGroup:
+                    taskParallelGroup,
+
+                sequence:
+                    taskSequence
+            }
+        );
+
+
+        // ====================================================
+        // FIND SAME PARALLEL GROUP + SAME OCCURRENCE
+        // ====================================================
+
+        const parallelGroupTasks =
+            taskParallelGroup
+                ? remainingTasks.filter(
                     groupTask => {
 
                         if (
@@ -16675,10 +16791,41 @@ function generateSmartTimetable(
                         }
 
 
+                        // ------------------------------------------------
+                        // RECOVER CANONICAL GROUP DATA
+                        // ------------------------------------------------
+
+                        const groupTaskId =
+                            groupTask?.taskId ||
+                            groupTask?.task_id ||
+                            groupTask?.id ||
+                            null;
+
+
+                        const canonicalGroupTask =
+                            groupTaskId
+                                ? data.lessonTasks.find(
+                                    originalTask =>
+                                        originalTask &&
+                                        String(
+                                            originalTask.taskId ||
+                                            originalTask.task_id ||
+                                            originalTask.id ||
+                                            ""
+                                        ) ===
+                                        String(
+                                            groupTaskId
+                                        )
+                                )
+                                : null;
+
+
                         const groupId =
                             normalizeTimetableId(
                                 groupTask.parallelGroup ??
-                                groupTask.parallel_group
+                                groupTask.parallel_group ??
+                                canonicalGroupTask?.parallelGroup ??
+                                canonicalGroupTask?.parallel_group
                             );
 
 
@@ -16693,106 +16840,89 @@ function generateSmartTimetable(
                         }
 
 
-                        // --------------------------------------------
+                        // ------------------------------------------------
                         // MATCH THE SAME WEEKLY OCCURRENCE
-                        // --------------------------------------------
+                        // ------------------------------------------------
 
-                        const groupSequence =
+                        let groupTaskSequence =
                             Number(
-                                groupTask.sequence
+                                groupTask.sequence ??
+                                groupTask.sequence_number ??
+                                canonicalGroupTask?.sequence ??
+                                canonicalGroupTask?.sequence_number
                             );
 
 
                         if (
-                            Number.isFinite(
-                                taskSequence
-                            ) &&
-                            taskSequence > 0 &&
-                            Number.isFinite(
-                                groupSequence
-                            ) &&
-                            groupSequence > 0
+                            !Number.isFinite(
+                                groupTaskSequence
+                            ) ||
+                            groupTaskSequence <= 0
                         ) {
 
-                            return (
-                                groupSequence ===
-                                taskSequence
-                            );
+                            const groupTaskIdText =
+                                String(
+                                    groupTaskId ||
+                                    ""
+                                );
+
+
+                            const sequenceMatch =
+                                groupTaskIdText.match(
+                                    /-S(\d+)$/i
+                                );
+
+
+                            if (
+                                sequenceMatch
+                            ) {
+
+                                groupTaskSequence =
+                                    Number(
+                                        sequenceMatch[1]
+                                    );
+
+                            }
 
                         }
 
 
-                        // --------------------------------------------
-                        // FALLBACK
-                        // --------------------------------------------
+                        // ------------------------------------------------
+                        // BOTH OCCURRENCES MUST BE KNOWN
+                        // ------------------------------------------------
                         //
-                        // If sequence is unavailable, retain the
-                        // same parallel group.
+                        // Do not guess that two tasks belong to the
+                        // same weekly occurrence when their sequence
+                        // cannot be established.
                         //
-                        // --------------------------------------------
+                        // ------------------------------------------------
 
-                        return true;
+                        if (
+                            !Number.isFinite(
+                                taskSequence
+                            ) ||
+                            taskSequence <= 0 ||
+                            !Number.isFinite(
+                                groupTaskSequence
+                            ) ||
+                            groupTaskSequence <= 0
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        return (
+                            groupTaskSequence ===
+                            taskSequence
+                        );
 
                     }
-                );
-
-        }
-
-
-        // ========================================================
-        // REMOVE DUPLICATE / INVALID MEMBERS
-        // ========================================================
-
-        const uniqueParallelGroupTasks = [];
+                )
+                : [];
 
 
-        const seenParallelTaskIds =
-            new Set();
-
-
-        parallelGroupTasks.forEach(
-            groupTask => {
-
-                const taskId =
-                    String(
-                        groupTask?.taskId ||
-                        groupTask?.id ||
-                        ""
-                    );
-
-
-                if (
-                    !taskId ||
-                    seenParallelTaskIds.has(
-                        taskId
-                    )
-                ) {
-
-                    return;
-
-                }
-
-
-                seenParallelTaskIds.add(
-                    taskId
-                );
-
-
-                uniqueParallelGroupTasks.push(
-                    groupTask
-                );
-
-            }
-        );
-
-
-        parallelGroupTasks =
-            uniqueParallelGroupTasks;
-
-
-        // ========================================================
-        // ATOMIC GROUP
-        // ========================================================
 
         const isAtomicParallelGroup =
             taskParallelGroup &&
@@ -16829,11 +16959,6 @@ function generateSmartTimetable(
             );
 
             console.log(
-                "Sequence:",
-                taskSequence
-            );
-
-            console.log(
                 "Group size:",
                 parallelGroupTasks.length
             );
@@ -16849,6 +16974,18 @@ function generateSmartTimetable(
 
             // ------------------------------------------------
             // BUILD CANDIDATES FOR EVERY GROUP MEMBER
+            // ------------------------------------------------
+            //
+            // We intentionally calculate candidates separately
+            // for every member because:
+            //
+            // - rooms may differ
+            // - teacher limits may differ
+            // - subject constraints may differ
+            // - student groups may differ
+            //
+            // The period, however, must be common.
+            //
             // ------------------------------------------------
 
             const groupAnalyses =
@@ -17000,6 +17137,13 @@ function generateSmartTimetable(
 
             // ------------------------------------------------
             // BUILD ATOMIC GROUP CANDIDATES
+            // ------------------------------------------------
+            //
+            // Each candidate represents one possible COMMON
+            // period for the entire group.
+            //
+            // Each task gets its own compatible room.
+            //
             // ------------------------------------------------
 
             const atomicGroupCandidates = [];
@@ -17278,6 +17422,13 @@ function generateSmartTimetable(
                 // --------------------------------------------
                 // ATOMIC ROLLBACK
                 // --------------------------------------------
+                //
+                // If ANY member fails, remove every member
+                // successfully placed during this attempt.
+                //
+                // This prevents partial parallel groups.
+                //
+                // --------------------------------------------
 
                 if (
                     !groupSucceeded
@@ -17365,6 +17516,10 @@ function generateSmartTimetable(
                     successfulGroupPlacement;
 
 
+                // ---------------------------------------------
+                // ADD ALL GENERATED ENTRIES
+                // ---------------------------------------------
+
                 if (
                     Array.isArray(
                         successfulGroup.entries
@@ -17377,6 +17532,10 @@ function generateSmartTimetable(
 
                 }
 
+
+                // ---------------------------------------------
+                // TRACK EVERY GROUP TASK
+                // ---------------------------------------------
 
                 successfulGroup.members.forEach(
                     member => {
@@ -17460,9 +17619,6 @@ function generateSmartTimetable(
                                 parallelGroup:
                                     taskParallelGroup,
 
-                                sequence:
-                                    member.task.sequence,
-
                                 period:
                                     member.period?.id,
 
@@ -17495,11 +17651,6 @@ function generateSmartTimetable(
                 );
 
                 console.log(
-                    "Sequence:",
-                    taskSequence
-                );
-
-                console.log(
                     "Common period:",
                     successfulGroup.period?.id
                 );
@@ -17518,6 +17669,12 @@ function generateSmartTimetable(
             // =================================================
             // GROUP FAILURE
             // =================================================
+            //
+            // The group is failed as a UNIT.
+            //
+            // Nothing from the group was left partially placed.
+            //
+            // =================================================
 
             console.warn(
                 "SMART PLACEMENT — PARALLEL GROUP FAILED:",
@@ -17525,9 +17682,6 @@ function generateSmartTimetable(
 
                     parallelGroup:
                         taskParallelGroup,
-
-                    sequence:
-                        taskSequence,
 
                     taskCount:
                         parallelGroupTasks.length,
@@ -17606,6 +17760,14 @@ function generateSmartTimetable(
         // ====================================================
         // TRY ALL RANKED CANDIDATES
         // ====================================================
+        //
+        // IMPORTANT:
+        //
+        // We do NOT fail the task after candidate #1 fails.
+        //
+        // We try every candidate returned by 6C / 6D.
+        //
+        // ====================================================
 
         let successfulPlacement =
             null;
@@ -17639,6 +17801,10 @@ function generateSmartTimetable(
                 );
 
 
+            // =================================================
+            // SUCCESS
+            // =================================================
+
             if (
                 attempt &&
                 attempt.placed
@@ -17656,6 +17822,10 @@ function generateSmartTimetable(
 
             }
 
+
+            // =================================================
+            // FAILED CANDIDATE
+            // =================================================
 
             lastFailureReason =
                 attempt?.reason ||
@@ -17694,6 +17864,10 @@ function generateSmartTimetable(
             successfulPlacement.placed
         ) {
 
+            // ------------------------------------------------
+            // ADD GENERATED ENTRIES
+            // ------------------------------------------------
+
             if (
                 Array.isArray(
                     successfulPlacement.entries
@@ -17706,6 +17880,10 @@ function generateSmartTimetable(
 
             }
 
+
+            // ------------------------------------------------
+            // TRACK PLACED TASK
+            // ------------------------------------------------
 
             result.placedTasks.push({
 
@@ -17723,11 +17901,27 @@ function generateSmartTimetable(
             result.statistics.placedTasks++;
 
 
+            // =================================================
+            // TASK DURATION IS AUTHORITATIVE
+            // =================================================
+            //
+            // Single:
+            //     duration = 1
+            //
+            // Double:
+            //     duration = 2
+            //
+            // =================================================
+
             result.statistics.totalPeriodsPlaced +=
                 Number(
                     task.duration
                 ) || 0;
 
+
+            // -------------------------------------------------
+            // REMOVE PLACED TASK
+            // -------------------------------------------------
 
             const placedIndex =
                 remainingTasks.indexOf(
@@ -17828,6 +18022,10 @@ function generateSmartTimetable(
             null;
 
 
+        // ----------------------------------------------------
+        // REMOVE FAILED TASK
+        // ----------------------------------------------------
+
         const failedIndex =
             remainingTasks.indexOf(
                 task
@@ -17894,6 +18092,11 @@ function generateSmartTimetable(
             }
         );
 
+
+        // ----------------------------------------------------
+        // Make sure the active queue does not retain tasks
+        // after they have been recorded as failed.
+        // ----------------------------------------------------
 
         remainingTasks.length =
             0;
@@ -18073,9 +18276,9 @@ function generateSmartTimetable(
     );
 
 
-    // ========================================================
+    // ============================================================
     // STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
-    // ========================================================
+    // ============================================================
 
     if (
         result.failedTasks.length > 0
@@ -18265,9 +18468,9 @@ function generateSmartTimetable(
     }
 
 
-    // ========================================================
+    // ============================================================
     // SUCCESS TABLE
-    // ========================================================
+    // ============================================================
 
     if (
         result.placedTasks.length > 0
@@ -18310,9 +18513,9 @@ function generateSmartTimetable(
     }
 
 
-    // ========================================================
+    // ============================================================
     // RETURN COMPLETE RESULT
-    // ========================================================
+    // ============================================================
 
     return {
 
@@ -18323,12 +18526,6 @@ function generateSmartTimetable(
     };
 
 }
-
-
-
-
-
-
 
 
 
