@@ -13112,22 +13112,6 @@ function logSmartPlacementAnalysis(
 }
 
 
-// ============================================================
-// SELECT NEXT TASK TO PLACE
-// ============================================================
-//
-// This is the main Stage 6E selector.
-//
-// It combines:
-//
-//     1. Task priority
-//     2. Candidate availability
-//     3. Candidate difficulty
-//     4. Candidate score
-//
-// It does NOT reserve anything.
-//
-// ============================================================
 
 
 
@@ -15574,6 +15558,7 @@ function getTaskDayPressure(
 // No Math.random() is used here.
 // ============================================================
 
+
 function selectNextSmartTask(
     remainingTasks,
     data,
@@ -15685,6 +15670,194 @@ function selectNextSmartTask(
 
 
             // ==================================================
+            // PARALLEL GROUP STATUS
+            // ==================================================
+            //
+            // If another lesson from the same explicit
+            // parallel group has already been placed, this
+            // task should be considered immediately so that
+            // its candidate scorer can synchronize it with
+            // the existing group schedule.
+            //
+            // This does NOT create a new hard constraint.
+            //
+            // It only affects task ordering.
+            //
+            // ==================================================
+
+            const taskParallelGroup =
+                normalizeTimetableId(
+                    task.parallelGroup ??
+                    task.parallel_group
+                );
+
+
+            let parallelGroupEstablished =
+                false;
+
+
+            let parallelGroupPeriods =
+                0;
+
+
+            if (
+                taskParallelGroup &&
+                indexes.studentGroupPeriodLessons instanceof Map
+            ) {
+
+                const studentGroups =
+                    getTaskStudentGroups(
+                        task
+                    );
+
+
+                const synchronizedPeriods =
+                    new Set();
+
+
+                studentGroups.forEach(
+                    studentGroupId => {
+
+                        if (
+                            !studentGroupId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        for (
+                            const [
+                                key,
+                                lessons
+                            ]
+                            of indexes.studentGroupPeriodLessons.entries()
+                        ) {
+
+                            if (
+                                !Array.isArray(
+                                    lessons
+                                ) ||
+                                lessons.length === 0
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const separatorIndex =
+                                String(
+                                    key
+                                ).lastIndexOf(
+                                    "__"
+                                );
+
+
+                            if (
+                                separatorIndex < 0
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const keyGroupId =
+                                String(
+                                    key
+                                ).slice(
+                                    0,
+                                    separatorIndex
+                                );
+
+
+                            const periodId =
+                                String(
+                                    key
+                                ).slice(
+                                    separatorIndex + 2
+                                );
+
+
+                            if (
+                                String(
+                                    keyGroupId
+                                ) !==
+                                String(
+                                    studentGroupId
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const matchingParallelLesson =
+                                lessons.some(
+                                    existingLesson => {
+
+                                        if (
+                                            !existingLesson
+                                        ) {
+
+                                            return false;
+
+                                        }
+
+
+                                        const existingParallelGroup =
+                                            normalizeTimetableId(
+                                                existingLesson.parallelGroup ??
+                                                existingLesson.parallel_group
+                                            );
+
+
+                                        return (
+                                            existingParallelGroup &&
+                                            existingParallelGroup ===
+                                            taskParallelGroup
+                                        );
+
+                                    }
+                                );
+
+
+                            if (
+                                matchingParallelLesson
+                            ) {
+
+                                synchronizedPeriods.add(
+                                    periodId
+                                );
+
+                            }
+
+                        }
+
+                    }
+                );
+
+
+                if (
+                    synchronizedPeriods.size > 0
+                ) {
+
+                    parallelGroupEstablished =
+                        true;
+
+
+                    parallelGroupPeriods =
+                        synchronizedPeriods.size;
+
+                }
+
+            }
+
+
+            // ==================================================
             // STORE COMPLETE ANALYSIS
             // ==================================================
 
@@ -15708,7 +15881,11 @@ function selectNextSmartTask(
                     dayPressure.availableDays,
 
                 dayDeficit:
-                    dayPressure.deficit
+                    dayPressure.deficit,
+
+                parallelGroupEstablished,
+
+                parallelGroupPeriods
 
             });
 
@@ -15742,11 +15919,6 @@ function selectNextSmartTask(
             // ------------------------------------------------
             // 1. CRITICAL DAY DEFICIT FIRST
             // ------------------------------------------------
-            //
-            // If a task already has fewer available days than
-            // it needs, protect it immediately.
-            //
-            // ------------------------------------------------
 
             if (
                 a.dayDeficit !==
@@ -15762,7 +15934,46 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 2. FEWEST AVAILABLE DAYS FIRST
+            // 2. ESTABLISHED PARALLEL GROUP FIRST
+            // ------------------------------------------------
+            //
+            // Once one member of a parallel group has already
+            // been placed, schedule the remaining member(s)
+            // before unrelated tasks with the same day pressure.
+            //
+            // ------------------------------------------------
+
+            if (
+                a.parallelGroupEstablished !==
+                b.parallelGroupEstablished
+            ) {
+
+                return a.parallelGroupEstablished
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // 3. MORE ESTABLISHED GROUP PERIODS FIRST
+            // ------------------------------------------------
+
+            if (
+                a.parallelGroupPeriods !==
+                b.parallelGroupPeriods
+            ) {
+
+                return (
+                    b.parallelGroupPeriods -
+                    a.parallelGroupPeriods
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 4. FEWEST AVAILABLE DAYS FIRST
             // ------------------------------------------------
 
             if (
@@ -15779,7 +15990,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 3. FEWEST VALID CANDIDATES FIRST
+            // 5. FEWEST VALID CANDIDATES FIRST
             // ------------------------------------------------
 
             if (
@@ -15796,7 +16007,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 4. HIGHER TASK PRIORITY
+            // 6. HIGHER TASK PRIORITY
             // ------------------------------------------------
 
             if (
@@ -15813,7 +16024,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 5. BETTER CANDIDATE SCORE
+            // 7. BETTER CANDIDATE SCORE
             // ------------------------------------------------
 
             const scoreA =
@@ -15840,7 +16051,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 6. DOUBLE LESSON FIRST
+            // 8. DOUBLE LESSON FIRST
             // ------------------------------------------------
 
             if (
@@ -15857,7 +16068,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 7. ROOM-REQUIRED FIRST
+            // 9. ROOM-REQUIRED FIRST
             // ------------------------------------------------
 
             if (
@@ -15873,13 +16084,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 8. DETERMINISTIC FINAL TIE-BREAK
-            // ------------------------------------------------
-            //
-            // No Math.random().
-            //
-            // This makes repeated runs easier to compare.
-            //
+            // 10. DETERMINISTIC FINAL TIE-BREAK
             // ------------------------------------------------
 
             return String(
@@ -15929,6 +16134,17 @@ function selectNextSmartTask(
 
             requirementId:
                 selected.task?.requirementId,
+
+            parallelGroup:
+                selected.task?.parallelGroup ??
+                selected.task?.parallel_group ??
+                null,
+
+            parallelGroupEstablished:
+                selected.parallelGroupEstablished,
+
+            parallelGroupPeriods:
+                selected.parallelGroupPeriods,
 
             priority:
                 selected.priority,
