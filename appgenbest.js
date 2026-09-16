@@ -16520,6 +16520,10 @@ function generateSmartTimetable(
             );
 
 
+        // ====================================================
+        // NO TASK
+        // ====================================================
+
         if (
             !selection
         ) {
@@ -16616,15 +16620,10 @@ function generateSmartTimetable(
         // PARALLEL GROUP DETECTION
         // ====================================================
         //
-        // Only SINGLE lessons participate in the atomic
-        // parallel-group placement.
+        // Parallel lessons with the same group AND sequence
+        // must be placed together in one common period.
         //
-        // A group is identified by:
-        //
-        //     parallelGroup
-        //     sequence
-        //
-        // Every member must be placed in the SAME period.
+        // This is intentionally limited to SINGLE lessons.
         //
         // ====================================================
 
@@ -16695,7 +16694,7 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // ATOMIC PARALLEL GROUP PLACEMENT
+        // ATOMIC PARALLEL GROUP
         // ====================================================
 
         if (
@@ -16713,21 +16712,14 @@ function generateSmartTimetable(
                         taskSequence,
 
                     groupSize:
-                        parallelGroupTasks.length,
-
-                    groupTasks:
-                        parallelGroupTasks.map(
-                            groupTask =>
-                                groupTask?.taskId ||
-                                groupTask?.id
-                        )
+                        parallelGroupTasks.length
 
                 }
             );
 
 
             // ------------------------------------------------
-            // BUILD CANDIDATES FOR EVERY MEMBER
+            // BUILD CANDIDATES FOR EACH GROUP MEMBER
             // ------------------------------------------------
 
             const groupAnalyses =
@@ -16749,17 +16741,18 @@ function generateSmartTimetable(
 
 
             // ------------------------------------------------
-            // FIND PERIODS COMMON TO EVERY MEMBER
+            // FIND PERIODS AVAILABLE TO EVERY MEMBER
             // ------------------------------------------------
 
-            let commonPeriodIds = null;
+            let commonPeriodIds =
+                null;
 
 
             for (
                 const analysis of groupAnalyses
             ) {
 
-                const periodIds =
+                const memberPeriodIds =
                     new Set(
                         (
                             Array.isArray(
@@ -16774,10 +16767,8 @@ function generateSmartTimetable(
                         )
                         .filter(
                             id =>
-                                id !==
-                                null &&
-                                id !==
-                                undefined
+                                id !== null &&
+                                id !== undefined
                         )
                         .map(
                             id =>
@@ -16791,7 +16782,7 @@ function generateSmartTimetable(
                 ) {
 
                     commonPeriodIds =
-                        periodIds;
+                        memberPeriodIds;
 
                 }
                 else {
@@ -16803,7 +16794,7 @@ function generateSmartTimetable(
                             ]
                             .filter(
                                 id =>
-                                    periodIds.has(
+                                    memberPeriodIds.has(
                                         id
                                     )
                             )
@@ -16823,57 +16814,89 @@ function generateSmartTimetable(
             }
 
 
-            const atomicGroupCandidates =
-                [];
+            // ------------------------------------------------
+            // SEARCH COMMON PERIODS
+            // ------------------------------------------------
 
+            let atomicGroupPlaced =
+                false;
 
-            // ------------------------------------------------
-            // BUILD VALID ROOM COMBINATIONS
-            // ------------------------------------------------
-            //
-            // IMPORTANT:
-            //
-            // Do NOT simply use candidates.find().
-            //
-            // One period can have several room candidates.
-            // The first room for one member may conflict with
-            // another member even though another room works.
-            //
-            // We therefore search the room candidates for the
-            // whole group.
-            //
-            // ------------------------------------------------
 
             if (
                 commonPeriodIds &&
                 commonPeriodIds.size > 0
             ) {
 
-                for (
-                    const periodId of commonPeriodIds
-                ) {
-
-                    const period =
-                        data.periods.find(
-                            candidatePeriod =>
-                                candidatePeriod &&
-                                String(
-                                    candidatePeriod.id
-                                ) ===
-                                String(
-                                    periodId
+                const commonPeriods =
+                    data.periods
+                        .filter(
+                            period =>
+                                period &&
+                                commonPeriodIds.has(
+                                    String(
+                                        period.id
+                                    )
                                 )
+                        )
+                        .sort(
+                            (
+                                a,
+                                b
+                            ) => {
+
+                                const orderA =
+                                    Number(
+                                        a?.period_order ??
+                                        a?.period_number ??
+                                        0
+                                    );
+
+
+                                const orderB =
+                                    Number(
+                                        b?.period_order ??
+                                        b?.period_number ??
+                                        0
+                                    );
+
+
+                                return (
+                                    orderA -
+                                    orderB
+                                );
+
+                            }
                         );
 
 
+                // ------------------------------------------------
+                // TRY EACH COMMON PERIOD
+                // ------------------------------------------------
+
+                for (
+                    const period
+                    of commonPeriods
+                ) {
+
                     if (
-                        !period
+                        atomicGroupPlaced
                     ) {
 
-                        continue;
+                        break;
 
                     }
 
+
+                    // --------------------------------------------
+                    // Build room candidates for every member.
+                    //
+                    // IMPORTANT:
+                    //
+                    // We do NOT use candidates.find().
+                    //
+                    // Every member may have several compatible
+                    // rooms for the same period.
+                    // --------------------------------------------
 
                     const memberOptions =
                         [];
@@ -16884,7 +16907,8 @@ function generateSmartTimetable(
 
 
                     for (
-                        const analysis of groupAnalyses
+                        const analysis
+                        of groupAnalyses
                     ) {
 
                         const candidates =
@@ -16902,7 +16926,7 @@ function generateSmartTimetable(
                                         candidate.period.id
                                     ) ===
                                     String(
-                                        periodId
+                                        period.id
                                     )
                             );
 
@@ -16941,7 +16965,7 @@ function generateSmartTimetable(
 
 
                     // ------------------------------------------------
-                    // SEARCH ROOM COMBINATIONS
+                    // ROOM COMBINATION SEARCH
                     // ------------------------------------------------
 
                     const selectedMembers =
@@ -16980,6 +17004,7 @@ function generateSmartTimetable(
                                 members:
                                     selectedMembers.map(
                                         item => ({
+
                                             task:
                                                 item.task,
 
@@ -17026,13 +17051,8 @@ function generateSmartTimetable(
 
 
                             // --------------------------------------------
-                            // A room cannot be assigned to two members
-                            // of the same parallel group at the same
-                            // period.
-                            //
-                            // If the candidate has no room, allow it
-                            // because the existing conflict engine will
-                            // make the final decision.
+                            // Do not assign the same room twice inside
+                            // the same parallel period.
                             // --------------------------------------------
 
                             if (
@@ -17046,6 +17066,10 @@ function generateSmartTimetable(
 
                             }
 
+
+                            // --------------------------------------------
+                            // Check candidate against CURRENT occupancy.
+                            // --------------------------------------------
 
                             const conflict =
                                 checkSingleSlotConflict(
@@ -17132,188 +17156,152 @@ function generateSmartTimetable(
 
 
                     if (
-                        foundCombination
+                        !foundCombination
                     ) {
 
-                        atomicGroupCandidates.push({
-
-                            period,
-
-                            members:
-                                foundCombination.members,
-
-                            score:
-                                foundCombination.score
-
-                        });
+                        continue;
 
                     }
 
-                }
 
-            }
+                    // ------------------------------------------------
+                    // PLACE THE COMPLETE GROUP
+                    // ------------------------------------------------
+                    //
+                    // Do not allow a partial group to remain placed.
+                    //
+                    // ------------------------------------------------
+
+                    const placedMembers =
+                        [];
 
 
-            // ------------------------------------------------
-            // RANK COMMON PERIODS
-            // ------------------------------------------------
+                    const placedEntries =
+                        [];
 
-            atomicGroupCandidates.sort(
-                (
-                    a,
-                    b
-                ) => {
+
+                    let groupFailed =
+                        false;
+
+
+                    for (
+                        const member
+                        of foundCombination.members
+                    ) {
+
+                        const attempt =
+                            placeSelectedSmartTask(
+                                {
+
+                                    task:
+                                        member.task,
+
+                                    candidate:
+                                        member.candidate
+
+                                },
+                                indexes
+                            );
+
+
+                        if (
+                            !attempt ||
+                            !attempt.placed
+                        ) {
+
+                            groupFailed =
+                                true;
+
+                            break;
+
+                        }
+
+
+                        placedMembers.push(
+                            member
+                        );
+
+
+                        if (
+                            Array.isArray(
+                                attempt.entries
+                            )
+                        ) {
+
+                            placedEntries.push(
+                                ...attempt.entries
+                            );
+
+                        }
+
+                    }
+
+
+                    // ------------------------------------------------
+                    // ROLLBACK PARTIAL GROUP
+                    // ------------------------------------------------
 
                     if (
-                        b.score !==
-                        a.score
+                        groupFailed
                     ) {
 
-                        return (
-                            b.score -
-                            a.score
-                        );
+                        for (
+                            const member
+                            of placedMembers
+                        ) {
+
+                            const groupTask =
+                                member.task;
+
+
+                            if (
+                                groupTask.placed
+                            ) {
+
+                                releaseReservedSlot(
+                                    groupTask,
+                                    member.candidate.period,
+                                    member.candidate.room,
+                                    indexes
+                                );
+
+
+                                groupTask.placed =
+                                    false;
+
+
+                                groupTask.periodIds =
+                                    [];
+
+
+                                groupTask.periodId =
+                                    null;
+
+
+                                groupTask.period_id =
+                                    null;
+
+
+                                groupTask.roomId =
+                                    null;
+
+
+                                groupTask.room_id =
+                                    null;
+
+                            }
+
+                        }
+
+
+                        continue;
 
                     }
 
 
-                    const orderA =
-                        Number(
-                            a.period?.period_order ??
-                            a.period?.period_number ??
-                            0
-                        );
-
-
-                    const orderB =
-                        Number(
-                            b.period?.period_order ??
-                            b.period?.period_number ??
-                            0
-                        );
-
-
-                    return (
-                        orderA -
-                        orderB
-                    );
-
-                }
-            );
-
-
-            // ------------------------------------------------
-            // TRY ATOMIC GROUP CANDIDATES
-            // ------------------------------------------------
-
-            let atomicGroupPlaced =
-                false;
-
-
-            for (
-                const groupCandidate
-                of atomicGroupCandidates
-            ) {
-
-                if (
-                    !groupCandidate ||
-                    !Array.isArray(
-                        groupCandidate.members
-                    )
-                ) {
-
-                    continue;
-
-                }
-
-
-                console.log(
-                    "STAGE 6F — TRY ATOMIC PARALLEL PERIOD:",
-                    {
-
-                        parallelGroup:
-                            taskParallelGroup,
-
-                        sequence:
-                            taskSequence,
-
-                        period:
-                            groupCandidate.period?.id,
-
-                        members:
-                            groupCandidate.members.length
-
-                    }
-                );
-
-
-                const placedGroupEntries =
-                    [];
-
-
-                let groupPlacementFailed =
-                    false;
-
-
-                // ------------------------------------------------
-                // PLACE EVERY MEMBER
-                // ------------------------------------------------
-
-                for (
-                    const member
-                    of groupCandidate.members
-                ) {
-
-                    const attempt =
-                        placeSelectedSmartTask(
-                            {
-
-                                task:
-                                    member.task,
-
-                                candidate:
-                                    member.candidate
-
-                            },
-                            indexes
-                        );
-
-
-                    if (
-                        !attempt ||
-                        !attempt.placed
-                    ) {
-
-                        groupPlacementFailed =
-                            true;
-
-                        break;
-
-                    }
-
-
-                    if (
-                        Array.isArray(
-                            attempt.entries
-                        )
-                    ) {
-
-                        placedGroupEntries.push(
-                            ...attempt.entries
-                        );
-
-                    }
-
-                }
-
-
-                // ------------------------------------------------
-                // ATOMIC SUCCESS
-                // ------------------------------------------------
-
-                if (
-                    !groupPlacementFailed
-                ) {
+                    // ------------------------------------------------
+                    // COMPLETE GROUP SUCCESS
+                    // ------------------------------------------------
 
                     console.log(
                         "STAGE 6F — PARALLEL GROUP SUCCESS:",
@@ -17326,10 +17314,10 @@ function generateSmartTimetable(
                                 taskSequence,
 
                             period:
-                                groupCandidate.period?.id,
+                                period.id,
 
                             members:
-                                groupCandidate.members.length
+                                foundCombination.members.length
 
                         }
                     );
@@ -17337,7 +17325,7 @@ function generateSmartTimetable(
 
                     for (
                         const member
-                        of groupCandidate.members
+                        of foundCombination.members
                     ) {
 
                         const groupTask =
@@ -17363,7 +17351,7 @@ function generateSmartTimetable(
 
 
                         const memberEntries =
-                            placedGroupEntries.filter(
+                            placedEntries.filter(
                                 entry => {
 
                                     if (
@@ -17438,78 +17426,11 @@ function generateSmartTimetable(
 
                 }
 
-
-                // ------------------------------------------------
-                // IMPORTANT
-                //
-                // If a later member failed, earlier members in
-                // this candidate may already have been reserved.
-                //
-                // Release those reservations before trying the
-                // next common period.
-                // ------------------------------------------------
-
-                for (
-                    const member
-                    of groupCandidate.members
-                ) {
-
-                    const groupTask =
-                        member.task;
-
-
-                    if (
-                        groupTask.placed
-                    ) {
-
-                        releaseReservedSlot(
-                            groupTask,
-                            member.candidate.period,
-                            member.candidate.room,
-                            indexes
-                        );
-
-
-                        groupTask.placed =
-                            false;
-
-
-                        groupTask.periodIds =
-                            [];
-
-
-                        groupTask.periodId =
-                            null;
-
-
-                        groupTask.period_id =
-                            null;
-
-
-                        groupTask.roomId =
-                            null;
-
-
-                        groupTask.room_id =
-                            null;
-
-                    }
-
-                }
-
             }
 
 
             // ------------------------------------------------
-            // ATOMIC GROUP FAILED
-            //
-            // Do NOT immediately mark every member failed.
-            //
-            // Fall through to the original individual
-            // placement logic below.
-            //
-            // This preserves the old stable behavior when an
-            // atomic group cannot currently be completed.
+            // IF GROUP WAS PLACED, START NEXT ITERATION.
             // ------------------------------------------------
 
             if (
@@ -17541,7 +17462,7 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // TRY ALL RANKED CANDIDATES
+        // ORIGINAL INDIVIDUAL CANDIDATE PLACEMENT
         // ====================================================
 
         let successfulPlacement =
@@ -18241,8 +18162,7 @@ function generateSmartTimetable(
                         null
 
                 })
-            );
-
+            )
         );
 
     }
@@ -18261,7 +18181,6 @@ function generateSmartTimetable(
     };
 
 }
-
 
 
 
