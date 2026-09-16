@@ -1248,13 +1248,6 @@ function normalizeGeneratorData(data) {
         buildTimetableLookupMaps(
             normalized
         );
-// ========================================================
-// NORMALIZE ROOMS
-// ========================================================
-
-// ========================================================
-// NORMALIZE ROOMS
-// ========================================================
 
 normalized.rooms =
     normalized.rooms.map(
@@ -2743,6 +2736,32 @@ if (
     }
 
 
+
+console.log(
+    "DEBUG — REQUIREMENTS BEFORE TASK CREATION:",
+    normalizedData.requirements.map(
+        requirement => ({
+            requirementId:
+                requirement.requirementId,
+
+            streamId:
+                requirement.streamId,
+
+            subjectId:
+                requirement.subjectId,
+
+            parallelGroup:
+                requirement.parallelGroup,
+
+            parallelGroupSize:
+                requirement.parallelGroupSize
+        })
+    )
+);
+
+
+
+    
     // ========================================================
     // STEP 6 — CREATE LESSON TASKS
     // ========================================================
