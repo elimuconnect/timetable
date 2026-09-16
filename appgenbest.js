@@ -16546,22 +16546,22 @@ function generateSmartTimetable(
                 {
 
                     taskId:
-                        task?.taskId,
+                        task.taskId,
 
                     taskType:
-                        task?.taskType,
+                        task.taskType,
 
                     streamId:
-                        task?.streamId,
+                        task.streamId,
 
                     subjectId:
-                        task?.subjectId,
+                        task.subjectId,
 
                     teacherId:
-                        task?.teacherId,
+                        task.teacherId,
 
                     requirementId:
-                        task?.requirementId
+                        task.requirementId
 
                 }
             );
@@ -16589,18 +16589,6 @@ function generateSmartTimetable(
                 null;
 
 
-            task.periodId =
-                null;
-
-
-            task.period_id =
-                null;
-
-
-            task.room_id =
-                null;
-
-
             const failedIndex =
                 remainingTasks.indexOf(
                     task
@@ -16625,135 +16613,39 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // DETERMINE PARALLEL GROUP
+        // PARALLEL GROUP DETECTION
         // ====================================================
-
-        const selectedTaskId =
-            task?.taskId ||
-            task?.task_id ||
-            task?.id ||
-            null;
-
-
-        const canonicalTask =
-            selectedTaskId
-                ? data.lessonTasks.find(
-                    originalTask =>
-                        originalTask &&
-                        String(
-                            originalTask.taskId ||
-                            originalTask.task_id ||
-                            originalTask.id ||
-                            ""
-                        ) ===
-                        String(
-                            selectedTaskId
-                        )
-                )
-                : null;
-
+        //
+        // Only SINGLE lessons participate in the atomic
+        // parallel-group placement.
+        //
+        // A group is identified by:
+        //
+        //     parallelGroup
+        //     sequence
+        //
+        // Every member must be placed in the SAME period.
+        //
+        // ====================================================
 
         const taskParallelGroup =
             normalizeTimetableId(
                 task.parallelGroup ??
                 task.parallel_group ??
-                canonicalTask?.parallelGroup ??
-                canonicalTask?.parallel_group
+                null
             );
 
 
-        // ====================================================
-        // DETERMINE WEEKLY OCCURRENCE
-        // ====================================================
-
-        let taskSequence =
+        const taskSequence =
             Number(
                 task.sequence ??
-                task.sequence_number ??
-                canonicalTask?.sequence ??
-                canonicalTask?.sequence_number
+                1
             );
 
-
-        if (
-            !Number.isFinite(
-                taskSequence
-            ) ||
-            taskSequence <= 0
-        ) {
-
-            const taskIdText =
-                String(
-                    selectedTaskId ||
-                    ""
-                );
-
-
-            const sequenceMatch =
-                taskIdText.match(
-                    /-S(\d+)$/i
-                );
-
-
-            if (
-                sequenceMatch
-            ) {
-
-                taskSequence =
-                    Number(
-                        sequenceMatch[1]
-                    );
-
-            }
-
-        }
-
-
-        console.log(
-            "STAGE 6F — PARALLEL GROUP DEBUG",
-            {
-
-                taskId:
-                    selectedTaskId,
-
-                subjectId:
-                    task?.subjectId,
-
-                subject:
-                    task?.subjectName ||
-                    task?.subject_name ||
-                    null,
-
-                streamId:
-                    task?.streamId,
-
-                parallelGroup:
-                    task?.parallelGroup ??
-                    task?.parallel_group ??
-                    null,
-
-                canonicalParallelGroup:
-                    canonicalTask?.parallelGroup ??
-                    canonicalTask?.parallel_group ??
-                    null,
-
-                normalizedParallelGroup:
-                    taskParallelGroup,
-
-                sequence:
-                    taskSequence
-
-            }
-        );
-
-
-        // ====================================================
-        // FIND SAME PARALLEL GROUP + SAME OCCURRENCE
-        // ====================================================
 
         const parallelGroupTasks =
             taskParallelGroup
-                ? remainingTasks.filter(
+                ? data.lessonTasks.filter(
                     groupTask => {
 
                         if (
@@ -16766,144 +16658,40 @@ function generateSmartTimetable(
                         }
 
 
-                        const groupTaskId =
-                            groupTask?.taskId ||
-                            groupTask?.task_id ||
-                            groupTask?.id ||
-                            null;
-
-
-                        const canonicalGroupTask =
-                            groupTaskId
-                                ? data.lessonTasks.find(
-                                    originalTask =>
-                                        originalTask &&
-                                        String(
-                                            originalTask.taskId ||
-                                            originalTask.task_id ||
-                                            originalTask.id ||
-                                            ""
-                                        ) ===
-                                        String(
-                                            groupTaskId
-                                        )
-                                )
-                                : null;
-
-
-                        const groupId =
+                        const group =
                             normalizeTimetableId(
                                 groupTask.parallelGroup ??
                                 groupTask.parallel_group ??
-                                canonicalGroupTask?.parallelGroup ??
-                                canonicalGroupTask?.parallel_group
+                                null
                             );
 
 
-                        if (
-                            !groupId ||
-                            groupId !==
-                            taskParallelGroup
-                        ) {
-
-                            return false;
-
-                        }
-
-
-                        let groupTaskSequence =
+                        const sequence =
                             Number(
                                 groupTask.sequence ??
-                                groupTask.sequence_number ??
-                                canonicalGroupTask?.sequence ??
-                                canonicalGroupTask?.sequence_number
+                                1
                             );
-
-
-                        if (
-                            !Number.isFinite(
-                                groupTaskSequence
-                            ) ||
-                            groupTaskSequence <= 0
-                        ) {
-
-                            const groupTaskIdText =
-                                String(
-                                    groupTaskId ||
-                                    ""
-                                );
-
-
-                            const sequenceMatch =
-                                groupTaskIdText.match(
-                                    /-S(\d+)$/i
-                                );
-
-
-                            if (
-                                sequenceMatch
-                            ) {
-
-                                groupTaskSequence =
-                                    Number(
-                                        sequenceMatch[1]
-                                    );
-
-                            }
-
-                        }
-
-
-                        if (
-                            !Number.isFinite(
-                                taskSequence
-                            ) ||
-                            taskSequence <= 0 ||
-                            !Number.isFinite(
-                                groupTaskSequence
-                            ) ||
-                            groupTaskSequence <= 0
-                        ) {
-
-                            return false;
-
-                        }
 
 
                         return (
-                            groupTaskSequence ===
-                            taskSequence
-                        );
+                            group ===
+                            taskParallelGroup
+                        ) &&
+                        sequence ===
+                        taskSequence &&
+                        groupTask.taskType !==
+                            "double" &&
+                        groupTask.isDouble !==
+                            true;
 
                     }
                 )
                 : [];
 
 
-        // ====================================================
-        // DETERMINE WHETHER GROUP IS ATOMIC
-        // ====================================================
-
         const isAtomicParallelGroup =
             taskParallelGroup &&
-            parallelGroupTasks.length > 1 &&
-            parallelGroupTasks.every(
-                groupTask => {
-
-                    const groupTaskType =
-                        groupTask?.taskType ||
-                        groupTask?.type ||
-                        null;
-
-
-                    return (
-                        groupTaskType !==
-                        "double" &&
-                        groupTask?.isDouble !== true
-                    );
-
-                }
-            );
+            parallelGroupTasks.length > 1;
 
 
         // ====================================================
@@ -16915,179 +16703,162 @@ function generateSmartTimetable(
         ) {
 
             console.log(
-                "======================================"
-            );
+                "STAGE 6F — ATOMIC PARALLEL GROUP:",
+                {
 
-            console.log(
-                "STAGE 6F — ATOMIC PARALLEL GROUP"
-            );
+                    parallelGroup:
+                        taskParallelGroup,
 
-            console.log(
-                "======================================"
-            );
+                    sequence:
+                        taskSequence,
 
-            console.log(
-                "Parallel group:",
-                taskParallelGroup
-            );
+                    groupSize:
+                        parallelGroupTasks.length,
 
-            console.log(
-                "Group size:",
-                parallelGroupTasks.length
-            );
-
-            console.log(
-                "Group tasks:",
-                parallelGroupTasks.map(
-                    groupTask =>
-                        groupTask?.taskId
-                )
-            );
-
-
-            // ====================================================
-            // BUILD GROUP ANALYSES
-            // ====================================================
-
-            const groupAnalyses =
-                parallelGroupTasks.map(
-                    groupTask => {
-
-                        const candidates =
-                            getScoredSingleLessonCandidates(
-                                groupTask,
-                                data,
-                                indexes
-                            );
-
-
-                        return {
-
-                            task:
-                                groupTask,
-
-                            candidates:
-                                Array.isArray(
-                                    candidates
-                                )
-                                    ? candidates
-                                    : []
-
-                        };
-
-                    }
-                );
-
-
-            // ====================================================
-            // FIND COMMON PERIODS
-            // ====================================================
-
-            let commonPeriodIds =
-                null;
-
-
-            groupAnalyses.forEach(
-                analysis => {
-
-                    const memberPeriodIds =
-                        new Set(
-                            analysis.candidates
-                                .map(
-                                    candidate =>
-                                        candidate?.period?.id
-                                )
-                                .filter(
-                                    Boolean
-                                )
-                                .map(
-                                    periodId =>
-                                        String(
-                                            periodId
-                                        )
-                                )
-                        );
-
-
-                    if (
-                        commonPeriodIds === null
-                    ) {
-
-                        commonPeriodIds =
-                            memberPeriodIds;
-
-                    }
-                    else {
-
-                        commonPeriodIds =
-                            new Set(
-                                [...commonPeriodIds]
-                                    .filter(
-                                        periodId =>
-                                            memberPeriodIds.has(
-                                                periodId
-                                            )
-                                    )
-                            );
-
-                    }
+                    groupTasks:
+                        parallelGroupTasks.map(
+                            groupTask =>
+                                groupTask?.taskId ||
+                                groupTask?.id
+                        )
 
                 }
             );
 
 
-            if (
-                !(commonPeriodIds instanceof Set)
+            // ------------------------------------------------
+            // BUILD CANDIDATES FOR EVERY MEMBER
+            // ------------------------------------------------
+
+            const groupAnalyses =
+                parallelGroupTasks.map(
+                    groupTask => ({
+
+                        task:
+                            groupTask,
+
+                        candidates:
+                            getScoredSingleLessonCandidates(
+                                groupTask,
+                                data,
+                                indexes
+                            )
+
+                    })
+                );
+
+
+            // ------------------------------------------------
+            // FIND PERIODS COMMON TO EVERY MEMBER
+            // ------------------------------------------------
+
+            let commonPeriodIds = null;
+
+
+            for (
+                const analysis of groupAnalyses
             ) {
 
-                commonPeriodIds =
-                    new Set();
+                const periodIds =
+                    new Set(
+                        (
+                            Array.isArray(
+                                analysis.candidates
+                            )
+                                ? analysis.candidates
+                                : []
+                        )
+                        .map(
+                            candidate =>
+                                candidate?.period?.id
+                        )
+                        .filter(
+                            id =>
+                                id !==
+                                null &&
+                                id !==
+                                undefined
+                        )
+                        .map(
+                            id =>
+                                String(id)
+                        )
+                    );
+
+
+                if (
+                    commonPeriodIds === null
+                ) {
+
+                    commonPeriodIds =
+                        periodIds;
+
+                }
+                else {
+
+                    commonPeriodIds =
+                        new Set(
+                            [
+                                ...commonPeriodIds
+                            ]
+                            .filter(
+                                id =>
+                                    periodIds.has(
+                                        id
+                                    )
+                            )
+                        );
+
+                }
+
+
+                if (
+                    commonPeriodIds.size === 0
+                ) {
+
+                    break;
+
+                }
 
             }
 
 
-            // ====================================================
-            // BUILD ATOMIC GROUP CANDIDATES
-            // ====================================================
+            const atomicGroupCandidates =
+                [];
+
+
+            // ------------------------------------------------
+            // BUILD VALID ROOM COMBINATIONS
+            // ------------------------------------------------
             //
             // IMPORTANT:
             //
-            // Keep ALL room candidates for each member.
+            // Do NOT simply use candidates.find().
             //
-            // We do NOT select only the first room.
+            // One period can have several room candidates.
+            // The first room for one member may conflict with
+            // another member even though another room works.
             //
-            // ====================================================
+            // We therefore search the room candidates for the
+            // whole group.
+            //
+            // ------------------------------------------------
 
-            const atomicGroupCandidates = [];
-
-
-            for (
-                const periodId
-                    of commonPeriodIds
+            if (
+                commonPeriodIds &&
+                commonPeriodIds.size > 0
             ) {
 
-                const memberSelections = [];
-
-
-                let validGroupCandidate =
-                    true;
-
-
-                let totalScore =
-                    0;
-
-
                 for (
-                    const analysis
-                        of groupAnalyses
+                    const periodId of commonPeriodIds
                 ) {
 
-                    const memberCandidates =
-                        analysis.candidates.filter(
-                            candidate =>
-                                candidate?.period &&
+                    const period =
+                        data.periods.find(
+                            candidatePeriod =>
+                                candidatePeriod &&
                                 String(
-                                    candidate.period.id
+                                    candidatePeriod.id
                                 ) ===
                                 String(
                                     periodId
@@ -17096,112 +16867,296 @@ function generateSmartTimetable(
 
 
                     if (
-                        memberCandidates.length === 0
+                        !period
                     ) {
 
-                        validGroupCandidate =
-                            false;
-
-                        break;
+                        continue;
 
                     }
 
 
-                    const bestMemberCandidate =
-                        memberCandidates.reduce(
+                    const memberOptions =
+                        [];
+
+
+                    let validPeriod =
+                        true;
+
+
+                    for (
+                        const analysis of groupAnalyses
+                    ) {
+
+                        const candidates =
                             (
-                                best,
-                                candidate
-                            ) => {
-
-                                if (
-                                    !best
-                                ) {
-
-                                    return candidate;
-
-                                }
-
-
-                                return (
-                                    Number(
-                                        candidate.score
-                                    ) >
-                                    Number(
-                                        best.score
-                                    )
+                                Array.isArray(
+                                    analysis.candidates
                                 )
-                                    ? candidate
-                                    : best;
+                                    ? analysis.candidates
+                                    : []
+                            )
+                            .filter(
+                                candidate =>
+                                    candidate?.period &&
+                                    String(
+                                        candidate.period.id
+                                    ) ===
+                                    String(
+                                        periodId
+                                    )
+                            );
 
-                            },
-                            null
-                        );
+
+                        if (
+                            candidates.length === 0
+                        ) {
+
+                            validPeriod =
+                                false;
+
+                            break;
+
+                        }
+
+
+                        memberOptions.push({
+
+                            task:
+                                analysis.task,
+
+                            candidates
+
+                        });
+
+                    }
 
 
                     if (
-                        !bestMemberCandidate
+                        !validPeriod
                     ) {
 
-                        validGroupCandidate =
-                            false;
-
-                        break;
+                        continue;
 
                     }
 
 
-                    memberSelections.push({
+                    // ------------------------------------------------
+                    // SEARCH ROOM COMBINATIONS
+                    // ------------------------------------------------
 
-                        task:
-                            analysis.task,
-
-                        candidates:
-                            memberCandidates,
-
-                        bestCandidate:
-                            bestMemberCandidate
-
-                    });
+                    const selectedMembers =
+                        [];
 
 
-                    totalScore +=
-                        Number(
-                            bestMemberCandidate.score
-                        ) || 0;
-
-                }
+                    const usedRoomIds =
+                        new Set();
 
 
-                if (
-                    validGroupCandidate &&
-                    memberSelections.length ===
-                    parallelGroupTasks.length
-                ) {
+                    let foundCombination =
+                        null;
 
-                    atomicGroupCandidates.push({
 
-                        period:
-                            memberSelections[0]
-                                .bestCandidate
-                                .period,
+                    function searchParallelRooms(
+                        memberIndex,
+                        totalScore
+                    ) {
 
-                        members:
-                            memberSelections,
+                        if (
+                            foundCombination
+                        ) {
 
-                        score:
-                            totalScore
+                            return;
 
-                    });
+                        }
+
+
+                        if (
+                            memberIndex >=
+                            memberOptions.length
+                        ) {
+
+                            foundCombination = {
+
+                                members:
+                                    selectedMembers.map(
+                                        item => ({
+                                            task:
+                                                item.task,
+
+                                            candidate:
+                                                item.candidate
+
+                                        })
+                                    ),
+
+                                score:
+                                    totalScore
+
+                            };
+
+                            return;
+
+                        }
+
+
+                        const member =
+                            memberOptions[
+                                memberIndex
+                            ];
+
+
+                        for (
+                            const candidate
+                            of member.candidates
+                        ) {
+
+                            const roomId =
+                                candidate?.room?.id ??
+                                candidate?.roomId ??
+                                null;
+
+
+                            const normalizedRoomId =
+                                roomId !== null &&
+                                roomId !== undefined
+                                    ? String(
+                                        roomId
+                                    )
+                                    : null;
+
+
+                            // --------------------------------------------
+                            // A room cannot be assigned to two members
+                            // of the same parallel group at the same
+                            // period.
+                            //
+                            // If the candidate has no room, allow it
+                            // because the existing conflict engine will
+                            // make the final decision.
+                            // --------------------------------------------
+
+                            if (
+                                normalizedRoomId &&
+                                usedRoomIds.has(
+                                    normalizedRoomId
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const conflict =
+                                checkSingleSlotConflict(
+                                    member.task,
+                                    candidate.period,
+                                    candidate.room,
+                                    indexes
+                                );
+
+
+                            if (
+                                !conflict ||
+                                conflict.valid !== true
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            if (
+                                normalizedRoomId
+                            ) {
+
+                                usedRoomIds.add(
+                                    normalizedRoomId
+                                );
+
+                            }
+
+
+                            selectedMembers.push({
+
+                                task:
+                                    member.task,
+
+                                candidate
+
+                            });
+
+
+                            searchParallelRooms(
+                                memberIndex + 1,
+                                totalScore +
+                                (
+                                    Number(
+                                        candidate.score
+                                    ) || 0
+                                )
+                            );
+
+
+                            selectedMembers.pop();
+
+
+                            if (
+                                normalizedRoomId
+                            ) {
+
+                                usedRoomIds.delete(
+                                    normalizedRoomId
+                                );
+
+                            }
+
+
+                            if (
+                                foundCombination
+                            ) {
+
+                                return;
+
+                            }
+
+                        }
+
+                    }
+
+
+                    searchParallelRooms(
+                        0,
+                        0
+                    );
+
+
+                    if (
+                        foundCombination
+                    ) {
+
+                        atomicGroupCandidates.push({
+
+                            period,
+
+                            members:
+                                foundCombination.members,
+
+                            score:
+                                foundCombination.score
+
+                        });
+
+                    }
 
                 }
 
             }
 
 
-            // ====================================================
-            // SORT COMMON GROUP PERIODS
-            // ====================================================
+            // ------------------------------------------------
+            // RANK COMMON PERIODS
+            // ------------------------------------------------
 
             atomicGroupCandidates.sort(
                 (
@@ -17247,46 +17202,24 @@ function generateSmartTimetable(
             );
 
 
-            console.log(
-                "STAGE 6F — COMMON PARALLEL PERIODS:",
-                atomicGroupCandidates.map(
-                    candidate => ({
+            // ------------------------------------------------
+            // TRY ATOMIC GROUP CANDIDATES
+            // ------------------------------------------------
 
-                        periodId:
-                            candidate.period?.id,
-
-                        score:
-                            candidate.score
-
-                    })
-                )
-            );
-
-
-            // ====================================================
-            // SEARCH COMMON PERIODS
-            // ====================================================
-
-            let successfulGroupPlacement =
-                null;
-
-
-            let groupFailureReason =
-                "No common valid period could accommodate the entire parallel group.";
+            let atomicGroupPlaced =
+                false;
 
 
             for (
                 const groupCandidate
-                    of atomicGroupCandidates
+                of atomicGroupCandidates
             ) {
 
                 if (
                     !groupCandidate ||
-                    !groupCandidate.period ||
                     !Array.isArray(
                         groupCandidate.members
-                    ) ||
-                    groupCandidate.members.length === 0
+                    )
                 ) {
 
                     continue;
@@ -17294,522 +17227,194 @@ function generateSmartTimetable(
                 }
 
 
-                const reservedMembers = [];
-
-                const generatedEntries = [];
-
-
-                let periodFailureReason =
-                    "A parallel group member could not be placed in this common period.";
-
-
-                // ====================================================
-                // MOST CONSTRAINED FIRST
-                // ====================================================
-
-                const assignmentOrder =
-                    [...groupCandidate.members].sort(
-                        (
-                            a,
-                            b
-                        ) => {
-
-                            const aCandidates =
-                                Array.isArray(
-                                    a?.candidates
-                                )
-                                    ? a.candidates
-                                    : [];
-
-
-                            const bCandidates =
-                                Array.isArray(
-                                    b?.candidates
-                                )
-                                    ? b.candidates
-                                    : [];
-
-
-                            return (
-                                aCandidates.length -
-                                bCandidates.length
-                            );
-
-                        }
-                    );
-
-
-                // ====================================================
-                // RECURSIVE ATOMIC ROOM SEARCH
-                // ====================================================
-
-                const placeParallelMember =
-                    function (
-                        memberIndex
-                    ) {
-
-                        if (
-                            memberIndex >=
-                            assignmentOrder.length
-                        ) {
-
-                            return true;
-
-                        }
-
-
-                        const member =
-                            assignmentOrder[
-                                memberIndex
-                            ];
-
-
-                        if (
-                            !member ||
-                            !member.task
-                        ) {
-
-                            periodFailureReason =
-                                "Parallel group contains an invalid member.";
-
-
-                            return false;
-
-                        }
-
-
-                        const memberTask =
-                            member.task;
-
-
-                        const memberCandidates =
-                            Array.isArray(
-                                member.candidates
-                            )
-                                ? member.candidates
-                                : [];
-
-
-                        if (
-                            memberCandidates.length === 0
-                        ) {
-
-                            periodFailureReason =
-                                "Parallel group member has no valid room candidates in the common period.";
-
-
-                            return false;
-
-                        }
-
-
-                        // ------------------------------------------------
-                        // TRY EVERY ROOM
-                        // ------------------------------------------------
-
-                        for (
-                            const memberCandidate
-                                of memberCandidates
-                        ) {
-
-                            if (
-                                !memberCandidate ||
-                                !memberCandidate.period
-                            ) {
-
-                                continue;
-
-                            }
-
-
-                            if (
-                                String(
-                                    memberCandidate.period.id
-                                ) !==
-                                String(
-                                    groupCandidate.period.id
-                                )
-                            ) {
-
-                                continue;
-
-                            }
-
-
-                            const candidateRoom =
-                                memberCandidate.room ||
-                                null;
-
-
-                            // ------------------------------------------------
-                            // LIVE CONFLICT CHECK
-                            // ------------------------------------------------
-
-                            const liveConflict =
-                                checkSingleSlotConflict(
-                                    memberTask,
-                                    groupCandidate.period,
-                                    candidateRoom,
-                                    indexes
-                                );
-
-
-                            if (
-                                !liveConflict ||
-                                liveConflict.valid !== true
-                            ) {
-
-                                periodFailureReason =
-                                    liveConflict?.reason ||
-                                    "Parallel group room candidate is no longer available.";
-
-                                continue;
-
-                            }
-
-
-                            // ------------------------------------------------
-                            // PLACE MEMBER
-                            // ------------------------------------------------
-
-                            const placement =
-                                placeSelectedSmartTask(
-                                    {
-
-                                        task:
-                                            memberTask,
-
-                                        candidate:
-                                            {
-
-                                                ...memberCandidate,
-
-                                                period:
-                                                    groupCandidate.period,
-
-                                                room:
-                                                    candidateRoom
-
-                                            }
-
-                                    },
-
-                                    indexes
-                                );
-
-
-                            if (
-                                !placement ||
-                                placement.placed !== true
-                            ) {
-
-                                periodFailureReason =
-                                    placement?.reason ||
-                                    "A parallel group member could not be placed.";
-
-                                continue;
-
-                            }
-
-
-                            const reservedMember = {
-
-                                task:
-                                    memberTask,
-
-                                period:
-                                    groupCandidate.period,
-
-                                room:
-                                    candidateRoom,
-
-                                entries:
-                                    Array.isArray(
-                                        placement.entries
-                                    )
-                                        ? [
-                                            ...placement.entries
-                                        ]
-                                        : [],
-
-                                candidate:
-                                    {
-
-                                        ...memberCandidate,
-
-                                        period:
-                                            groupCandidate.period,
-
-                                        room:
-                                            candidateRoom
-
-                                    }
-
-                            };
-
-
-                            reservedMembers.push(
-                                reservedMember
-                            );
-
-
-                            if (
-                                Array.isArray(
-                                    placement.entries
-                                )
-                            ) {
-
-                                generatedEntries.push(
-                                    ...placement.entries
-                                );
-
-                            }
-
-
-                            // ------------------------------------------------
-                            // RECURSE
-                            // ------------------------------------------------
-
-                            const nextSucceeded =
-                                placeParallelMember(
-                                    memberIndex + 1
-                                );
-
-
-                            if (
-                                nextSucceeded
-                            ) {
-
-                                return true;
-
-                            }
-
-
-                            // ------------------------------------------------
-                            // BACKTRACK
-                            // ------------------------------------------------
-
-                            releaseReservedSlot(
-                                memberTask,
-                                groupCandidate.period,
-                                candidateRoom,
-                                indexes
-                            );
-
-
-                            memberTask.placed =
-                                false;
-
-
-                            memberTask.periodIds =
-                                [];
-
-
-                            memberTask.roomId =
-                                null;
-
-
-                            memberTask.periodId =
-                                null;
-
-
-                            memberTask.period_id =
-                                null;
-
-
-                            memberTask.room_id =
-                                null;
-
-
-                            const entryCount =
-                                Array.isArray(
-                                    placement.entries
-                                )
-                                    ? placement.entries.length
-                                    : 0;
-
-
-                            if (
-                                entryCount > 0
-                            ) {
-
-                                generatedEntries.splice(
-                                    generatedEntries.length -
-                                    entryCount,
-                                    entryCount
-                                );
-
-                            }
-
-
-                            reservedMembers.pop();
-
-                        }
-
-
-                        return false;
-
-                    };
-
-
-                // ====================================================
-                // START ATOMIC SEARCH
-                // ====================================================
-
-                const groupSucceeded =
-                    placeParallelMember(
-                        0
-                    );
-
-
-                // ====================================================
-                // SUCCESS
-                // ====================================================
-
-                if (
-                    groupSucceeded &&
-                    reservedMembers.length ===
-                    groupCandidate.members.length
-                ) {
-
-                    successfulGroupPlacement = {
-
-                        period:
-                            groupCandidate.period,
-
-                        members:
-                            reservedMembers,
-
-                        entries:
-                            generatedEntries,
-
-                        score:
-                            groupCandidate.score
-
-                    };
-
-
-                    break;
-
-                }
-
-
-                // ====================================================
-                // DEFENSIVE ROLLBACK
-                // ====================================================
-
-                for (
-                    const reserved
-                        of reservedMembers
-                ) {
-
-                    releaseReservedSlot(
-                        reserved.task,
-                        reserved.period,
-                        reserved.room,
-                        indexes
-                    );
-
-
-                    reserved.task.placed =
-                        false;
-
-
-                    reserved.task.periodIds =
-                        [];
-
-
-                    reserved.task.roomId =
-                        null;
-
-
-                    reserved.task.periodId =
-                        null;
-
-
-                    reserved.task.period_id =
-                        null;
-
-
-                    reserved.task.room_id =
-                        null;
-
-                }
-
-
-                reservedMembers.length =
-                    0;
-
-
-                generatedEntries.length =
-                    0;
-
-
-                groupFailureReason =
-                    periodFailureReason;
-
-
-                console.warn(
-                    "STAGE 6F — COMMON PARALLEL PERIOD FAILED:",
+                console.log(
+                    "STAGE 6F — TRY ATOMIC PARALLEL PERIOD:",
                     {
 
                         parallelGroup:
                             taskParallelGroup,
 
+                        sequence:
+                            taskSequence,
+
                         period:
-                            groupCandidate.period.id,
+                            groupCandidate.period?.id,
 
-                        taskCount:
-                            groupCandidate.members.length,
-
-                        reason:
-                            periodFailureReason
+                        members:
+                            groupCandidate.members.length
 
                     }
                 );
 
-            }
+
+                const placedGroupEntries =
+                    [];
 
 
-            // ====================================================
-            // GROUP SUCCESS
-            // ====================================================
-
-            if (
-                successfulGroupPlacement
-            ) {
-
-                const successfulGroup =
-                    successfulGroupPlacement;
+                let groupPlacementFailed =
+                    false;
 
 
-                if (
-                    Array.isArray(
-                        successfulGroup.entries
-                    )
+                // ------------------------------------------------
+                // PLACE EVERY MEMBER
+                // ------------------------------------------------
+
+                for (
+                    const member
+                    of groupCandidate.members
                 ) {
 
-                    result.entries.push(
-                        ...successfulGroup.entries
-                    );
+                    const attempt =
+                        placeSelectedSmartTask(
+                            {
+
+                                task:
+                                    member.task,
+
+                                candidate:
+                                    member.candidate
+
+                            },
+                            indexes
+                        );
+
+
+                    if (
+                        !attempt ||
+                        !attempt.placed
+                    ) {
+
+                        groupPlacementFailed =
+                            true;
+
+                        break;
+
+                    }
+
+
+                    if (
+                        Array.isArray(
+                            attempt.entries
+                        )
+                    ) {
+
+                        placedGroupEntries.push(
+                            ...attempt.entries
+                        );
+
+                    }
 
                 }
 
 
-                successfulGroup.members.forEach(
-                    member => {
+                // ------------------------------------------------
+                // ATOMIC SUCCESS
+                // ------------------------------------------------
+
+                if (
+                    !groupPlacementFailed
+                ) {
+
+                    console.log(
+                        "STAGE 6F — PARALLEL GROUP SUCCESS:",
+                        {
+
+                            parallelGroup:
+                                taskParallelGroup,
+
+                            sequence:
+                                taskSequence,
+
+                            period:
+                                groupCandidate.period?.id,
+
+                            members:
+                                groupCandidate.members.length
+
+                        }
+                    );
+
+
+                    for (
+                        const member
+                        of groupCandidate.members
+                    ) {
+
+                        const groupTask =
+                            member.task;
+
+
+                        const placedIndex =
+                            remainingTasks.indexOf(
+                                groupTask
+                            );
+
+
+                        if (
+                            placedIndex >= 0
+                        ) {
+
+                            remainingTasks.splice(
+                                placedIndex,
+                                1
+                            );
+
+                        }
+
+
+                        const memberEntries =
+                            placedGroupEntries.filter(
+                                entry => {
+
+                                    if (
+                                        !entry
+                                    ) {
+
+                                        return false;
+
+                                    }
+
+
+                                    const entryTaskId =
+                                        entry.task_id ??
+                                        entry.taskId ??
+                                        null;
+
+
+                                    const memberTaskId =
+                                        groupTask.taskId ??
+                                        groupTask.id ??
+                                        null;
+
+
+                                    return (
+                                        String(
+                                            entryTaskId
+                                        ) ===
+                                        String(
+                                            memberTaskId
+                                        )
+                                    );
+
+                                }
+                            );
+
+
+                        result.entries.push(
+                            ...memberEntries
+                        );
+
 
                         result.placedTasks.push({
 
                             task:
-                                member.task,
+                                groupTask,
 
                             entries:
-                                member.entries,
+                                memberEntries,
 
                             candidate:
-                                member.candidate ||
-                                null
+                                member.candidate
 
                         });
 
@@ -17819,208 +17424,124 @@ function generateSmartTimetable(
 
                         result.statistics.totalPeriodsPlaced +=
                             Number(
-                                member.task.duration
+                                groupTask.duration
                             ) || 0;
 
-
-                        const memberIndex =
-                            remainingTasks.indexOf(
-                                member.task
-                            );
+                    }
 
 
-                        if (
-                            memberIndex >= 0
-                        ) {
-
-                            remainingTasks.splice(
-                                memberIndex,
-                                1
-                            );
-
-                        }
+                    atomicGroupPlaced =
+                        true;
 
 
-                        console.log(
-                            "SMART PARALLEL GROUP MEMBER PLACED:",
-                            {
+                    break;
 
-                                taskId:
-                                    member.task.taskId,
+                }
 
-                                requirementId:
-                                    member.task.requirementId,
 
-                                parallelGroup:
-                                    taskParallelGroup,
+                // ------------------------------------------------
+                // IMPORTANT
+                //
+                // If a later member failed, earlier members in
+                // this candidate may already have been reserved.
+                //
+                // Release those reservations before trying the
+                // next common period.
+                // ------------------------------------------------
 
-                                sequence:
-                                    member.task.sequence ??
-                                    null,
+                for (
+                    const member
+                    of groupCandidate.members
+                ) {
 
-                                period:
-                                    member.period?.id,
+                    const groupTask =
+                        member.task;
 
-                                room:
-                                    member.room?.id ||
-                                    null
 
-                            }
+                    if (
+                        groupTask.placed
+                    ) {
+
+                        releaseReservedSlot(
+                            groupTask,
+                            member.candidate.period,
+                            member.candidate.room,
+                            indexes
                         );
 
+
+                        groupTask.placed =
+                            false;
+
+
+                        groupTask.periodIds =
+                            [];
+
+
+                        groupTask.periodId =
+                            null;
+
+
+                        groupTask.period_id =
+                            null;
+
+
+                        groupTask.roomId =
+                            null;
+
+
+                        groupTask.room_id =
+                            null;
+
                     }
-                );
+
+                }
+
+            }
 
 
-                console.log(
-                    "======================================"
-                );
+            // ------------------------------------------------
+            // ATOMIC GROUP FAILED
+            //
+            // Do NOT immediately mark every member failed.
+            //
+            // Fall through to the original individual
+            // placement logic below.
+            //
+            // This preserves the old stable behavior when an
+            // atomic group cannot currently be completed.
+            // ------------------------------------------------
 
-                console.log(
-                    "STAGE 6F — PARALLEL GROUP SUCCESS"
-                );
-
-                console.log(
-                    "======================================"
-                );
-
-                console.log(
-                    "Parallel group:",
-                    taskParallelGroup
-                );
-
-                console.log(
-                    "Common period:",
-                    successfulGroup.period?.id
-                );
-
-                console.log(
-                    "Members placed:",
-                    successfulGroup.members.length
-                );
-
-                console.log(
-                    "Rooms assigned:",
-                    successfulGroup.members.map(
-                        member => ({
-
-                            taskId:
-                                member.task?.taskId,
-
-                            room:
-                                member.room?.id ||
-                                null
-
-                        })
-                    )
-                );
-
+            if (
+                atomicGroupPlaced
+            ) {
 
                 continue;
 
             }
 
 
-            // ====================================================
-            // GROUP FAILURE
-            // ====================================================
-
             console.warn(
-                "SMART PLACEMENT — PARALLEL GROUP FAILED:",
+                "SMART PLACEMENT — ATOMIC PARALLEL GROUP NOT COMPLETED:",
                 {
 
                     parallelGroup:
                         taskParallelGroup,
 
+                    sequence:
+                        taskSequence,
+
                     taskCount:
-                        parallelGroupTasks.length,
-
-                    reason:
-                        groupFailureReason
+                        parallelGroupTasks.length
 
                 }
             );
-
-
-            parallelGroupTasks.forEach(
-                groupTask => {
-
-                    if (
-                        !groupTask
-                    ) {
-
-                        return;
-
-                    }
-
-
-                    result.failedTasks.push({
-
-                        task:
-                            groupTask,
-
-                        reason:
-                            groupFailureReason
-
-                    });
-
-
-                    groupTask.placed =
-                        false;
-
-
-                    groupTask.periodIds =
-                        [];
-
-
-                    groupTask.roomId =
-                        null;
-
-
-                    groupTask.periodId =
-                        null;
-
-
-                    groupTask.period_id =
-                        null;
-
-
-                    groupTask.room_id =
-                        null;
-
-
-                    const groupTaskIndex =
-                        remainingTasks.indexOf(
-                            groupTask
-                        );
-
-
-                    if (
-                        groupTaskIndex >= 0
-                    ) {
-
-                        remainingTasks.splice(
-                            groupTaskIndex,
-                            1
-                        );
-
-                    }
-
-                }
-            );
-
-
-            continue;
 
         }
 
 
         // ====================================================
-        // NORMAL NON-PARALLEL PLACEMENT
-        // ====================================================
-        //
-        // This section is unchanged in behaviour.
-        //
+        // TRY ALL RANKED CANDIDATES
         // ====================================================
 
         let successfulPlacement =
@@ -18102,7 +17623,7 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // SUCCESSFUL NORMAL TASK
+        // SUCCESSFUL TASK
         // ====================================================
 
         if (
@@ -18196,7 +17717,7 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // ALL NORMAL CANDIDATES FAILED
+        // ALL CANDIDATES FAILED
         // ====================================================
 
         console.warn(
@@ -18244,18 +17765,6 @@ function generateSmartTimetable(
             null;
 
 
-        task.periodId =
-            null;
-
-
-        task.period_id =
-            null;
-
-
-        task.room_id =
-            null;
-
-
         const failedIndex =
             remainingTasks.indexOf(
                 task
@@ -18277,28 +17786,14 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // SAFETY LIMIT REACHED
+    // HANDLE SAFETY LIMIT
     // ========================================================
 
     if (
+        iteration >=
+        maximumIterations &&
         remainingTasks.length > 0
     ) {
-
-        console.warn(
-            "STAGE 6F — SAFETY LIMIT REACHED:",
-            {
-
-                iterations:
-                    iteration,
-
-                maximumIterations,
-
-                remaining:
-                    remainingTasks.length
-
-            }
-        );
-
 
         remainingTasks.forEach(
             task => {
@@ -18317,18 +17812,42 @@ function generateSmartTimetable(
                     task,
 
                     reason:
-                        "Smart timetable generation safety limit reached."
+                        "Generator safety iteration limit reached."
 
                 });
 
+
+                task.placed =
+                    false;
+
+
+                task.periodIds =
+                    [];
+
+
+                task.roomId =
+                    null;
+
             }
         );
+
+
+        remainingTasks.length =
+            0;
 
     }
 
 
     // ========================================================
-    // FINAL PLACEMENT STATISTICS
+    // FINAL STATISTICS
+    // ========================================================
+
+    result.statistics.failedTasks =
+        result.failedTasks.length;
+
+
+    // ========================================================
+    // LOG RESULT
     // ========================================================
 
     console.log(
@@ -18336,7 +17855,7 @@ function generateSmartTimetable(
     );
 
     console.log(
-        "STAGE 6F COMPLETE"
+        "STAGE 6F — GENERATION COMPLETE"
     );
 
     console.log(
@@ -18355,21 +17874,391 @@ function generateSmartTimetable(
 
     console.log(
         "Failed tasks:",
-        result.failedTasks.length
+        result.statistics.failedTasks
     );
 
     console.log(
-        "Periods placed:",
+        "Teaching periods placed:",
         result.statistics.totalPeriodsPlaced
     );
 
     console.log(
-        "Generated entries:",
-        result.entries.length
+        "Iterations:",
+        iteration
+    );
+
+    console.log(
+        "======================================"
     );
 
 
-    return result;
+    // ========================================================
+    // FAILED TASK TABLE
+    // ========================================================
+
+    if (
+        result.failedTasks.length > 0
+    ) {
+
+        console.table(
+            result.failedTasks.map(
+                item => ({
+
+                    taskId:
+                        item.task?.taskId ||
+                        null,
+
+                    type:
+                        item.task?.taskType ||
+                        null,
+
+                    streamId:
+                        item.task?.streamId ||
+                        null,
+
+                    subjectId:
+                        item.task?.subjectId ||
+                        null,
+
+                    teacherId:
+                        item.task?.teacherId ||
+                        null,
+
+                    requirementId:
+                        item.task?.requirementId ||
+                        null,
+
+                    reason:
+                        item.reason
+
+                })
+            )
+        );
+
+    }
+
+
+    // ========================================================
+    // FAILURE REASON SUMMARY
+    // ========================================================
+
+    const failureReasonCounts =
+        new Map();
+
+
+    result.failedTasks.forEach(
+        item => {
+
+            const reason =
+                item?.reason ||
+                "Unknown failure";
+
+
+            failureReasonCounts.set(
+                reason,
+                (
+                    failureReasonCounts.get(
+                        reason
+                    ) ||
+                    0
+                ) + 1
+            );
+
+        }
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6F — FAILURE REASON SUMMARY"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.table(
+        [
+            ...failureReasonCounts.entries()
+        ]
+        .map(
+            (
+                [
+                    reason,
+                    count
+                ]
+            ) => ({
+
+                count,
+
+                reason
+
+            })
+        )
+        .sort(
+            (
+                a,
+                b
+            ) =>
+                b.count -
+                a.count
+        )
+    );
+
+
+    // ========================================================
+    // STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
+    // ========================================================
+
+    if (
+        result.failedTasks.length > 0
+    ) {
+
+        const failedRequirementMap =
+            new Map();
+
+
+        result.failedTasks.forEach(
+            item => {
+
+                const task =
+                    item?.task ||
+                    item;
+
+
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
+                const requirementId =
+                    task.requirementId ??
+                    task.requirement_id ??
+                    null;
+
+
+                if (
+                    !requirementId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !failedRequirementMap.has(
+                        requirementId
+                    )
+                ) {
+
+                    failedRequirementMap.set(
+                        requirementId,
+                        []
+                    );
+
+                }
+
+
+                failedRequirementMap
+                    .get(
+                        requirementId
+                    )
+                    .push({
+
+                        taskId:
+                            task.taskId ??
+                            task.task_id ??
+                            task.id ??
+                            null,
+
+                        taskType:
+                            task.taskType ??
+                            task.type ??
+                            null,
+
+                        streamId:
+                            task.streamId ??
+                            task.stream_id ??
+                            null,
+
+                        subjectId:
+                            task.subjectId ??
+                            task.subject_id ??
+                            null,
+
+                        teacherId:
+                            task.teacherId ??
+                            task.teacher_id ??
+                            null,
+
+                        reason:
+                            item?.reason ||
+                            "Unknown"
+
+                    });
+
+            }
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            [
+                ...failedRequirementMap.entries()
+            ]
+            .map(
+                (
+                    [
+                        requirementId,
+                        tasks
+                    ]
+                ) => ({
+
+                    requirementId,
+
+                    failedTasks:
+                        tasks.length,
+
+                    taskIds:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    taskTypes:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskType
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    streams:
+                        tasks
+                            .map(
+                                task =>
+                                    task.streamId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    subjects:
+                        tasks
+                            .map(
+                                task =>
+                                    task.subjectId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    teachers:
+                        tasks
+                            .map(
+                                task =>
+                                    task.teacherId
+                            )
+                            .join(
+                                ", "
+                            )
+
+                })
+            )
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+    }
+
+
+    // ========================================================
+    // SUCCESS TABLE
+    // ========================================================
+
+    if (
+        result.placedTasks.length > 0
+    ) {
+
+        console.table(
+            result.placedTasks.map(
+                item => ({
+
+                    taskId:
+                        item.task?.taskId ||
+                        null,
+
+                    type:
+                        item.task?.taskType ||
+                        null,
+
+                    requirementId:
+                        item.task?.requirementId ||
+                        null,
+
+                    periods:
+                        item.task?.periodIds?.join(
+                            ", "
+                        ) ||
+                        "",
+
+                    room:
+                        item.task?.roomId ||
+                        null,
+
+                    score:
+                        item.candidate?.score ??
+                        null
+
+                })
+            );
+
+        );
+
+    }
+
+
+    // ========================================================
+    // RETURN COMPLETE RESULT
+    // ========================================================
+
+    return {
+
+        ...result,
+
+        indexes
+
+    };
 
 }
 
