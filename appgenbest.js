@@ -16335,32 +16335,14 @@ function selectNextSmartTask(
 
 
 
-
-
-
-
-
-
 function generateSmartTimetable(
     data
 ) {
 
-    console.log(
-        "======================================"
-    );
+    console.log("======================================");
+    console.log("STAGE 6F — SMART TIMETABLE GENERATION");
+    console.log("======================================");
 
-    console.log(
-        "STAGE 6F — SMART TIMETABLE GENERATION"
-    );
-
-    console.log(
-        "======================================"
-    );
-
-
-    // ========================================================
-    // VALIDATE DATA
-    // ========================================================
 
     if (
         !data ||
@@ -16375,19 +16357,11 @@ function generateSmartTimetable(
     }
 
 
-    // ========================================================
-    // CREATE FRESH OCCUPANCY INDEXES
-    // ========================================================
-
     const indexes =
         createOccupancyIndexes(
             data
         );
 
-
-    // ========================================================
-    // BUILD TEACHER LIMIT INDEX
-    // ========================================================
 
     if (
         !(indexes.teacherLimits instanceof Map)
@@ -16434,7 +16408,6 @@ function generateSmartTimetable(
                 indexes.teacherLimits.set(
                     teacherId,
                     {
-
                         maxLessonsPerDay:
                             Number(
                                 teacher.maxLessonsPerDay
@@ -16449,7 +16422,6 @@ function generateSmartTimetable(
                             Number(
                                 teacher.maxConsecutiveLessons
                             ) || 0
-
                     }
                 );
 
@@ -16459,10 +16431,6 @@ function generateSmartTimetable(
     }
 
 
-    // ========================================================
-    // CREATE RESULT
-    // ========================================================
-
     const result =
         createTimetablePlacementResult();
 
@@ -16470,10 +16438,6 @@ function generateSmartTimetable(
     result.statistics.totalTasks =
         data.lessonTasks.length;
 
-
-    // ========================================================
-    // COPY ACTIVE TASKS
-    // ========================================================
 
     const remainingTasks =
         data.lessonTasks.filter(
@@ -16484,8 +16448,34 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // SAFETY LIMIT
+    // DEFERRED PARALLEL GROUP CONTROL
     // ========================================================
+    //
+    // A synchronized parallel group can temporarily fail because
+    // other lessons currently occupy periods/rooms that the group
+    // needs.
+    //
+    // Do NOT immediately retry the same group.
+    //
+    // The group is deferred while unrelated work continues.
+    //
+    // ========================================================
+
+    const deferredParallelGroups =
+        new Set();
+
+
+    // --------------------------------------------------------
+    // Once all non-deferred tasks are exhausted, deferred groups
+    // receive one complete retry round.
+    //
+    // If they still cannot progress after that retry round,
+    // they are permanently failed rather than looping forever.
+    // --------------------------------------------------------
+
+    let deferredRetryAttempted =
+        false;
+
 
     const maximumIterations =
         Math.max(
@@ -16498,10 +16488,6 @@ function generateSmartTimetable(
         0;
 
 
-    // ========================================================
-    // MAIN PLACEMENT LOOP
-    // ========================================================
-
     while (
         remainingTasks.length > 0 &&
         iteration < maximumIterations
@@ -16511,20 +16497,212 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // SELECT NEXT TASK
+        // BUILD SELECTABLE TASK LIST
+        // ====================================================
+        //
+        // Temporarily exclude deferred parallel groups while
+        // there are other tasks available.
+        //
         // ====================================================
 
-        const selection =
-            selectNextSmartTask(
-                remainingTasks,
-                data,
-                indexes
+        let selectableTasks =
+            remainingTasks.filter(
+                task => {
+
+                    if (
+                        !task
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    const parallelGroup =
+                        normalizeTimetableId(
+                            task.parallelGroup ??
+                            task.parallel_group ??
+                            null
+                        );
+
+
+                    if (
+                        !parallelGroup
+                    ) {
+
+                        return true;
+
+                    }
+
+
+                    const sequence =
+                        Number(
+                            task.sequence ??
+                            1
+                        );
+
+
+                    const groupKey =
+                        JSON.stringify([
+                            parallelGroup,
+                            sequence
+                        ]);
+
+
+                    return (
+                        !deferredParallelGroups.has(
+                            groupKey
+                        )
+                    );
+
+                }
             );
 
 
         // ====================================================
-        // NO TASK
+        // RETRY DEFERRED GROUPS
         // ====================================================
+        //
+        // If every remaining task belongs to a deferred group,
+        // retry the deferred groups once.
+        //
+        // ====================================================
+
+        if (
+            selectableTasks.length === 0 &&
+            deferredParallelGroups.size > 0
+        ) {
+
+            if (
+                deferredRetryAttempted
+            ) {
+
+                // ------------------------------------------------
+                // No progress was possible during the deferred
+                // retry round.
+                //
+                // Permanently fail the remaining deferred groups.
+                // ------------------------------------------------
+
+                console.warn(
+                    "STAGE 6F — DEFERRED PARALLEL GROUPS STILL FAILED:",
+                    {
+                        groups:
+                            deferredParallelGroups.size,
+
+                        remaining:
+                            remainingTasks.length
+                    }
+                );
+
+
+                const deferredTasks =
+                    [...remainingTasks];
+
+
+                deferredTasks.forEach(
+                    task => {
+
+                        if (
+                            !task
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        result.failedTasks.push({
+                            task,
+
+                            reason:
+                                "No complete synchronized placement could be found for the parallel group."
+                        });
+
+
+                        task.placed =
+                            false;
+
+
+                        task.periodIds =
+                            [];
+
+
+                        task.periodId =
+                            null;
+
+
+                        task.period_id =
+                            null;
+
+
+                        task.roomId =
+                            null;
+
+
+                        task.room_id =
+                            null;
+
+                    }
+                );
+
+
+                remainingTasks.length =
+                    0;
+
+
+                break;
+
+            }
+
+
+            console.log(
+                "======================================"
+            );
+
+            console.log(
+                "STAGE 6F — RETRYING DEFERRED PARALLEL GROUPS"
+            );
+
+            console.log(
+                "Deferred groups:",
+                deferredParallelGroups.size
+            );
+
+            console.log(
+                "======================================"
+            );
+
+
+            deferredParallelGroups.clear();
+
+
+            deferredRetryAttempted =
+                true;
+
+
+            selectableTasks =
+                [...remainingTasks];
+
+        }
+
+
+        if (
+            selectableTasks.length === 0
+        ) {
+
+            break;
+
+        }
+
+
+        const selection =
+            selectNextSmartTask(
+                selectableTasks,
+                data,
+                indexes
+            );
+
 
         if (
             !selection
@@ -16539,8 +16717,45 @@ function generateSmartTimetable(
             selection.task;
 
 
+        if (
+            !task
+        ) {
+
+            continue;
+
+        }
+
+
         // ====================================================
-        // NO CANDIDATES
+        // NORMALIZE PARALLEL GROUP INFORMATION
+        // ====================================================
+
+        const taskParallelGroup =
+            normalizeTimetableId(
+                task.parallelGroup ??
+                task.parallel_group ??
+                null
+            );
+
+
+        const taskSequence =
+            Number(
+                task.sequence ??
+                1
+            );
+
+
+        const parallelGroupKey =
+            taskParallelGroup
+                ? JSON.stringify([
+                    taskParallelGroup,
+                    taskSequence
+                ])
+                : null;
+
+
+        // ====================================================
+        // NO CANDIDATE
         // ====================================================
 
         if (
@@ -16550,7 +16765,6 @@ function generateSmartTimetable(
             console.warn(
                 "SMART PLACEMENT — NO CANDIDATE:",
                 {
-
                     taskId:
                         task.taskId,
 
@@ -16568,18 +16782,15 @@ function generateSmartTimetable(
 
                     requirementId:
                         task.requirementId
-
                 }
             );
 
 
             result.failedTasks.push({
-
                 task,
 
                 reason:
                     "No valid placement candidate exists."
-
             });
 
 
@@ -16591,7 +16802,19 @@ function generateSmartTimetable(
                 [];
 
 
+            task.periodId =
+                null;
+
+
+            task.period_id =
+                null;
+
+
             task.roomId =
+                null;
+
+
+            task.room_id =
                 null;
 
 
@@ -16619,23 +16842,8 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // PARALLEL GROUP DETECTION
+        // FIND ATOMIC PARALLEL GROUP
         // ====================================================
-
-        const taskParallelGroup =
-            normalizeTimetableId(
-                task.parallelGroup ??
-                task.parallel_group ??
-                null
-            );
-
-
-        const taskSequence =
-            Number(
-                task.sequence ??
-                1
-            );
-
 
         const parallelGroupTasks =
             taskParallelGroup
@@ -16669,10 +16877,12 @@ function generateSmartTimetable(
 
                         return (
                             group ===
-                            taskParallelGroup
+                                taskParallelGroup
                         ) &&
-                        sequence ===
-                        taskSequence &&
+                        (
+                            sequence ===
+                            taskSequence
+                        ) &&
                         groupTask.taskType !==
                             "double" &&
                         groupTask.isDouble !==
@@ -16699,7 +16909,6 @@ function generateSmartTimetable(
             console.log(
                 "STAGE 6F — ATOMIC PARALLEL GROUP:",
                 {
-
                     parallelGroup:
                         taskParallelGroup,
 
@@ -16708,19 +16917,13 @@ function generateSmartTimetable(
 
                     groupSize:
                         parallelGroupTasks.length
-
                 }
             );
 
 
-            // ------------------------------------------------
-            // BUILD CANDIDATES FOR EACH GROUP MEMBER
-            // ------------------------------------------------
-
             const groupAnalyses =
                 parallelGroupTasks.map(
                     groupTask => ({
-
                         task:
                             groupTask,
 
@@ -16730,21 +16933,75 @@ function generateSmartTimetable(
                                 data,
                                 indexes
                             )
-
                     })
                 );
 
 
-            // ------------------------------------------------
-            // FIND PERIODS AVAILABLE TO EVERY MEMBER
-            // ------------------------------------------------
+            // ====================================================
+            // GROUP CANDIDATE DIAGNOSTICS
+            // ====================================================
+
+            console.log(
+                "STAGE 6F — PARALLEL GROUP CANDIDATES:",
+                groupAnalyses.map(
+                    analysis => ({
+                        taskId:
+                            analysis.task?.taskId ??
+                            analysis.task?.id ??
+                            null,
+
+                        streamId:
+                            analysis.task?.streamId ??
+                            analysis.task?.stream_id ??
+                            null,
+
+                        subjectId:
+                            analysis.task?.subjectId ??
+                            analysis.task?.subject_id ??
+                            null,
+
+                        candidateCount:
+                            Array.isArray(
+                                analysis.candidates
+                            )
+                                ? analysis.candidates.length
+                                : 0,
+
+                        periodCount:
+                            new Set(
+                                (
+                                    Array.isArray(
+                                        analysis.candidates
+                                    )
+                                        ? analysis.candidates
+                                        : []
+                                )
+                                .map(
+                                    candidate =>
+                                        candidate?.period?.id
+                                )
+                                .filter(
+                                    id =>
+                                        id !== null &&
+                                        id !== undefined
+                                )
+                                .map(
+                                    id =>
+                                        String(id)
+                                )
+                            ).size
+                    })
+                )
+            );
+
 
             let commonPeriodIds =
                 null;
 
 
             for (
-                const analysis of groupAnalyses
+                const analysis
+                of groupAnalyses
             ) {
 
                 const memberPeriodIds =
@@ -16784,9 +17041,7 @@ function generateSmartTimetable(
 
                     commonPeriodIds =
                         new Set(
-                            [
-                                ...commonPeriodIds
-                            ]
+                            [...commonPeriodIds]
                             .filter(
                                 id =>
                                     memberPeriodIds.has(
@@ -16809,9 +17064,31 @@ function generateSmartTimetable(
             }
 
 
-            // ------------------------------------------------
-            // SEARCH COMMON PERIODS
-            // ------------------------------------------------
+            // ====================================================
+            // NO COMMON PERIOD
+            // ====================================================
+
+            if (
+                !commonPeriodIds ||
+                commonPeriodIds.size === 0
+            ) {
+
+                console.warn(
+                    "STAGE 6F — PARALLEL GROUP NO COMMON PERIOD:",
+                    {
+                        parallelGroup:
+                            taskParallelGroup,
+
+                        sequence:
+                            taskSequence,
+
+                        groupSize:
+                            parallelGroupTasks.length
+                    }
+                );
+
+            }
+
 
             let atomicGroupPlaced =
                 false;
@@ -16834,10 +17111,7 @@ function generateSmartTimetable(
                                 )
                         )
                         .sort(
-                            (
-                                a,
-                                b
-                            ) => {
+                            (a,b) => {
 
                                 const orderA =
                                     Number(
@@ -16877,10 +17151,6 @@ function generateSmartTimetable(
 
                     }
 
-
-                    // ------------------------------------------------
-                    // BUILD ROOM OPTIONS
-                    // ------------------------------------------------
 
                     const memberOptions =
                         [];
@@ -16922,18 +17192,17 @@ function generateSmartTimetable(
                             validPeriod =
                                 false;
 
+
                             break;
 
                         }
 
 
                         memberOptions.push({
-
                             task:
                                 analysis.task,
 
                             candidates
-
                         });
 
                     }
@@ -16947,10 +17216,6 @@ function generateSmartTimetable(
 
                     }
 
-
-                    // ------------------------------------------------
-                    // SEARCH ROOM COMBINATIONS
-                    // ------------------------------------------------
 
                     const selectedMembers =
                         [];
@@ -16984,24 +17249,21 @@ function generateSmartTimetable(
                         ) {
 
                             foundCombination = {
-
                                 members:
                                     selectedMembers.map(
                                         item => ({
-
                                             task:
                                                 item.task,
 
                                             candidate:
                                                 item.candidate
-
                                         })
                                     ),
 
                                 score:
                                     totalScore
-
                             };
+
 
                             return;
 
@@ -17077,12 +17339,10 @@ function generateSmartTimetable(
 
 
                             selectedMembers.push({
-
                                 task:
                                     member.task,
 
                                 candidate
-
                             });
 
 
@@ -17134,14 +17394,42 @@ function generateSmartTimetable(
                         !foundCombination
                     ) {
 
+                        console.warn(
+                            "STAGE 6F — PARALLEL GROUP NO ROOM COMBINATION:",
+                            {
+                                parallelGroup:
+                                    taskParallelGroup,
+
+                                sequence:
+                                    taskSequence,
+
+                                period:
+                                    period.id,
+
+                                members:
+                                    memberOptions.map(
+                                        member => ({
+                                            taskId:
+                                                member.task?.taskId ??
+                                                member.task?.id ??
+                                                null,
+
+                                            candidateCount:
+                                                member.candidates.length
+                                        })
+                                    )
+                            }
+                        );
+
+
                         continue;
 
                     }
 
 
-                    // ------------------------------------------------
-                    // PLACE COMPLETE GROUP
-                    // ------------------------------------------------
+                    // =================================================
+                    // ATOMIC PLACEMENT
+                    // =================================================
 
                     const placedMembers =
                         [];
@@ -17163,13 +17451,11 @@ function generateSmartTimetable(
                         const attempt =
                             placeSelectedSmartTask(
                                 {
-
                                     task:
                                         member.task,
 
                                     candidate:
                                         member.candidate
-
                                 },
                                 indexes
                             );
@@ -17182,6 +17468,7 @@ function generateSmartTimetable(
 
                             groupFailed =
                                 true;
+
 
                             break;
 
@@ -17208,13 +17495,21 @@ function generateSmartTimetable(
                     }
 
 
-                    // ------------------------------------------------
-                    // ROLLBACK PARTIAL GROUP
-                    // ------------------------------------------------
-
                     if (
                         groupFailed
                     ) {
+
+                        console.warn(
+                            "STAGE 6F — PARALLEL GROUP PLACEMENT FAILURE:",
+                            {
+                                parallelGroup:
+                                    taskParallelGroup,
+
+                                sequence:
+                                    taskSequence
+                            }
+                        );
+
 
                         for (
                             const member
@@ -17270,14 +17565,13 @@ function generateSmartTimetable(
                     }
 
 
-                    // ------------------------------------------------
-                    // COMPLETE GROUP SUCCESS
-                    // ------------------------------------------------
+                    // =================================================
+                    // GROUP SUCCESS
+                    // =================================================
 
                     console.log(
                         "STAGE 6F — PARALLEL GROUP SUCCESS:",
                         {
-
                             parallelGroup:
                                 taskParallelGroup,
 
@@ -17289,7 +17583,6 @@ function generateSmartTimetable(
 
                             members:
                                 foundCombination.members.length
-
                         }
                     );
 
@@ -17365,7 +17658,6 @@ function generateSmartTimetable(
 
 
                         result.placedTasks.push({
-
                             task:
                                 groupTask,
 
@@ -17374,7 +17666,6 @@ function generateSmartTimetable(
 
                             candidate:
                                 member.candidate
-
                         });
 
 
@@ -17393,16 +17684,21 @@ function generateSmartTimetable(
                         true;
 
 
+                    deferredParallelGroups.delete(
+                        parallelGroupKey
+                    );
+
+
+                    deferredRetryAttempted =
+                        false;
+
+
                     break;
 
                 }
 
             }
 
-
-            // ------------------------------------------------
-            // GROUP SUCCESS
-            // ------------------------------------------------
 
             if (
                 atomicGroupPlaced
@@ -17414,31 +17710,23 @@ function generateSmartTimetable(
 
 
             // ====================================================
-            // IMPORTANT:
-            // DO NOT FALL THROUGH TO INDIVIDUAL PLACEMENT
+            // DEFER GROUP
             // ====================================================
-            //
-            // If this task belongs to a parallel group and the
-            // complete group could not be placed atomically,
-            // this task must NOT be placed by itself.
-            //
-            // Otherwise the generator creates partial groups,
-            // such as:
-            //
-            //     4 subjects in P5
-            //     1 subject in P6
-            //
-            // which violates the synchronization rule.
-            //
-            // Leave the group unresolved so it can be handled
-            // as a group rather than splitting it.
-            //
-            // ====================================================
+
+            if (
+                parallelGroupKey
+            ) {
+
+                deferredParallelGroups.add(
+                    parallelGroupKey
+                );
+
+            }
+
 
             console.warn(
                 "SMART PLACEMENT — PARALLEL GROUP DEFERRED:",
                 {
-
                     parallelGroup:
                         taskParallelGroup,
 
@@ -17451,22 +17739,9 @@ function generateSmartTimetable(
                     taskId:
                         task.taskId ||
                         task.id
-
                 }
             );
 
-
-            // ------------------------------------------------
-            // IMPORTANT:
-            //
-            // We do NOT remove the task from remainingTasks.
-            //
-            // We also do NOT mark it failed here.
-            //
-            // The task remains available while other tasks can
-            // continue to be selected.
-            //
-            // ------------------------------------------------
 
             continue;
 
@@ -17474,7 +17749,7 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // ORIGINAL INDIVIDUAL CANDIDATE PLACEMENT
+        // NORMAL SINGLE / DOUBLE PLACEMENT
         // ====================================================
 
         let successfulPlacement =
@@ -17490,15 +17765,14 @@ function generateSmartTimetable(
 
 
         for (
-            const candidate of selection.candidates
+            const candidate
+            of selection.candidates
         ) {
 
             const candidateSelection = {
-
                 task,
 
                 candidate
-
             };
 
 
@@ -17535,7 +17809,6 @@ function generateSmartTimetable(
             console.warn(
                 "SMART CANDIDATE REJECTED:",
                 {
-
                     taskId:
                         task.taskId,
 
@@ -17548,16 +17821,11 @@ function generateSmartTimetable(
                     reason:
                         attempt?.reason ||
                         "Candidate rejected."
-
                 }
             );
 
         }
 
-
-        // ====================================================
-        // SUCCESSFUL TASK
-        // ====================================================
 
         if (
             successfulPlacement &&
@@ -17578,7 +17846,6 @@ function generateSmartTimetable(
 
 
             result.placedTasks.push({
-
                 task,
 
                 entries:
@@ -17586,7 +17853,6 @@ function generateSmartTimetable(
 
                 candidate:
                     successfulCandidate
-
             });
 
 
@@ -17617,10 +17883,19 @@ function generateSmartTimetable(
             }
 
 
+            // ----------------------------------------------------
+            // Any successful placement means the timetable made
+            // progress. A previously deferred group can therefore
+            // be retried in a future cycle.
+            // ----------------------------------------------------
+
+            deferredRetryAttempted =
+                false;
+
+
             console.log(
                 "SMART PLACEMENT SUCCESS:",
                 {
-
                     taskId:
                         task.taskId,
 
@@ -17639,7 +17914,6 @@ function generateSmartTimetable(
                     score:
                         successfulCandidate?.score ??
                         null
-
                 }
             );
 
@@ -17650,13 +17924,12 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // ALL CANDIDATES FAILED
+        // NORMAL TASK FAILED
         // ====================================================
 
         console.warn(
             "SMART PLACEMENT — ALL CANDIDATES FAILED:",
             {
-
                 taskId:
                     task.taskId,
 
@@ -17671,18 +17944,15 @@ function generateSmartTimetable(
 
                 reason:
                     lastFailureReason
-
             }
         );
 
 
         result.failedTasks.push({
-
             task,
 
             reason:
                 lastFailureReason
-
         });
 
 
@@ -17694,7 +17964,19 @@ function generateSmartTimetable(
             [];
 
 
+        task.periodId =
+            null;
+
+
+        task.period_id =
+            null;
+
+
         task.roomId =
+            null;
+
+
+        task.room_id =
             null;
 
 
@@ -17719,12 +18001,11 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // HANDLE SAFETY LIMIT
+    // SAFETY LIMIT
     // ========================================================
 
     if (
-        iteration >=
-        maximumIterations &&
+        iteration >= maximumIterations &&
         remainingTasks.length > 0
     ) {
 
@@ -17741,12 +18022,10 @@ function generateSmartTimetable(
 
 
                 result.failedTasks.push({
-
                     task,
 
                     reason:
                         "Generator safety iteration limit reached."
-
                 });
 
 
@@ -17757,7 +18036,20 @@ function generateSmartTimetable(
                 task.periodIds =
                     [];
 
+
+                task.periodId =
+                    null;
+
+
+                task.period_id =
+                    null;
+
+
                 task.roomId =
+                    null;
+
+
+                task.room_id =
                     null;
 
             }
@@ -17777,10 +18069,6 @@ function generateSmartTimetable(
     result.statistics.failedTasks =
         result.failedTasks.length;
 
-
-    // ========================================================
-    // LOG RESULT
-    // ========================================================
 
     console.log(
         "======================================"
@@ -17835,7 +18123,6 @@ function generateSmartTimetable(
         console.table(
             result.failedTasks.map(
                 item => ({
-
                     taskId:
                         item.task?.taskId ||
                         null,
@@ -17862,7 +18149,6 @@ function generateSmartTimetable(
 
                     reason:
                         item.reason
-
                 })
             )
         );
@@ -17891,8 +18177,7 @@ function generateSmartTimetable(
                 (
                     failureReasonCounts.get(
                         reason
-                    ) ||
-                    0
+                    ) || 0
                 ) + 1
             );
 
@@ -17914,28 +18199,16 @@ function generateSmartTimetable(
 
 
     console.table(
-        [
-            ...failureReasonCounts.entries()
-        ]
+        [...failureReasonCounts.entries()]
         .map(
-            (
-                [
-                    reason,
-                    count
-                ]
-            ) => ({
-
+            ([reason, count]) => ({
                 count,
 
                 reason
-
             })
         )
         .sort(
-            (
-                a,
-                b
-            ) =>
+            (a,b) =>
                 b.count -
                 a.count
         )
@@ -17943,7 +18216,7 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
+    // FAILED REQUIREMENT DIAGNOSTIC
     // ========================================================
 
     if (
@@ -18005,7 +18278,6 @@ function generateSmartTimetable(
                         requirementId
                     )
                     .push({
-
                         taskId:
                             task.taskId ??
                             task.task_id ??
@@ -18035,7 +18307,6 @@ function generateSmartTimetable(
                         reason:
                             item?.reason ||
                             "Unknown"
-
                     });
 
             }
@@ -18056,17 +18327,9 @@ function generateSmartTimetable(
 
 
         console.table(
-            [
-                ...failedRequirementMap.entries()
-            ]
+            [...failedRequirementMap.entries()]
             .map(
-                (
-                    [
-                        requirementId,
-                        tasks
-                    ]
-                ) => ({
-
+                ([requirementId, tasks]) => ({
                     requirementId,
 
                     failedTasks:
@@ -18078,9 +18341,7 @@ function generateSmartTimetable(
                                 task =>
                                     task.taskId
                             )
-                            .join(
-                                ", "
-                            ),
+                            .join(", "),
 
                     taskTypes:
                         tasks
@@ -18088,9 +18349,7 @@ function generateSmartTimetable(
                                 task =>
                                     task.taskType
                             )
-                            .join(
-                                ", "
-                            ),
+                            .join(", "),
 
                     streams:
                         tasks
@@ -18098,9 +18357,7 @@ function generateSmartTimetable(
                                 task =>
                                     task.streamId
                             )
-                            .join(
-                                ", "
-                            ),
+                            .join(", "),
 
                     subjects:
                         tasks
@@ -18108,9 +18365,7 @@ function generateSmartTimetable(
                                 task =>
                                     task.subjectId
                             )
-                            .join(
-                                ", "
-                            ),
+                            .join(", "),
 
                     teachers:
                         tasks
@@ -18118,10 +18373,7 @@ function generateSmartTimetable(
                                 task =>
                                     task.teacherId
                             )
-                            .join(
-                                ", "
-                            )
-
+                            .join(", ")
                 })
             )
         );
@@ -18135,7 +18387,7 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // SUCCESS TABLE
+    // PLACED TASK TABLE
     // ========================================================
 
     if (
@@ -18145,7 +18397,6 @@ function generateSmartTimetable(
         console.table(
             result.placedTasks.map(
                 item => ({
-
                     taskId:
                         item.task?.taskId ||
                         null,
@@ -18171,7 +18422,6 @@ function generateSmartTimetable(
                     score:
                         item.candidate?.score ??
                         null
-
                 })
             )
         );
@@ -18179,20 +18429,13 @@ function generateSmartTimetable(
     }
 
 
-    // ========================================================
-    // RETURN COMPLETE RESULT
-    // ========================================================
-
     return {
-
         ...result,
 
         indexes
-
     };
 
 }
-
 
 
 
