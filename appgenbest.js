@@ -25555,6 +25555,95 @@ function findAlternativeSlotForExistingTask(
     }
 
 
+    // ========================================================
+    // NORMALIZE PARALLEL GROUPS
+    // ========================================================
+    //
+    // Stage 7 single-task relocation MUST NOT manipulate
+    // individual members of a parallel group.
+    //
+    // Parallel lessons are synchronized atomically by Stage 6F.
+    //
+    // Moving one member independently would split the group.
+    //
+    // Therefore:
+    //
+    //     grouped existing task -> NOT movable here
+    //     grouped failed task   -> NOT repairable here
+    //
+    // A dedicated atomic parallel-group repair must handle
+    // those cases.
+    //
+    // ========================================================
+
+    const existingTaskParallelGroup =
+        normalizeTimetableId(
+            existingTask.parallelGroup ??
+            existingTask.parallel_group ??
+            null
+        );
+
+
+    const failedTaskParallelGroup =
+        normalizeTimetableId(
+            failedTask.parallelGroup ??
+            failedTask.parallel_group ??
+            null
+        );
+
+
+    if (
+        existingTaskParallelGroup
+    ) {
+
+        console.log(
+            "STAGE 7: Skipping grouped existing task during single-task relocation:",
+            {
+
+                taskId:
+                    existingTask?.taskId ||
+                    existingTask?.id,
+
+                parallelGroup:
+                    existingTaskParallelGroup
+
+            }
+        );
+
+
+        return null;
+
+    }
+
+
+    if (
+        failedTaskParallelGroup
+    ) {
+
+        console.log(
+            "STAGE 7: Skipping grouped failed task during single-task relocation:",
+            {
+
+                taskId:
+                    failedTask?.taskId ||
+                    failedTask?.id,
+
+                parallelGroup:
+                    failedTaskParallelGroup
+
+            }
+        );
+
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // FIND CURRENT SLOT
+    // ========================================================
+
     const oldPeriod =
         findTaskPeriod(
             existingTask,
@@ -25628,11 +25717,10 @@ function findAlternativeSlotForExistingTask(
     // TEMPORARILY RELEASE EXISTING TASK
     // ========================================================
     //
-    // We must remove the existing task from the occupancy
-    // indexes before testing relocation candidates.
+    // The task is released only while searching.
     //
-    // This allows the candidate check to represent the state
-    // that will actually exist after the move.
+    // The original reservation MUST be restored before this
+    // function returns.
     //
     // ========================================================
 
@@ -25680,16 +25768,12 @@ function findAlternativeSlotForExistingTask(
     // SEARCH FOR A VALID RELOCATION
     // ========================================================
     //
-    // A relocation is only acceptable when BOTH conditions
-    // are satisfied:
+    // Both conditions must be valid:
     //
     // 1. Existing task can move to the new period/room.
     //
-    // 2. Failed task can then use the freed old period with
-    //    a valid room.
-    //
-    // This prevents Stage 7 from performing a move that must
-    // immediately be rolled back.
+    // 2. Failed task can use the existing task's original
+    //    period after it has moved.
     //
     // ========================================================
 
@@ -25698,7 +25782,7 @@ function findAlternativeSlotForExistingTask(
     ) {
 
         // ----------------------------------------------------
-        // DO NOT RETURN THE SAME PERIOD
+        // DO NOT RETURN TO THE SAME PERIOD
         // ----------------------------------------------------
 
         if (
@@ -25743,13 +25827,7 @@ function findAlternativeSlotForExistingTask(
 
 
             // ------------------------------------------------
-            // CHECK FAILED TASK IN THE FREED SLOT
-            // ------------------------------------------------
-            //
-            // The existing task is still released here.
-            // Therefore this check represents the occupancy
-            // state after the existing task has moved away.
-            //
+            // CHECK FAILED TASK IN FREED ORIGINAL SLOT
             // ------------------------------------------------
 
             let failedTaskCanUseFreedSlot =
@@ -25776,6 +25854,7 @@ function findAlternativeSlotForExistingTask(
 
                     failedTaskCanUseFreedSlot =
                         true;
+
 
                     alternative = {
 
@@ -25825,11 +25904,12 @@ function findAlternativeSlotForExistingTask(
     // RESTORE ORIGINAL RESERVATION
     // ========================================================
     //
-    // The actual move is performed later by
-    // moveStage7Task().
+    // This function only searches.
     //
-    // Therefore this function must always leave the indexes
-    // in their original state before returning.
+    // It does NOT perform the move.
+    //
+    // Therefore the existing task must always be restored
+    // before returning the alternative.
     //
     // ========================================================
 
