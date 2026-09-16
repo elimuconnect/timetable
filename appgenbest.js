@@ -16531,32 +16531,78 @@ function generateSmartTimetable(
 
 
 
-console.log(
-    "STAGE 6F — PARALLEL GROUP MEMBERS:",
-    {
-        parallelGroup:
-            taskParallelGroup,
 
-        members:
-            remainingTasks
-                .filter(
-                    groupTask => {
 
-                        const groupId =
-                            normalizeTimetableId(
-                                groupTask?.parallelGroup ??
-                                groupTask?.parallel_group
+
+
+        
+
+
+        console.log(
+            "##################################################"
+        );
+
+        console.log(
+            "STAGE 6F — PARALLEL GROUP DEBUG"
+        );
+
+        console.log(
+            "Selected task:",
+            {
+                taskId:
+                    task?.taskId,
+
+                subjectId:
+                    task?.subjectId,
+
+                subject:
+                    task?.subjectName ||
+                    task?.subject_name ||
+                    null,
+
+                streamId:
+                    task?.streamId,
+
+                parallelGroup:
+                    task?.parallelGroup ??
+                    task?.parallel_group ??
+                    null,
+
+                normalizedParallelGroup:
+                    taskParallelGroup
+            }
+        );
+
+
+        if (
+            taskParallelGroup
+        ) {
+
+            const debugGroupMembers =
+                remainingTasks
+                    .filter(
+                        groupTask => {
+
+                            const groupId =
+                                normalizeTimetableId(
+                                    groupTask?.parallelGroup ??
+                                    groupTask?.parallel_group
+                                );
+
+
+                            return (
+                                groupId &&
+                                groupId ===
+                                taskParallelGroup
                             );
 
-                        return (
-                            groupId &&
-                            groupId ===
-                            taskParallelGroup
-                        );
+                        }
+                    );
 
-                    }
-                )
-                .map(
+
+            console.log(
+                "STAGE 6F — MATCHING PARALLEL GROUP MEMBERS:",
+                debugGroupMembers.map(
                     groupTask => ({
 
                         taskId:
@@ -16578,15 +16624,33 @@ console.log(
                             groupTask?.parallel_group ??
                             null,
 
+                        normalizedParallelGroup:
+                            normalizeTimetableId(
+                                groupTask?.parallelGroup ??
+                                groupTask?.parallel_group
+                            ),
+
                         placed:
                             groupTask?.placed
 
                     })
                 )
-    }
-);
+            );
+
+        }
+        else {
+
+            console.log(
+                "STAGE 6F — SELECTED TASK HAS NO PARALLEL GROUP:",
+                task?.taskId
+            );
+
+        }
 
 
+        console.log(
+            "##################################################"
+        );
 
 
 
