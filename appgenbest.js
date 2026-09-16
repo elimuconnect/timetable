@@ -16528,6 +16528,75 @@ function generateSmartTimetable(
             );
 
 
+
+
+
+console.log(
+    "STAGE 6F — PARALLEL GROUP MEMBERS:",
+    {
+        parallelGroup:
+            taskParallelGroup,
+
+        members:
+            remainingTasks
+                .filter(
+                    groupTask => {
+
+                        const groupId =
+                            normalizeTimetableId(
+                                groupTask?.parallelGroup ??
+                                groupTask?.parallel_group
+                            );
+
+                        return (
+                            groupId &&
+                            groupId ===
+                            taskParallelGroup
+                        );
+
+                    }
+                )
+                .map(
+                    groupTask => ({
+
+                        taskId:
+                            groupTask?.taskId,
+
+                        subjectId:
+                            groupTask?.subjectId,
+
+                        subject:
+                            groupTask?.subjectName ||
+                            groupTask?.subject_name ||
+                            null,
+
+                        streamId:
+                            groupTask?.streamId,
+
+                        parallelGroup:
+                            groupTask?.parallelGroup ??
+                            groupTask?.parallel_group ??
+                            null,
+
+                        placed:
+                            groupTask?.placed
+
+                    })
+                )
+    }
+);
+
+
+
+
+
+
+
+
+
+
+
+        
         const parallelGroupTasks =
             taskParallelGroup
                 ? remainingTasks.filter(
