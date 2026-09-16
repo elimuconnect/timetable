@@ -2773,6 +2773,68 @@ console.log(
         );
 
 
+
+
+console.log(
+    "======================================"
+);
+
+console.log(
+    "DEBUG — PARALLEL GROUPS AFTER TASK CREATION"
+);
+
+console.log(
+    "======================================"
+);
+
+console.table(
+    lessonTasks
+        .filter(
+            task =>
+                task.parallelGroup
+        )
+        .map(
+            task => ({
+                taskId:
+                    task.taskId,
+
+                requirementId:
+                    task.requirementId,
+
+                streamId:
+                    task.streamId,
+
+                subjectId:
+                    task.subjectId,
+
+                parallelGroup:
+                    task.parallelGroup,
+
+                parallelGroupSize:
+                    task.parallelGroupSize
+            })
+        )
+);
+
+console.log(
+    "Tasks with parallel groups:",
+    lessonTasks.filter(
+        task =>
+            task.parallelGroup
+    ).length
+);
+
+console.log(
+    "Tasks without parallel groups:",
+    lessonTasks.filter(
+        task =>
+            !task.parallelGroup
+    ).length
+);
+
+
+
+    
     // ========================================================
     // STEP 7 — VALIDATE LESSON TASKS
     // ========================================================
