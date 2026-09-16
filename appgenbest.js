@@ -18173,7 +18173,8 @@ function generateSmartTimetable(
                         null
 
                 })
-            );
+            )
+        );
 
     }
 
