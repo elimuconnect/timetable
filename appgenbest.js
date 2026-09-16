@@ -15561,6 +15561,649 @@ function getTaskDayPressure(
 
 
 
+function selectNextSmartTask(
+    remainingTasks,
+    data,
+    indexes
+) {
+
+    if (
+        !Array.isArray(remainingTasks) ||
+        remainingTasks.length === 0 ||
+        !data ||
+        !indexes
+    ) {
+
+        return null;
+
+    }
+
+
+    const taskCandidates = [];
+
+
+    // ========================================================
+    // ANALYSE EVERY REMAINING TASK
+    // ========================================================
+
+    remainingTasks.forEach(
+        task => {
+
+            if (
+                !task ||
+                task.placed
+            ) {
+
+                return;
+
+            }
+
+
+            // ==================================================
+            // TASK PRIORITY FROM STAGE 6B
+            // ==================================================
+
+            const priority =
+                calculateTaskPriorityScore(
+                    task,
+                    data
+                );
+
+
+            // ==================================================
+            // GET CURRENT VALID CANDIDATES
+            // ==================================================
+
+            let candidates = [];
+
+
+            if (
+                task.taskType === "double"
+            ) {
+
+                candidates =
+                    getScoredDoubleLessonCandidates(
+                        task,
+                        data,
+                        indexes
+                    );
+
+            }
+            else {
+
+                candidates =
+                    getScoredSingleLessonCandidates(
+                        task,
+                        data,
+                        indexes
+                    );
+
+            }
+
+
+            // ==================================================
+            // NUMBER OF AVAILABLE CANDIDATES
+            // ==================================================
+
+            const candidateCount =
+                candidates.length;
+
+
+            // ==================================================
+            // BEST CANDIDATE
+            // ==================================================
+
+            const bestCandidate =
+                candidateCount > 0
+                    ? candidates[0]
+                    : null;
+
+
+            // ==================================================
+            // DAY PRESSURE
+            // ==================================================
+
+            const dayPressure =
+                getTaskDayPressure(
+                    task,
+                    data,
+                    candidates
+                );
+
+
+            // ==================================================
+            // PARALLEL GROUP STATUS
+            // ==================================================
+
+            const taskParallelGroup =
+                normalizeTimetableId(
+                    task.parallelGroup ??
+                    task.parallel_group
+                );
+
+
+            let parallelGroupEstablished =
+                false;
+
+
+            let parallelGroupPeriods =
+                0;
+
+
+            if (
+                taskParallelGroup &&
+                indexes.studentGroupPeriodLessons instanceof Map
+            ) {
+
+                const studentGroups =
+                    getTaskStudentGroups(
+                        task
+                    );
+
+
+                const synchronizedPeriods =
+                    new Set();
+
+
+                studentGroups.forEach(
+                    studentGroupId => {
+
+                        if (
+                            !studentGroupId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        for (
+                            const [
+                                key,
+                                lessons
+                            ]
+                            of indexes.studentGroupPeriodLessons.entries()
+                        ) {
+
+                            if (
+                                !Array.isArray(
+                                    lessons
+                                ) ||
+                                lessons.length === 0
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const separatorIndex =
+                                String(
+                                    key
+                                ).lastIndexOf(
+                                    "__"
+                                );
+
+
+                            if (
+                                separatorIndex < 0
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const keyGroupId =
+                                String(
+                                    key
+                                ).slice(
+                                    0,
+                                    separatorIndex
+                                );
+
+
+                            const periodId =
+                                String(
+                                    key
+                                ).slice(
+                                    separatorIndex + 2
+                                );
+
+
+                            if (
+                                String(
+                                    keyGroupId
+                                ) !==
+                                String(
+                                    studentGroupId
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const matchingParallelLesson =
+                                lessons.some(
+                                    existingLesson => {
+
+                                        if (
+                                            !existingLesson
+                                        ) {
+
+                                            return false;
+
+                                        }
+
+
+                                        const existingParallelGroup =
+                                            normalizeTimetableId(
+                                                existingLesson.parallelGroup ??
+                                                existingLesson.parallel_group
+                                            );
+
+
+                                        return (
+                                            existingParallelGroup &&
+                                            existingParallelGroup ===
+                                            taskParallelGroup
+                                        );
+
+                                    }
+                                );
+
+
+                            if (
+                                matchingParallelLesson
+                            ) {
+
+                                synchronizedPeriods.add(
+                                    periodId
+                                );
+
+                            }
+
+                        }
+
+                    }
+                );
+
+
+                if (
+                    synchronizedPeriods.size > 0
+                ) {
+
+                    parallelGroupEstablished =
+                        true;
+
+
+                    parallelGroupPeriods =
+                        synchronizedPeriods.size;
+
+                }
+
+            }
+
+
+            // ==================================================
+            // STORE COMPLETE ANALYSIS
+            // ==================================================
+
+            taskCandidates.push({
+
+                task,
+
+                priority,
+
+                candidates,
+
+                candidateCount,
+
+                candidate:
+                    bestCandidate,
+
+                requiredDays:
+                    dayPressure.requiredDays,
+
+                availableDays:
+                    dayPressure.availableDays,
+
+                dayDeficit:
+                    dayPressure.deficit,
+
+                parallelGroupEstablished,
+
+                parallelGroupPeriods
+
+            });
+
+        }
+    );
+
+
+    // ========================================================
+    // NO TASKS AVAILABLE
+    // ========================================================
+
+    if (
+        taskCandidates.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // SORT TASKS
+    // ========================================================
+
+    taskCandidates.sort(
+        (
+            a,
+            b
+        ) => {
+
+            // ------------------------------------------------
+            // 1. ESTABLISHED PARALLEL GROUP FIRST
+            // ------------------------------------------------
+            //
+            // Once a lesson from a parallel group exists,
+            // its remaining members must be considered before
+            // unrelated tasks, regardless of day pressure.
+            //
+            // This is what keeps an already-established
+            // parallel group synchronized.
+            //
+            // ------------------------------------------------
+
+            if (
+                a.parallelGroupEstablished !==
+                b.parallelGroupEstablished
+            ) {
+
+                return a.parallelGroupEstablished
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // 2. MORE ESTABLISHED GROUP PERIODS FIRST
+            // ------------------------------------------------
+
+            if (
+                a.parallelGroupPeriods !==
+                b.parallelGroupPeriods
+            ) {
+
+                return (
+                    b.parallelGroupPeriods -
+                    a.parallelGroupPeriods
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 3. CRITICAL DAY DEFICIT FIRST
+            // ------------------------------------------------
+
+            if (
+                a.dayDeficit !==
+                b.dayDeficit
+            ) {
+
+                return (
+                    b.dayDeficit -
+                    a.dayDeficit
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 4. FEWEST AVAILABLE DAYS FIRST
+            // ------------------------------------------------
+
+            if (
+                a.availableDays !==
+                b.availableDays
+            ) {
+
+                return (
+                    a.availableDays -
+                    b.availableDays
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 5. FEWEST VALID CANDIDATES FIRST
+            // ------------------------------------------------
+
+            if (
+                a.candidateCount !==
+                b.candidateCount
+            ) {
+
+                return (
+                    a.candidateCount -
+                    b.candidateCount
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 6. HIGHER TASK PRIORITY
+            // ------------------------------------------------
+
+            if (
+                b.priority !==
+                a.priority
+            ) {
+
+                return (
+                    b.priority -
+                    a.priority
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 7. BETTER CANDIDATE SCORE
+            // ------------------------------------------------
+
+            const scoreA =
+                a.candidate?.score ??
+                -Infinity;
+
+
+            const scoreB =
+                b.candidate?.score ??
+                -Infinity;
+
+
+            if (
+                scoreB !==
+                scoreA
+            ) {
+
+                return (
+                    scoreB -
+                    scoreA
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 8. DOUBLE LESSON FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.duration !==
+                b.task.duration
+            ) {
+
+                return (
+                    b.task.duration -
+                    a.task.duration
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 9. ROOM-REQUIRED FIRST
+            // ------------------------------------------------
+
+            if (
+                a.task.requiresRoom !==
+                b.task.requiresRoom
+            ) {
+
+                return a.task.requiresRoom
+                    ? -1
+                    : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // 10. DETERMINISTIC FINAL TIE-BREAK
+            // ------------------------------------------------
+
+            return String(
+                a.task.taskId ||
+                ""
+            ).localeCompare(
+                String(
+                    b.task.taskId ||
+                    ""
+                )
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // SELECT FIRST TASK
+    // ========================================================
+
+    const selected =
+        taskCandidates[0];
+
+
+    if (
+        !selected
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
+    console.log(
+        "STAGE 6E — SMART TASK SELECTION:",
+        {
+
+            taskId:
+                selected.task?.taskId,
+
+            taskType:
+                selected.task?.taskType,
+
+            requirementId:
+                selected.task?.requirementId,
+
+            parallelGroup:
+                selected.task?.parallelGroup ??
+                selected.task?.parallel_group ??
+                null,
+
+            parallelGroupEstablished:
+                selected.parallelGroupEstablished,
+
+            parallelGroupPeriods:
+                selected.parallelGroupPeriods,
+
+            priority:
+                selected.priority,
+
+            availableCandidates:
+                selected.candidateCount,
+
+            requiredDays:
+                selected.requiredDays,
+
+            availableDays:
+                selected.availableDays,
+
+            dayDeficit:
+                selected.dayDeficit,
+
+            bestCandidateScore:
+                selected.candidate?.score ??
+                null
+
+        }
+    );
+
+
+    // ========================================================
+    // RETURN SELECTION
+    // ========================================================
+
+    return {
+
+        task:
+            selected.task,
+
+        candidate:
+            selected.candidate,
+
+        candidates:
+            selected.candidates,
+
+        priority:
+            selected.priority,
+
+        candidateCount:
+            selected.candidateCount,
+
+        requiredDays:
+            selected.requiredDays,
+
+        availableDays:
+            selected.availableDays,
+
+        dayDeficit:
+            selected.dayDeficit
+
+    };
+
+}
+
+
+
+
+
+
+
+
+
 
 function generateSmartTimetable(
     data
