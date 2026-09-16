@@ -16339,6 +16339,8 @@ function selectNextSmartTask(
 
 
 
+
+
 function generateSmartTimetable(
     data
 ) {
@@ -16619,13 +16621,6 @@ function generateSmartTimetable(
         // ====================================================
         // PARALLEL GROUP DETECTION
         // ====================================================
-        //
-        // Parallel lessons with the same group AND sequence
-        // must be placed together in one common period.
-        //
-        // This is intentionally limited to SINGLE lessons.
-        //
-        // ====================================================
 
         const taskParallelGroup =
             normalizeTimetableId(
@@ -16869,10 +16864,6 @@ function generateSmartTimetable(
                         );
 
 
-                // ------------------------------------------------
-                // TRY EACH COMMON PERIOD
-                // ------------------------------------------------
-
                 for (
                     const period
                     of commonPeriods
@@ -16887,16 +16878,9 @@ function generateSmartTimetable(
                     }
 
 
-                    // --------------------------------------------
-                    // Build room candidates for every member.
-                    //
-                    // IMPORTANT:
-                    //
-                    // We do NOT use candidates.find().
-                    //
-                    // Every member may have several compatible
-                    // rooms for the same period.
-                    // --------------------------------------------
+                    // ------------------------------------------------
+                    // BUILD ROOM OPTIONS
+                    // ------------------------------------------------
 
                     const memberOptions =
                         [];
@@ -16965,7 +16949,7 @@ function generateSmartTimetable(
 
 
                     // ------------------------------------------------
-                    // ROOM COMBINATION SEARCH
+                    // SEARCH ROOM COMBINATIONS
                     // ------------------------------------------------
 
                     const selectedMembers =
@@ -17050,11 +17034,6 @@ function generateSmartTimetable(
                                     : null;
 
 
-                            // --------------------------------------------
-                            // Do not assign the same room twice inside
-                            // the same parallel period.
-                            // --------------------------------------------
-
                             if (
                                 normalizedRoomId &&
                                 usedRoomIds.has(
@@ -17066,10 +17045,6 @@ function generateSmartTimetable(
 
                             }
 
-
-                            // --------------------------------------------
-                            // Check candidate against CURRENT occupancy.
-                            // --------------------------------------------
 
                             const conflict =
                                 checkSingleSlotConflict(
@@ -17165,11 +17140,7 @@ function generateSmartTimetable(
 
 
                     // ------------------------------------------------
-                    // PLACE THE COMPLETE GROUP
-                    // ------------------------------------------------
-                    //
-                    // Do not allow a partial group to remain placed.
-                    //
+                    // PLACE COMPLETE GROUP
                     // ------------------------------------------------
 
                     const placedMembers =
@@ -17430,7 +17401,7 @@ function generateSmartTimetable(
 
 
             // ------------------------------------------------
-            // IF GROUP WAS PLACED, START NEXT ITERATION.
+            // GROUP SUCCESS
             // ------------------------------------------------
 
             if (
@@ -17442,8 +17413,30 @@ function generateSmartTimetable(
             }
 
 
+            // ====================================================
+            // IMPORTANT:
+            // DO NOT FALL THROUGH TO INDIVIDUAL PLACEMENT
+            // ====================================================
+            //
+            // If this task belongs to a parallel group and the
+            // complete group could not be placed atomically,
+            // this task must NOT be placed by itself.
+            //
+            // Otherwise the generator creates partial groups,
+            // such as:
+            //
+            //     4 subjects in P5
+            //     1 subject in P6
+            //
+            // which violates the synchronization rule.
+            //
+            // Leave the group unresolved so it can be handled
+            // as a group rather than splitting it.
+            //
+            // ====================================================
+
             console.warn(
-                "SMART PLACEMENT — ATOMIC PARALLEL GROUP NOT COMPLETED:",
+                "SMART PLACEMENT — PARALLEL GROUP DEFERRED:",
                 {
 
                     parallelGroup:
@@ -17453,10 +17446,29 @@ function generateSmartTimetable(
                         taskSequence,
 
                     taskCount:
-                        parallelGroupTasks.length
+                        parallelGroupTasks.length,
+
+                    taskId:
+                        task.taskId ||
+                        task.id
 
                 }
             );
+
+
+            // ------------------------------------------------
+            // IMPORTANT:
+            //
+            // We do NOT remove the task from remainingTasks.
+            //
+            // We also do NOT mark it failed here.
+            //
+            // The task remains available while other tasks can
+            // continue to be selected.
+            //
+            // ------------------------------------------------
+
+            continue;
 
         }
 
@@ -17744,7 +17756,6 @@ function generateSmartTimetable(
 
                 task.periodIds =
                     [];
-
 
                 task.roomId =
                     null;
@@ -18162,8 +18173,7 @@ function generateSmartTimetable(
                         null
 
                 })
-            )
-        );
+            );
 
     }
 
@@ -18181,6 +18191,10 @@ function generateSmartTimetable(
     };
 
 }
+
+
+
+
 
 
 
