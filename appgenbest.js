@@ -15559,6 +15559,7 @@ function getTaskDayPressure(
 // ============================================================
 
 
+
 function selectNextSmartTask(
     remainingTasks,
     data,
@@ -15671,18 +15672,6 @@ function selectNextSmartTask(
 
             // ==================================================
             // PARALLEL GROUP STATUS
-            // ==================================================
-            //
-            // If another lesson from the same explicit
-            // parallel group has already been placed, this
-            // task should be considered immediately so that
-            // its candidate scorer can synchronize it with
-            // the existing group schedule.
-            //
-            // This does NOT create a new hard constraint.
-            //
-            // It only affects task ordering.
-            //
             // ==================================================
 
             const taskParallelGroup =
@@ -15917,29 +15906,15 @@ function selectNextSmartTask(
         ) => {
 
             // ------------------------------------------------
-            // 1. CRITICAL DAY DEFICIT FIRST
-            // ------------------------------------------------
-
-            if (
-                a.dayDeficit !==
-                b.dayDeficit
-            ) {
-
-                return (
-                    b.dayDeficit -
-                    a.dayDeficit
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // 2. ESTABLISHED PARALLEL GROUP FIRST
+            // 1. ESTABLISHED PARALLEL GROUP FIRST
             // ------------------------------------------------
             //
-            // Once one member of a parallel group has already
-            // been placed, schedule the remaining member(s)
-            // before unrelated tasks with the same day pressure.
+            // Once a lesson from a parallel group exists,
+            // its remaining members must be considered before
+            // unrelated tasks, regardless of day pressure.
+            //
+            // This is what keeps an already-established
+            // parallel group synchronized.
             //
             // ------------------------------------------------
 
@@ -15956,7 +15931,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 3. MORE ESTABLISHED GROUP PERIODS FIRST
+            // 2. MORE ESTABLISHED GROUP PERIODS FIRST
             // ------------------------------------------------
 
             if (
@@ -15967,6 +15942,23 @@ function selectNextSmartTask(
                 return (
                     b.parallelGroupPeriods -
                     a.parallelGroupPeriods
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 3. CRITICAL DAY DEFICIT FIRST
+            // ------------------------------------------------
+
+            if (
+                a.dayDeficit !==
+                b.dayDeficit
+            ) {
+
+                return (
+                    b.dayDeficit -
+                    a.dayDeficit
                 );
 
             }
@@ -16202,6 +16194,8 @@ function selectNextSmartTask(
     };
 
 }
+
+
 
 
 // ============================================================
