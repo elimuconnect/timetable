@@ -16213,210 +16213,14 @@ function selectNextSmartTask(
 
 
 
-function generateSmartTimetable(
-    data
-) {
-
-    console.log(
-        "======================================"
-    );
-
-    console.log(
-        "STAGE 6F — SMART TIMETABLE GENERATION"
-    );
-
-    console.log(
-        "======================================"
-    );
 
 
-    // ========================================================
-    // VALIDATE DATA
-    // ========================================================
-
-    if (
-        !data ||
-        !Array.isArray(data.lessonTasks) ||
-        !Array.isArray(data.periods)
-    ) {
-
-        throw new Error(
-            "Cannot generate timetable: generator data is incomplete."
-        );
-
-    }
-
-
-    // ========================================================
-    // CREATE FRESH OCCUPANCY INDEXES
-    // ========================================================
-
-    const indexes =
-        createOccupancyIndexes(
-            data
-        );
-
-
-    // ========================================================
-    // BUILD TEACHER LIMIT INDEX
-    // ========================================================
-    //
-    // The conflict functions use:
-    //
-    //     indexes.teacherLimits
-    //
-    // for:
-    //
-    //     - maxLessonsPerDay
-    //     - maxLessonsPerWeek
-    //     - maxConsecutiveLessons
-    //
-    // createOccupancyIndexes() does not need to own the
-    // normalized teacher-limit construction, so we prepare it
-    // here from the already normalized generator data.
-    //
-    // ========================================================
-
-    if (
-        !(indexes.teacherLimits instanceof Map)
-    ) {
-
-        indexes.teacherLimits =
-            new Map();
-
-    }
-
-
-    if (
-        Array.isArray(data.teachers)
-    ) {
-
-        data.teachers.forEach(
-            teacher => {
-
-                if (
-                    !teacher ||
-                    !teacher.id
-                ) {
-
-                    return;
-
-                }
-
-
-                const teacherId =
-                    normalizeTimetableId(
-                        teacher.id
-                    );
-
-
-                if (
-                    !teacherId
-                ) {
-
-                    return;
-
-                }
-
-
-                indexes.teacherLimits.set(
-                    teacherId,
-                    {
-
-                        maxLessonsPerDay:
-                            Number(
-                                teacher.maxLessonsPerDay
-                            ) || 0,
-
-                        maxLessonsPerWeek:
-                            Number(
-                                teacher.maxLessonsPerWeek
-                            ) || 0,
-
-                        maxConsecutiveLessons:
-                            Number(
-                                teacher.maxConsecutiveLessons
-                            ) || 0
-
-                    }
-                );
-
-            }
-        );
-
-    }
-
-
-    // ========================================================
-    // CREATE RESULT
-    // ========================================================
-
-    const result =
-        createTimetablePlacementResult();
-
-
-    result.statistics.totalTasks =
-        data.lessonTasks.length;
-
-
-    // ========================================================
-    // COPY ACTIVE TASKS
-    // ========================================================
-    //
-    // Do NOT modify the original task ordering here.
-    //
-    // ========================================================
-
-    const remainingTasks =
-        data.lessonTasks.filter(
-            task =>
-                task &&
-                !task.placed
-        );
-
-
-    // ========================================================
-    // SAFETY LIMIT
-    // ========================================================
-
-    const maximumIterations =
-        Math.max(
-            remainingTasks.length * 3,
-            100
-        );
-
-
-    let iteration =
-        0;
-
-
-    // ========================================================
-    // MAIN PLACEMENT LOOP
-    // ========================================================
-
-    while (
-        remainingTasks.length > 0 &&
-        iteration < maximumIterations
-    ) {
-
-        iteration++;
-
-
-        // ====================================================
-        // SELECT NEXT TASK
-        // ====================================================
-
-        const selection =
-            selectNextSmartTask(
-                remainingTasks,
+ selectNextSmartTask(
+                selectableTasks,
                 data,
                 indexes
             );
 
-
-        // ====================================================
-        // NO TASK
-        // ====================================================
 
         if (
             !selection
@@ -16431,8 +16235,45 @@ function generateSmartTimetable(
             selection.task;
 
 
+        if (
+            !task
+        ) {
+
+            continue;
+
+        }
+
+
         // ====================================================
-        // NO CANDIDATES
+        // NORMALIZE PARALLEL GROUP INFORMATION
+        // ====================================================
+
+        const taskParallelGroup =
+            normalizeTimetableId(
+                task.parallelGroup ??
+                task.parallel_group ??
+                null
+            );
+
+
+        const taskSequence =
+            Number(
+                task.sequence ??
+                1
+            );
+
+
+        const parallelGroupKey =
+            taskParallelGroup
+                ? JSON.stringify([
+                    taskParallelGroup,
+                    taskSequence
+                ])
+                : null;
+
+
+        // ====================================================
+        // NO CANDIDATE
         // ====================================================
 
         if (
@@ -16442,7 +16283,6 @@ function generateSmartTimetable(
             console.warn(
                 "SMART PLACEMENT — NO CANDIDATE:",
                 {
-
                     taskId:
                         task.taskId,
 
@@ -16460,18 +16300,15 @@ function generateSmartTimetable(
 
                     requirementId:
                         task.requirementId
-
                 }
             );
 
 
             result.failedTasks.push({
-
                 task,
 
                 reason:
                     "No valid placement candidate exists."
-
             });
 
 
@@ -16483,13 +16320,21 @@ function generateSmartTimetable(
                 [];
 
 
+            task.periodId =
+                null;
+
+
+            task.period_id =
+                null;
+
+
             task.roomId =
                 null;
 
 
-            // ------------------------------------------------
-            // REMOVE FROM ACTIVE TASKS
-            // ------------------------------------------------
+            task.room_id =
+                null;
+
 
             const failedIndex =
                 remainingTasks.indexOf(
@@ -16515,15 +16360,914 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // TRY ALL RANKED CANDIDATES
+        // FIND ATOMIC PARALLEL GROUP
         // ====================================================
-        //
-        // IMPORTANT:
-        //
-        // We do NOT fail the task after candidate #1 fails.
-        //
-        // We try every candidate returned by 6C / 6D.
-        //
+
+        const parallelGroupTasks =
+            taskParallelGroup
+                ? data.lessonTasks.filter(
+                    groupTask => {
+
+                        if (
+                            !groupTask ||
+                            groupTask.placed
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        const group =
+                            normalizeTimetableId(
+                                groupTask.parallelGroup ??
+                                groupTask.parallel_group ??
+                                null
+                            );
+
+
+                        const sequence =
+                            Number(
+                                groupTask.sequence ??
+                                1
+                            );
+
+
+                        return (
+                            group ===
+                                taskParallelGroup
+                        ) &&
+                        (
+                            sequence ===
+                            taskSequence
+                        ) &&
+                        groupTask.taskType !==
+                            "double" &&
+                        groupTask.isDouble !==
+                            true;
+
+                    }
+                )
+                : [];
+
+
+        const isAtomicParallelGroup =
+            taskParallelGroup &&
+            parallelGroupTasks.length > 1;
+
+
+        // ====================================================
+        // ATOMIC PARALLEL GROUP
+        // ====================================================
+
+        if (
+            isAtomicParallelGroup
+        ) {
+
+            console.log(
+                "STAGE 6F — ATOMIC PARALLEL GROUP:",
+                {
+                    parallelGroup:
+                        taskParallelGroup,
+
+                    sequence:
+                        taskSequence,
+
+                    groupSize:
+                        parallelGroupTasks.length
+                }
+            );
+
+
+            const groupAnalyses =
+                parallelGroupTasks.map(
+                    groupTask => ({
+                        task:
+                            groupTask,
+
+                        candidates:
+                            getScoredSingleLessonCandidates(
+                                groupTask,
+                                data,
+                                indexes
+                            )
+                    })
+                );
+
+
+            // ====================================================
+            // GROUP CANDIDATE DIAGNOSTICS
+            // ====================================================
+
+            console.log(
+                "STAGE 6F — PARALLEL GROUP CANDIDATES:",
+                groupAnalyses.map(
+                    analysis => ({
+                        taskId:
+                            analysis.task?.taskId ??
+                            analysis.task?.id ??
+                            null,
+
+                        streamId:
+                            analysis.task?.streamId ??
+                            analysis.task?.stream_id ??
+                            null,
+
+                        subjectId:
+                            analysis.task?.subjectId ??
+                            analysis.task?.subject_id ??
+                            null,
+
+                        candidateCount:
+                            Array.isArray(
+                                analysis.candidates
+                            )
+                                ? analysis.candidates.length
+                                : 0,
+
+                        periodCount:
+                            new Set(
+                                (
+                                    Array.isArray(
+                                        analysis.candidates
+                                    )
+                                        ? analysis.candidates
+                                        : []
+                                )
+                                .map(
+                                    candidate =>
+                                        candidate?.period?.id
+                                )
+                                .filter(
+                                    id =>
+                                        id !== null &&
+                                        id !== undefined
+                                )
+                                .map(
+                                    id =>
+                                        String(id)
+                                )
+                            ).size
+                    })
+                )
+            );
+
+
+            let commonPeriodIds =
+                null;
+
+
+            for (
+                const analysis
+                of groupAnalyses
+            ) {
+
+                const memberPeriodIds =
+                    new Set(
+                        (
+                            Array.isArray(
+                                analysis.candidates
+                            )
+                                ? analysis.candidates
+                                : []
+                        )
+                        .map(
+                            candidate =>
+                                candidate?.period?.id
+                        )
+                        .filter(
+                            id =>
+                                id !== null &&
+                                id !== undefined
+                        )
+                        .map(
+                            id =>
+                                String(id)
+                        )
+                    );
+
+
+                if (
+                    commonPeriodIds === null
+                ) {
+
+                    commonPeriodIds =
+                        memberPeriodIds;
+
+                }
+                else {
+
+                    commonPeriodIds =
+                        new Set(
+                            [...commonPeriodIds]
+                            .filter(
+                                id =>
+                                    memberPeriodIds.has(
+                                        id
+                                    )
+                            )
+                        );
+
+                }
+
+
+                if (
+                    commonPeriodIds.size === 0
+                ) {
+
+                    break;
+
+                }
+
+            }
+
+
+            // ====================================================
+            // NO COMMON PERIOD
+            // ====================================================
+
+            if (
+                !commonPeriodIds ||
+                commonPeriodIds.size === 0
+            ) {
+
+                console.warn(
+                    "STAGE 6F — PARALLEL GROUP NO COMMON PERIOD:",
+                    {
+                        parallelGroup:
+                            taskParallelGroup,
+
+                        sequence:
+                            taskSequence,
+
+                        groupSize:
+                            parallelGroupTasks.length
+                    }
+                );
+
+            }
+
+
+            let atomicGroupPlaced =
+                false;
+
+
+            if (
+                commonPeriodIds &&
+                commonPeriodIds.size > 0
+            ) {
+
+                const commonPeriods =
+                    data.periods
+                        .filter(
+                            period =>
+                                period &&
+                                commonPeriodIds.has(
+                                    String(
+                                        period.id
+                                    )
+                                )
+                        )
+                        .sort(
+                            (a,b) => {
+
+                                const orderA =
+                                    Number(
+                                        a?.period_order ??
+                                        a?.period_number ??
+                                        0
+                                    );
+
+
+                                const orderB =
+                                    Number(
+                                        b?.period_order ??
+                                        b?.period_number ??
+                                        0
+                                    );
+
+
+                                return (
+                                    orderA -
+                                    orderB
+                                );
+
+                            }
+                        );
+
+
+                for (
+                    const period
+                    of commonPeriods
+                ) {
+
+                    if (
+                        atomicGroupPlaced
+                    ) {
+
+                        break;
+
+                    }
+
+
+                    const memberOptions =
+                        [];
+
+
+                    let validPeriod =
+                        true;
+
+
+                    for (
+                        const analysis
+                        of groupAnalyses
+                    ) {
+
+                        const candidates =
+                            (
+                                Array.isArray(
+                                    analysis.candidates
+                                )
+                                    ? analysis.candidates
+                                    : []
+                            )
+                            .filter(
+                                candidate =>
+                                    candidate?.period &&
+                                    String(
+                                        candidate.period.id
+                                    ) ===
+                                    String(
+                                        period.id
+                                    )
+                            );
+
+
+                        if (
+                            candidates.length === 0
+                        ) {
+
+                            validPeriod =
+                                false;
+
+
+                            break;
+
+                        }
+
+
+                        memberOptions.push({
+                            task:
+                                analysis.task,
+
+                            candidates
+                        });
+
+                    }
+
+
+                    if (
+                        !validPeriod
+                    ) {
+
+                        continue;
+
+                    }
+
+
+                    const selectedMembers =
+                        [];
+
+
+                    const usedRoomIds =
+                        new Set();
+
+
+                    let foundCombination =
+                        null;
+
+
+                    function searchParallelRooms(
+                        memberIndex,
+                        totalScore
+                    ) {
+
+                        if (
+                            foundCombination
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            memberIndex >=
+                            memberOptions.length
+                        ) {
+
+                            foundCombination = {
+                                members:
+                                    selectedMembers.map(
+                                        item => ({
+                                            task:
+                                                item.task,
+
+                                            candidate:
+                                                item.candidate
+                                        })
+                                    ),
+
+                                score:
+                                    totalScore
+                            };
+
+
+                            return;
+
+                        }
+
+
+                        const member =
+                            memberOptions[
+                                memberIndex
+                            ];
+
+
+                        for (
+                            const candidate
+                            of member.candidates
+                        ) {
+
+                            const roomId =
+                                candidate?.room?.id ??
+                                candidate?.roomId ??
+                                null;
+
+
+                            const normalizedRoomId =
+                                roomId !== null &&
+                                roomId !== undefined
+                                    ? String(
+                                        roomId
+                                    )
+                                    : null;
+
+
+                            if (
+                                normalizedRoomId &&
+                                usedRoomIds.has(
+                                    normalizedRoomId
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const conflict =
+                                checkSingleSlotConflict(
+                                    member.task,
+                                    candidate.period,
+                                    candidate.room,
+                                    indexes
+                                );
+
+
+                            if (
+                                !conflict ||
+                                conflict.valid !== true
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            if (
+                                normalizedRoomId
+                            ) {
+
+                                usedRoomIds.add(
+                                    normalizedRoomId
+                                );
+
+                            }
+
+
+                            selectedMembers.push({
+                                task:
+                                    member.task,
+
+                                candidate
+                            });
+
+
+                            searchParallelRooms(
+                                memberIndex + 1,
+                                totalScore +
+                                (
+                                    Number(
+                                        candidate.score
+                                    ) || 0
+                                )
+                            );
+
+
+                            selectedMembers.pop();
+
+
+                            if (
+                                normalizedRoomId
+                            ) {
+
+                                usedRoomIds.delete(
+                                    normalizedRoomId
+                                );
+
+                            }
+
+
+                            if (
+                                foundCombination
+                            ) {
+
+                                return;
+
+                            }
+
+                        }
+
+                    }
+
+
+                    searchParallelRooms(
+                        0,
+                        0
+                    );
+
+
+                    if (
+                        !foundCombination
+                    ) {
+
+                        console.warn(
+                            "STAGE 6F — PARALLEL GROUP NO ROOM COMBINATION:",
+                            {
+                                parallelGroup:
+                                    taskParallelGroup,
+
+                                sequence:
+                                    taskSequence,
+
+                                period:
+                                    period.id,
+
+                                members:
+                                    memberOptions.map(
+                                        member => ({
+                                            taskId:
+                                                member.task?.taskId ??
+                                                member.task?.id ??
+                                                null,
+
+                                            candidateCount:
+                                                member.candidates.length
+                                        })
+                                    )
+                            }
+                        );
+
+
+                        continue;
+
+                    }
+
+
+                    // =================================================
+                    // ATOMIC PLACEMENT
+                    // =================================================
+
+                    const placedMembers =
+                        [];
+
+
+                    const placedEntries =
+                        [];
+
+
+                    let groupFailed =
+                        false;
+
+
+                    for (
+                        const member
+                        of foundCombination.members
+                    ) {
+
+                        const attempt =
+                            placeSelectedSmartTask(
+                                {
+                                    task:
+                                        member.task,
+
+                                    candidate:
+                                        member.candidate
+                                },
+                                indexes
+                            );
+
+
+                        if (
+                            !attempt ||
+                            !attempt.placed
+                        ) {
+
+                            groupFailed =
+                                true;
+
+
+                            break;
+
+                        }
+
+
+                        placedMembers.push(
+                            member
+                        );
+
+
+                        if (
+                            Array.isArray(
+                                attempt.entries
+                            )
+                        ) {
+
+                            placedEntries.push(
+                                ...attempt.entries
+                            );
+
+                        }
+
+                    }
+
+
+                    if (
+                        groupFailed
+                    ) {
+
+                        console.warn(
+                            "STAGE 6F — PARALLEL GROUP PLACEMENT FAILURE:",
+                            {
+                                parallelGroup:
+                                    taskParallelGroup,
+
+                                sequence:
+                                    taskSequence
+                            }
+                        );
+
+
+                        for (
+                            const member
+                            of placedMembers
+                        ) {
+
+                            const groupTask =
+                                member.task;
+
+
+                            if (
+                                groupTask.placed
+                            ) {
+
+                                releaseReservedSlot(
+                                    groupTask,
+                                    member.candidate.period,
+                                    member.candidate.room,
+                                    indexes
+                                );
+
+
+                                groupTask.placed =
+                                    false;
+
+
+                                groupTask.periodIds =
+                                    [];
+
+
+                                groupTask.periodId =
+                                    null;
+
+
+                                groupTask.period_id =
+                                    null;
+
+
+                                groupTask.roomId =
+                                    null;
+
+
+                                groupTask.room_id =
+                                    null;
+
+                            }
+
+                        }
+
+
+                        continue;
+
+                    }
+
+
+                    // =================================================
+                    // GROUP SUCCESS
+                    // =================================================
+
+                    console.log(
+                        "STAGE 6F — PARALLEL GROUP SUCCESS:",
+                        {
+                            parallelGroup:
+                                taskParallelGroup,
+
+                            sequence:
+                                taskSequence,
+
+                            period:
+                                period.id,
+
+                            members:
+                                foundCombination.members.length
+                        }
+                    );
+
+
+                    for (
+                        const member
+                        of foundCombination.members
+                    ) {
+
+                        const groupTask =
+                            member.task;
+
+
+                        const placedIndex =
+                            remainingTasks.indexOf(
+                                groupTask
+                            );
+
+
+                        if (
+                            placedIndex >= 0
+                        ) {
+
+                            remainingTasks.splice(
+                                placedIndex,
+                                1
+                            );
+
+                        }
+
+
+                        const memberEntries =
+                            placedEntries.filter(
+                                entry => {
+
+                                    if (
+                                        !entry
+                                    ) {
+
+                                        return false;
+
+                                    }
+
+
+                                    const entryTaskId =
+                                        entry.task_id ??
+                                        entry.taskId ??
+                                        null;
+
+
+                                    const memberTaskId =
+                                        groupTask.taskId ??
+                                        groupTask.id ??
+                                        null;
+
+
+                                    return (
+                                        String(
+                                            entryTaskId
+                                        ) ===
+                                        String(
+                                            memberTaskId
+                                        )
+                                    );
+
+                                }
+                            );
+
+
+                        result.entries.push(
+                            ...memberEntries
+                        );
+
+
+                        result.placedTasks.push({
+                            task:
+                                groupTask,
+
+                            entries:
+                                memberEntries,
+
+                            candidate:
+                                member.candidate
+                        });
+
+
+                        result.statistics.placedTasks++;
+
+
+                        result.statistics.totalPeriodsPlaced +=
+                            Number(
+                                groupTask.duration
+                            ) || 0;
+
+                    }
+
+
+                    atomicGroupPlaced =
+                        true;
+
+
+                    deferredParallelGroups.delete(
+                        parallelGroupKey
+                    );
+
+
+                    deferredRetryAttempted =
+                        false;
+
+
+                    break;
+
+                }
+
+            }
+
+
+            if (
+                atomicGroupPlaced
+            ) {
+
+                continue;
+
+            }
+
+
+            // ====================================================
+            // DEFER GROUP
+            // ====================================================
+
+            if (
+                parallelGroupKey
+            ) {
+
+                deferredParallelGroups.add(
+                    parallelGroupKey
+                );
+
+            }
+
+
+            console.warn(
+                "SMART PLACEMENT — PARALLEL GROUP DEFERRED:",
+                {
+                    parallelGroup:
+                        taskParallelGroup,
+
+                    sequence:
+                        taskSequence,
+
+                    taskCount:
+                        parallelGroupTasks.length,
+
+                    taskId:
+                        task.taskId ||
+                        task.id
+                }
+            );
+
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // NORMAL SINGLE / DOUBLE PLACEMENT
         // ====================================================
 
         let successfulPlacement =
@@ -16539,15 +17283,14 @@ function generateSmartTimetable(
 
 
         for (
-            const candidate of selection.candidates
+            const candidate
+            of selection.candidates
         ) {
 
             const candidateSelection = {
-
                 task,
 
                 candidate
-
             };
 
 
@@ -16557,10 +17300,6 @@ function generateSmartTimetable(
                     indexes
                 );
 
-
-            // =================================================
-            // SUCCESS
-            // =================================================
 
             if (
                 attempt &&
@@ -16580,10 +17319,6 @@ function generateSmartTimetable(
             }
 
 
-            // =================================================
-            // FAILED CANDIDATE
-            // =================================================
-
             lastFailureReason =
                 attempt?.reason ||
                 lastFailureReason;
@@ -16592,7 +17327,6 @@ function generateSmartTimetable(
             console.warn(
                 "SMART CANDIDATE REJECTED:",
                 {
-
                     taskId:
                         task.taskId,
 
@@ -16605,25 +17339,16 @@ function generateSmartTimetable(
                     reason:
                         attempt?.reason ||
                         "Candidate rejected."
-
                 }
             );
 
         }
 
 
-        // ====================================================
-        // SUCCESSFUL TASK
-        // ====================================================
-
         if (
             successfulPlacement &&
             successfulPlacement.placed
         ) {
-
-            // ------------------------------------------------
-            // ADD GENERATED ENTRIES
-            // ------------------------------------------------
 
             if (
                 Array.isArray(
@@ -16638,12 +17363,7 @@ function generateSmartTimetable(
             }
 
 
-            // ------------------------------------------------
-            // TRACK PLACED TASK
-            // ------------------------------------------------
-
             result.placedTasks.push({
-
                 task,
 
                 entries:
@@ -16651,34 +17371,17 @@ function generateSmartTimetable(
 
                 candidate:
                     successfulCandidate
-
             });
 
 
             result.statistics.placedTasks++;
 
 
-            // =================================================
-            // TASK DURATION IS AUTHORITATIVE
-            // =================================================
-            //
-            // Single:
-            //     duration = 1
-            //
-            // Double:
-            //     duration = 2
-            //
-            // =================================================
-
             result.statistics.totalPeriodsPlaced +=
                 Number(
                     task.duration
                 ) || 0;
 
-
-            // -------------------------------------------------
-            // REMOVE PLACED TASK
-            // -------------------------------------------------
 
             const placedIndex =
                 remainingTasks.indexOf(
@@ -16698,10 +17401,19 @@ function generateSmartTimetable(
             }
 
 
+            // ----------------------------------------------------
+            // Any successful placement means the timetable made
+            // progress. A previously deferred group can therefore
+            // be retried in a future cycle.
+            // ----------------------------------------------------
+
+            deferredRetryAttempted =
+                false;
+
+
             console.log(
                 "SMART PLACEMENT SUCCESS:",
                 {
-
                     taskId:
                         task.taskId,
 
@@ -16720,7 +17432,6 @@ function generateSmartTimetable(
                     score:
                         successfulCandidate?.score ??
                         null
-
                 }
             );
 
@@ -16731,13 +17442,12 @@ function generateSmartTimetable(
 
 
         // ====================================================
-        // ALL CANDIDATES FAILED
+        // NORMAL TASK FAILED
         // ====================================================
 
         console.warn(
             "SMART PLACEMENT — ALL CANDIDATES FAILED:",
             {
-
                 taskId:
                     task.taskId,
 
@@ -16752,18 +17462,15 @@ function generateSmartTimetable(
 
                 reason:
                     lastFailureReason
-
             }
         );
 
 
         result.failedTasks.push({
-
             task,
 
             reason:
                 lastFailureReason
-
         });
 
 
@@ -16775,13 +17482,21 @@ function generateSmartTimetable(
             [];
 
 
+        task.periodId =
+            null;
+
+
+        task.period_id =
+            null;
+
+
         task.roomId =
             null;
 
 
-        // ----------------------------------------------------
-        // REMOVE FAILED TASK
-        // ----------------------------------------------------
+        task.room_id =
+            null;
+
 
         const failedIndex =
             remainingTasks.indexOf(
@@ -16804,12 +17519,11 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // HANDLE SAFETY LIMIT
+    // SAFETY LIMIT
     // ========================================================
 
     if (
-        iteration >=
-        maximumIterations &&
+        iteration >= maximumIterations &&
         remainingTasks.length > 0
     ) {
 
@@ -16826,12 +17540,10 @@ function generateSmartTimetable(
 
 
                 result.failedTasks.push({
-
                     task,
 
                     reason:
                         "Generator safety iteration limit reached."
-
                 });
 
 
@@ -16843,17 +17555,24 @@ function generateSmartTimetable(
                     [];
 
 
+                task.periodId =
+                    null;
+
+
+                task.period_id =
+                    null;
+
+
                 task.roomId =
+                    null;
+
+
+                task.room_id =
                     null;
 
             }
         );
 
-
-        // ----------------------------------------------------
-        // Make sure the active queue does not retain tasks
-        // after they have been recorded as failed.
-        // ----------------------------------------------------
 
         remainingTasks.length =
             0;
@@ -16868,10 +17587,6 @@ function generateSmartTimetable(
     result.statistics.failedTasks =
         result.failedTasks.length;
 
-
-    // ========================================================
-    // LOG RESULT
-    // ========================================================
 
     console.log(
         "======================================"
@@ -16926,7 +17641,6 @@ function generateSmartTimetable(
         console.table(
             result.failedTasks.map(
                 item => ({
-
                     taskId:
                         item.task?.taskId ||
                         null,
@@ -16953,7 +17667,6 @@ function generateSmartTimetable(
 
                     reason:
                         item.reason
-
                 })
             )
         );
@@ -16961,186 +17674,30 @@ function generateSmartTimetable(
     }
 
 
+    // ========================================================
+    // FAILURE REASON SUMMARY
+    // ========================================================
 
-
-
-// ========================================================
-// FAILURE REASON SUMMARY
-// ========================================================
-
-const failureReasonCounts =
-    new Map();
-
-
-result.failedTasks.forEach(
-    item => {
-
-        const reason =
-            item?.reason ||
-            "Unknown failure";
-
-
-        failureReasonCounts.set(
-            reason,
-            (
-                failureReasonCounts.get(
-                    reason
-                ) ||
-                0
-            ) + 1
-        );
-
-    }
-);
-
-
-console.log(
-    "======================================"
-);
-
-console.log(
-    "STAGE 6F — FAILURE REASON SUMMARY"
-);
-
-console.log(
-    "======================================"
-);
-
-
-
-
-console.table(
-    [
-        ...failureReasonCounts.entries()
-    ]
-    .map(
-        (
-            [
-                reason,
-                count
-            ]
-        ) => ({
-
-            count,
-
-            reason
-
-        })
-    )
-    .sort(
-        (
-            a,
-            b
-        ) =>
-            b.count -
-            a.count
-    )
-);
-
-
-// ============================================================
-// STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
-// ============================================================
-//
-// Shows exactly which requirements still have unplaced tasks.
-//
-// This is especially useful when Stage 6F completes with:
-//
-//     "No valid placement candidate exists."
-//
-// ============================================================
-
-if (
-    result.failedTasks.length > 0
-) {
-
-    const failedRequirementMap =
+    const failureReasonCounts =
         new Map();
 
 
     result.failedTasks.forEach(
         item => {
 
-            const task =
-                item?.task ||
-                item;
+            const reason =
+                item?.reason ||
+                "Unknown failure";
 
 
-            if (
-                !task
-            ) {
-
-                return;
-
-            }
-
-
-            const requirementId =
-                task.requirementId ??
-                task.requirement_id ??
-                null;
-
-
-            if (
-                !requirementId
-            ) {
-
-                return;
-
-            }
-
-
-            if (
-                !failedRequirementMap.has(
-                    requirementId
-                )
-            ) {
-
-                failedRequirementMap.set(
-                    requirementId,
-                    []
-                );
-
-            }
-
-
-            failedRequirementMap
-                .get(
-                    requirementId
-                )
-                .push({
-
-                    taskId:
-                        task.taskId ??
-                        task.task_id ??
-                        task.id ??
-                        null,
-
-                    taskType:
-                        task.taskType ??
-                        task.type ??
-                        null,
-
-                    streamId:
-                        task.streamId ??
-                        task.stream_id ??
-                        null,
-
-                    subjectId:
-                        task.subjectId ??
-                        task.subject_id ??
-                        null,
-
-                    teacherId:
-                        task.teacherId ??
-                        task.teacher_id ??
-                        null,
-
-                    reason:
-                        item?.reason ||
-                        "Unknown"
-
-                });
+            failureReasonCounts.set(
+                reason,
+                (
+                    failureReasonCounts.get(
+                        reason
+                    ) || 0
+                ) + 1
+            );
 
         }
     );
@@ -17151,7 +17708,7 @@ if (
     );
 
     console.log(
-        "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        "STAGE 6F — FAILURE REASON SUMMARY"
     );
 
     console.log(
@@ -17160,142 +17717,249 @@ if (
 
 
     console.table(
-        [
-            ...failedRequirementMap.entries()
-        ]
+        [...failureReasonCounts.entries()]
         .map(
-            (
-                [
+            ([reason, count]) => ({
+                count,
+
+                reason
+            })
+        )
+        .sort(
+            (a,b) =>
+                b.count -
+                a.count
+        )
+    );
+
+
+    // ========================================================
+    // FAILED REQUIREMENT DIAGNOSTIC
+    // ========================================================
+
+    if (
+        result.failedTasks.length > 0
+    ) {
+
+        const failedRequirementMap =
+            new Map();
+
+
+        result.failedTasks.forEach(
+            item => {
+
+                const task =
+                    item?.task ||
+                    item;
+
+
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
+                const requirementId =
+                    task.requirementId ??
+                    task.requirement_id ??
+                    null;
+
+
+                if (
+                    !requirementId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !failedRequirementMap.has(
+                        requirementId
+                    )
+                ) {
+
+                    failedRequirementMap.set(
+                        requirementId,
+                        []
+                    );
+
+                }
+
+
+                failedRequirementMap
+                    .get(
+                        requirementId
+                    )
+                    .push({
+                        taskId:
+                            task.taskId ??
+                            task.task_id ??
+                            task.id ??
+                            null,
+
+                        taskType:
+                            task.taskType ??
+                            task.type ??
+                            null,
+
+                        streamId:
+                            task.streamId ??
+                            task.stream_id ??
+                            null,
+
+                        subjectId:
+                            task.subjectId ??
+                            task.subject_id ??
+                            null,
+
+                        teacherId:
+                            task.teacherId ??
+                            task.teacher_id ??
+                            null,
+
+                        reason:
+                            item?.reason ||
+                            "Unknown"
+                    });
+
+            }
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            [...failedRequirementMap.entries()]
+            .map(
+                ([requirementId, tasks]) => ({
                     requirementId,
-                    tasks
-                ]
-            ) => ({
 
-                requirementId,
+                    failedTasks:
+                        tasks.length,
 
-                failedTasks:
-                    tasks.length,
+                    taskIds:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskId
+                            )
+                            .join(", "),
 
-                taskIds:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskId
-                        )
-                        .join(
+                    taskTypes:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskType
+                            )
+                            .join(", "),
+
+                    streams:
+                        tasks
+                            .map(
+                                task =>
+                                    task.streamId
+                            )
+                            .join(", "),
+
+                    subjects:
+                        tasks
+                            .map(
+                                task =>
+                                    task.subjectId
+                            )
+                            .join(", "),
+
+                    teachers:
+                        tasks
+                            .map(
+                                task =>
+                                    task.teacherId
+                            )
+                            .join(", ")
+                })
+            )
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+    }
+
+
+    // ========================================================
+    // PLACED TASK TABLE
+    // ========================================================
+
+    if (
+        result.placedTasks.length > 0
+    ) {
+
+        console.table(
+            result.placedTasks.map(
+                item => ({
+                    taskId:
+                        item.task?.taskId ||
+                        null,
+
+                    type:
+                        item.task?.taskType ||
+                        null,
+
+                    requirementId:
+                        item.task?.requirementId ||
+                        null,
+
+                    periods:
+                        item.task?.periodIds?.join(
                             ", "
-                        ),
+                        ) ||
+                        "",
 
-                taskTypes:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskType
-                        )
-                        .join(
-                            ", "
-                        ),
+                    room:
+                        item.task?.roomId ||
+                        null,
 
-                streams:
-                    tasks
-                        .map(
-                            task =>
-                                task.streamId
-                        )
-                        .join(
-                            ", "
-                        ),
+                    score:
+                        item.candidate?.score ??
+                        null
+                })
+            )
+        );
 
-                subjects:
-                    tasks
-                        .map(
-                            task =>
-                                task.subjectId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                teachers:
-                    tasks
-                        .map(
-                            task =>
-                                task.teacherId
-                        )
-                        .join(
-                            ", "
-                        )
-
-            })
-        )
-    );
+    }
 
 
-    console.log(
-        "======================================"
-    );
+    return {
+        ...result,
+
+        indexes
+    };
 
 }
 
 
-// ============================================================
-// SUCCESS TABLE
-// ============================================================
-
-if (
-    result.placedTasks.length > 0
-) {
-
-    console.table(
-        result.placedTasks.map(
-            item => ({
-
-                taskId:
-                    item.task?.taskId ||
-                    null,
-
-                type:
-                    item.task?.taskType ||
-                    null,
-
-                requirementId:
-                    item.task?.requirementId ||
-                    null,
-
-                periods:
-                    item.task?.periodIds?.join(
-                        ", "
-                    ) ||
-                    "",
-
-                room:
-                    item.task?.roomId ||
-                    null,
-
-                score:
-                    item.candidate?.score ??
-                    null
-
-            })
-        )
-    );
-
-}
 
 
-// ============================================================
-// RETURN COMPLETE RESULT
-// ============================================================
 
-return {
 
-    ...result,
-
-    indexes
-
-};
-
-}
 
 
 
