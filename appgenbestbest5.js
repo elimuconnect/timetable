@@ -23931,8 +23931,6 @@ const STAGE7_CONFIG = {
 
 
 
-
-
 function runStage7Repair(
     failedTasks,
     placedTasks,
@@ -23951,6 +23949,10 @@ function runStage7Repair(
         "======================================"
     );
 
+
+    // ========================================================
+    // VALIDATE FAILED TASKS
+    // ========================================================
 
     if (
         !Array.isArray(
@@ -23988,6 +23990,10 @@ function runStage7Repair(
     }
 
 
+    // ========================================================
+    // VALIDATE GENERATOR DATA
+    // ========================================================
+
     if (
         !generatorData
     ) {
@@ -24020,6 +24026,10 @@ function runStage7Repair(
 
     }
 
+
+    // ========================================================
+    // GET OCCUPANCY INDEXES
+    // ========================================================
 
     const indexes =
         generatorData.indexes;
@@ -24060,30 +24070,24 @@ function runStage7Repair(
 
     // ========================================================
     // IMPORTANT:
+    //
     // STAGE 7 RELOCATION NEEDS THE ACTUAL STAGE 6
     // PLACED-TASK LIST.
     //
-    // runStage7Repair() already receives placedTasks as an
-    // argument, so make that list available through
-    // generatorData.
-    //
-    // Previously attemptStage7Relocation() looked for:
+    // attemptStage7Relocation() reads:
     //
     //     generatorData.placedTasks
     //
-    // but runStage7Repair() never populated it.
-    //
-    // This caused relocation to silently stop whenever a
-    // direct empty-slot repair was not possible.
+    // Therefore make sure it is populated here.
     //
     // ========================================================
 
-   generatorData.placedTasks =
-    Array.isArray(
-        placedTasks
-    )
-        ? [...placedTasks]
-        : [];
+    generatorData.placedTasks =
+        Array.isArray(
+            placedTasks
+        )
+            ? [...placedTasks]
+            : [];
 
 
     console.log(
@@ -24097,6 +24101,10 @@ function runStage7Repair(
     );
 
 
+    // ========================================================
+    // RESULT COLLECTIONS
+    // ========================================================
+
     const repaired = [];
 
     const entries = [];
@@ -24106,17 +24114,17 @@ function runStage7Repair(
     const moved = [];
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // WORKING COPY
-    // --------------------------------------------------------
+    // ========================================================
 
     let remainingTasks =
         [...failedTasks];
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // REPAIR PASSES
-    // --------------------------------------------------------
+    // ========================================================
 
     for (
         let pass = 1;
@@ -24141,47 +24149,170 @@ function runStage7Repair(
         const nextFailed = [];
 
 
+        // ====================================================
+        // PROCESS EACH FAILED TASK
+        // ====================================================
+
         for (
             const task of remainingTasks
         ) {
 
+            const taskId =
+                task?.taskId ??
+                task?.task_id ??
+                task?.id;
+
+
+            const parallelGroup =
+                getTaskParallelGroup(
+                    task
+                );
+
+
             console.log(
                 "Attempting repair:",
-                task?.taskId ||
-                task?.id
+                taskId
             );
 
 
-            const result =
-                repairSingleFailedTask(
-                    task,
-                    generatorData
+            // =================================================
+            // PARALLEL GROUP TASK
+            //
+            // IMPORTANT:
+            //
+            // Do NOT send a grouped task through the normal
+            // single-task relocation engine.
+            //
+            // A parallel group must be repaired as one
+            // synchronized unit.
+            // =================================================
+
+            let result;
+
+
+            if (
+                parallelGroup
+            ) {
+
+                console.log(
+                    "STAGE 7: Parallel-group task detected:",
+                    {
+                        taskId:
+                            taskId,
+
+                        parallelGroup:
+                            parallelGroup
+                    }
                 );
 
+
+                // ------------------------------------------------
+                // ATOMIC PARALLEL-GROUP REPAIR
+                // ------------------------------------------------
+
+                if (
+                    typeof
+                    repairParallelGroupFailedTask
+                    ===
+                    "function"
+                ) {
+
+                    result =
+                        repairParallelGroupFailedTask(
+                            task,
+                            generatorData
+                        );
+
+                }
+                else {
+
+                    console.error(
+                        "STAGE 7: repairParallelGroupFailedTask() is not available."
+                    );
+
+                    result = {
+
+                        repaired:
+                            false,
+
+                        entries:
+                            [],
+
+                        moved:
+                            [],
+
+                        reason:
+                            "Parallel-group repair engine is unavailable."
+
+                    };
+
+                }
+
+            }
+            else {
+
+                // =================================================
+                // NORMAL SINGLE-TASK REPAIR
+                // =================================================
+
+                result =
+                    repairSingleFailedTask(
+                        task,
+                        generatorData
+                    );
+
+            }
+
+
+            // ====================================================
+            // REPAIR SUCCESS
+            // ====================================================
 
             if (
                 result &&
                 result.repaired
             ) {
 
+                // ------------------------------------------------
+                // RECORD REPAIRED TASK
+                // ------------------------------------------------
 
-repaired.push(
-    task
-);
+                if (
+                    !repaired.includes(
+                        task
+                    )
+                ) {
 
-if (
-    !generatorData.placedTasks.includes(
-        task
-    )
-) {
+                    repaired.push(
+                        task
+                    );
 
-    generatorData.placedTasks.push(
-        task
-    );
+                }
 
-}
 
-                
+                // ------------------------------------------------
+                // ADD TASK TO ACTIVE PLACED TASK LIST
+                // ------------------------------------------------
+                //
+                // This is important because later Stage 7 tasks
+                // may need to relocate around this newly repaired
+                // task.
+                //
+                // ------------------------------------------------
+
+                if (
+                    !generatorData.placedTasks.includes(
+                        task
+                    )
+                ) {
+
+                    generatorData.placedTasks.push(
+                        task
+                    );
+
+                }
+
+
                 // ------------------------------------------------
                 // PRESERVE GENERATED ENTRIES
                 // ------------------------------------------------
@@ -24199,6 +24330,10 @@ if (
                 }
 
 
+                // ------------------------------------------------
+                // PRESERVE MOVED LESSONS
+                // ------------------------------------------------
+
                 if (
                     Array.isArray(
                         result.moved
@@ -24214,21 +24349,38 @@ if (
 
                 console.log(
                     "✅ STAGE 7 REPAIRED:",
-                    task?.taskId ||
-                    task?.id
+                    taskId
                 );
+
 
             }
             else {
 
+                // ------------------------------------------------
+                // STILL FAILED
+                // ------------------------------------------------
+
                 nextFailed.push(
                     task
+                );
+
+
+                console.log(
+                    "❌ STAGE 7 COULD NOT REPAIR:",
+                    taskId,
+                    parallelGroup
+                        ? `(parallel group: ${parallelGroup})`
+                        : ""
                 );
 
             }
 
         }
 
+
+        // ====================================================
+        // PREPARE NEXT PASS
+        // ====================================================
 
         remainingTasks =
             nextFailed;
@@ -24252,9 +24404,17 @@ if (
         );
 
 
+        // ====================================================
+        // ALL REPAIRED
+        // ====================================================
+
         if (
             remainingTasks.length === 0
         ) {
+
+            console.log(
+                `STAGE 7: All failed tasks repaired during pass ${pass}.`
+            );
 
             break;
 
@@ -24263,10 +24423,18 @@ if (
     }
 
 
+    // ========================================================
+    // FINAL STILL-FAILED TASKS
+    // ========================================================
+
     stillFailed.push(
         ...remainingTasks
     );
 
+
+    // ========================================================
+    // FINAL REPORT
+    // ========================================================
 
     console.log(
         "======================================"
@@ -24302,6 +24470,49 @@ if (
     );
 
 
+    // ========================================================
+    // REPAIR BREAKDOWN
+    // ========================================================
+
+    const repairedParallelGroups =
+        repaired.filter(
+            task =>
+                !!getTaskParallelGroup(
+                    task
+                )
+        ).length;
+
+
+    const repairedSingleTasks =
+        repaired.length -
+        repairedParallelGroups;
+
+
+    console.log(
+        "STAGE 7 REPAIR BREAKDOWN:",
+        {
+            totalRepaired:
+                repaired.length,
+
+            parallelGroupTasks:
+                repairedParallelGroups,
+
+            singleTasks:
+                repairedSingleTasks,
+
+            moved:
+                moved.length,
+
+            remaining:
+                stillFailed.length
+        }
+    );
+
+
+    // ========================================================
+    // RETURN
+    // ========================================================
+
     return {
 
         repaired,
@@ -24321,6 +24532,1813 @@ if (
     };
 
 }
+
+
+
+
+
+// ============================================================
+// STAGE 7 — PARALLEL GROUP REPAIR
+// ============================================================
+//
+// PURPOSE:
+//
+// A parallel group must never be repaired one task at a time.
+//
+// Example:
+//
+//     RE / GE / BS / CRE / IRE
+//
+// If S4 cannot be placed, Stage 7 must find ONE common period
+// where all members can be placed together.
+//
+// This function:
+//
+// 1. Identifies the failed parallel-group occurrence.
+// 2. Finds all tasks belonging to that same group occurrence.
+// 3. Finds periods common to all members.
+// 4. Checks teacher / stream / room / daily constraints.
+// 5. Assigns rooms without room conflicts.
+// 6. Places the entire group at the same period.
+// 7. Does not split the group.
+//
+// ============================================================
+
+function repairParallelGroupFailedTask(
+    failedTask,
+    generatorData
+) {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 7 — PARALLEL GROUP REPAIR"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    // ========================================================
+    // VALIDATION
+    // ========================================================
+
+    if (
+        !failedTask ||
+        !generatorData ||
+        !generatorData.indexes
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                [],
+
+            reason:
+                "Invalid parallel-group repair data."
+
+        };
+
+    }
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    const parallelGroup =
+        getTaskParallelGroup(
+            failedTask
+        );
+
+
+    if (
+        !parallelGroup
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                [],
+
+            reason:
+                "Task is not part of a parallel group."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // NORMALIZATION HELPERS
+    // ========================================================
+
+    const normalizeId =
+        value => {
+
+            if (
+                value ===
+                null ||
+                value ===
+                undefined
+            ) {
+
+                return "";
+
+            }
+
+            return String(
+                value
+            ).trim();
+
+        };
+
+
+    const getTaskId =
+        task => {
+
+            if (
+                !task
+            ) {
+
+                return "";
+
+            }
+
+            return normalizeId(
+                task.taskId ??
+                task.task_id ??
+                task.id
+            );
+
+        };
+
+
+    const getStreamId =
+        task => {
+
+            return normalizeId(
+                task?.streamId ??
+                task?.stream_id
+            );
+
+        };
+
+
+    const getSubjectId =
+        task => {
+
+            return normalizeId(
+                task?.subjectId ??
+                task?.subject_id
+            );
+
+        };
+
+
+    const getTeacherId =
+        task => {
+
+            return normalizeId(
+                task?.teacherId ??
+                task?.teacher_id
+            );
+
+        };
+
+
+    const getRequirementId =
+        task => {
+
+            return normalizeId(
+                task?.requirementId ??
+                task?.requirement_id
+            );
+
+        };
+
+
+    const getLessonId =
+        task => {
+
+            return normalizeId(
+                task?.lessonId ??
+                task?.lesson_id
+            );
+
+        };
+
+
+    // ========================================================
+    // IDENTIFY THE LESSON OCCURRENCE
+    //
+    // Task IDs in this generator use forms such as:
+    //
+    //     requirement-id-S1
+    //     requirement-id-S2
+    //     requirement-id-S4
+    //
+    // We must synchronize S4 with S4, not S1/S2/S3/S4/S5
+    // together.
+    // ========================================================
+
+    const getSequenceKey =
+        task => {
+
+            const taskId =
+                getTaskId(
+                    task
+                );
+
+
+            const lessonId =
+                getLessonId(
+                    task
+                );
+
+
+            const source =
+                taskId ||
+                lessonId;
+
+
+            if (
+                !source
+            ) {
+
+                return "";
+
+            }
+
+
+            const match =
+                source.match(
+                    /(?:^|[-_])S(\d+)$/i
+                );
+
+
+            if (
+                match
+            ) {
+
+                return `S${match[1]}`;
+
+            }
+
+
+            // ------------------------------------------------
+            // Some task objects may expose the sequence
+            // directly.
+            // ------------------------------------------------
+
+            const directSequence =
+                task?.lessonIndex ??
+                task?.lesson_index ??
+                task?.sequence ??
+                task?.sequenceIndex ??
+                task?.sequence_index;
+
+
+            if (
+                directSequence !==
+                null &&
+                directSequence !==
+                undefined &&
+                directSequence !== ""
+            ) {
+
+                return `S${directSequence}`;
+
+            }
+
+
+            return "";
+
+        };
+
+
+    const sequenceKey =
+        getSequenceKey(
+            failedTask
+        );
+
+
+    console.log(
+        "STAGE 7 GROUP:",
+        parallelGroup
+    );
+
+    console.log(
+        "STAGE 7 GROUP OCCURRENCE:",
+        sequenceKey ||
+        "(sequence not detected)"
+    );
+
+
+    // ========================================================
+    // BUILD THE GROUP OCCURRENCE KEY
+    // ========================================================
+
+    const getGroupOccurrenceKey =
+        task => {
+
+            const group =
+                getTaskParallelGroup(
+                    task
+                );
+
+
+            if (
+                !group
+            ) {
+
+                return "";
+
+            }
+
+
+            const sequence =
+                getSequenceKey(
+                    task
+                );
+
+
+            if (
+                sequence
+            ) {
+
+                return (
+                    `${String(group).trim()}::${sequence}`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // Fallback when no S-number is available.
+            //
+            // Requirement + lesson ID prevent unrelated
+            // lessons from being merged.
+            // ------------------------------------------------
+
+            const lessonId =
+                getLessonId(
+                    task
+                );
+
+
+            const requirementId =
+                getRequirementId(
+                    task
+                );
+
+
+            return (
+                `${String(group).trim()}::` +
+                `${requirementId}::` +
+                `${lessonId}`
+            );
+
+        };
+
+
+    const targetOccurrenceKey =
+        getGroupOccurrenceKey(
+            failedTask
+        );
+
+
+    // ========================================================
+    // COLLECT ALL AVAILABLE TASKS
+    // ========================================================
+
+    const allTasks = [];
+
+
+    const addTask =
+        task => {
+
+            if (
+                !task
+            ) {
+
+                return;
+
+            }
+
+
+            const taskId =
+                getTaskId(
+                    task
+                );
+
+
+            if (
+                !taskId
+            ) {
+
+                return;
+
+            }
+
+
+            const alreadyExists =
+                allTasks.some(
+                    existing =>
+                        getTaskId(
+                            existing
+                        ) ===
+                        taskId
+                );
+
+
+            if (
+                !alreadyExists
+            ) {
+
+                allTasks.push(
+                    task
+                );
+
+            }
+
+        };
+
+
+    // --------------------------------------------------------
+    // Original lesson task list
+    // --------------------------------------------------------
+
+    if (
+        Array.isArray(
+            generatorData.lessonTasks
+        )
+    ) {
+
+        for (
+            const task
+            of generatorData.lessonTasks
+        ) {
+
+            addTask(
+                task
+            );
+
+        }
+
+    }
+
+
+    // --------------------------------------------------------
+    // Alternative task containers used by some generator
+    // versions.
+    // --------------------------------------------------------
+
+    if (
+        Array.isArray(
+            generatorData.tasks
+        )
+    ) {
+
+        for (
+            const task
+            of generatorData.tasks
+        ) {
+
+            addTask(
+                task
+            );
+
+        }
+
+    }
+
+
+    if (
+        Array.isArray(
+            generatorData.allTasks
+        )
+    ) {
+
+        for (
+            const task
+            of generatorData.allTasks
+        ) {
+
+            addTask(
+                task
+            );
+
+        }
+
+    }
+
+
+    // --------------------------------------------------------
+    // Currently placed tasks.
+    // --------------------------------------------------------
+
+    if (
+        Array.isArray(
+            generatorData.placedTasks
+        )
+    ) {
+
+        for (
+            const task
+            of generatorData.placedTasks
+        ) {
+
+            addTask(
+                task
+            );
+
+        }
+
+    }
+
+
+    // --------------------------------------------------------
+    // The failed task itself must always be included.
+    // --------------------------------------------------------
+
+    addTask(
+        failedTask
+    );
+
+
+    // ========================================================
+    // FIND GROUP MEMBERS FOR THIS OCCURRENCE
+    // ========================================================
+
+    let groupTasks =
+        allTasks.filter(
+            task => {
+
+                const taskGroup =
+                    getTaskParallelGroup(
+                        task
+                    );
+
+
+                if (
+                    !taskGroup ||
+                    String(
+                        taskGroup
+                    ).trim() !==
+                    String(
+                        parallelGroup
+                    ).trim()
+                ) {
+
+                    return false;
+
+                }
+
+
+                const key =
+                    getGroupOccurrenceKey(
+                        task
+                    );
+
+
+                return (
+                    key ===
+                    targetOccurrenceKey
+                );
+
+            }
+        );
+
+
+    // ========================================================
+    // ALWAYS INCLUDE FAILED TASK
+    // ========================================================
+
+    if (
+        !groupTasks.some(
+            task =>
+                getTaskId(
+                    task
+                ) ===
+                getTaskId(
+                    failedTask
+                )
+        )
+    ) {
+
+        groupTasks.push(
+            failedTask
+        );
+
+    }
+
+
+    // ========================================================
+    // REMOVE DUPLICATES
+    // ========================================================
+
+    const uniqueGroupTasks = [];
+
+    const seenTaskIds =
+        new Set();
+
+
+    for (
+        const task
+        of groupTasks
+    ) {
+
+        const taskId =
+            getTaskId(
+                task
+            );
+
+
+        if (
+            !taskId ||
+            seenTaskIds.has(
+                taskId
+            )
+        ) {
+
+            continue;
+
+        }
+
+
+        seenTaskIds.add(
+            taskId
+        );
+
+        uniqueGroupTasks.push(
+            task
+        );
+
+    }
+
+
+    groupTasks =
+        uniqueGroupTasks;
+
+
+    console.log(
+        "STAGE 7 GROUP MEMBERS:",
+        groupTasks.map(
+            task => ({
+                taskId:
+                    getTaskId(
+                        task
+                    ),
+
+                streamId:
+                    getStreamId(
+                        task
+                    ),
+
+                subjectId:
+                    getSubjectId(
+                        task
+                    ),
+
+                teacherId:
+                    getTeacherId(
+                        task
+                    )
+            })
+        )
+    );
+
+
+    if (
+        groupTasks.length === 0
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                [],
+
+            reason:
+                "No parallel-group members were found."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // DETERMINE WHETHER THIS IS ACTUALLY A MULTI-MEMBER GROUP
+    // ========================================================
+
+    if (
+        groupTasks.length === 1
+    ) {
+
+        console.warn(
+            "STAGE 7: Parallel group has only one discovered task:",
+            parallelGroup
+        );
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                [],
+
+            reason:
+                "Could not discover all parallel-group members."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // BUILD PERIOD CANDIDATES FOR EVERY MEMBER
+    // ========================================================
+
+    const periods =
+        Array.isArray(
+            generatorData.periods
+        )
+            ? generatorData.periods
+            : [];
+
+
+    if (
+        periods.length === 0
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                [],
+
+            reason:
+                "No timetable periods available."
+
+        };
+
+    }
+
+
+    const candidateMap =
+        new Map();
+
+
+    for (
+        const task
+        of groupTasks
+    ) {
+
+        const candidates =
+            getScoredSingleLessonCandidates(
+                task,
+                generatorData
+            );
+
+
+        if (
+            !Array.isArray(
+                candidates
+            ) ||
+            candidates.length === 0
+        ) {
+
+            console.log(
+                "STAGE 7 GROUP: Member has no candidates:",
+                getTaskId(
+                    task
+                )
+            );
+
+            return {
+
+                repaired:
+                    false,
+
+                entries:
+                    [],
+
+                moved:
+                    [],
+
+                reason:
+                    `No candidates for group member ${getTaskId(task)}.`
+
+            };
+
+        }
+
+
+        candidateMap.set(
+            getTaskId(
+                task
+            ),
+            candidates
+        );
+
+    }
+
+
+    // ========================================================
+    // FIND PERIODS COMMON TO EVERY GROUP MEMBER
+    // ========================================================
+
+    const periodSets =
+        groupTasks.map(
+            task => {
+
+                const candidates =
+                    candidateMap.get(
+                        getTaskId(
+                            task
+                        )
+                    ) ||
+                    [];
+
+
+                return new Set(
+                    candidates.map(
+                        candidate =>
+                            normalizeTimetableId(
+                                candidate.period?.id ??
+                                candidate.period_id ??
+                                candidate.periodId
+                            )
+                    )
+                );
+
+            }
+        );
+
+
+    let commonPeriodIds =
+        periodSets.length > 0
+            ? [...periodSets[0]]
+            : [];
+
+
+    for (
+        let i = 1;
+        i < periodSets.length;
+        i++
+    ) {
+
+        const currentSet =
+            periodSets[i];
+
+
+        commonPeriodIds =
+            commonPeriodIds.filter(
+                periodId =>
+                    currentSet.has(
+                        periodId
+                    )
+            );
+
+    }
+
+
+    if (
+        commonPeriodIds.length === 0
+    ) {
+
+        console.log(
+            "STAGE 7 GROUP: No common period exists:",
+            parallelGroup,
+            sequenceKey
+        );
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                [],
+
+            reason:
+                "No common period is available for the complete parallel group."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // ORDER COMMON PERIODS
+    // ========================================================
+
+    const periodOrderMap =
+        new Map();
+
+
+    periods.forEach(
+        (
+            period,
+            index
+        ) => {
+
+            const id =
+                normalizeTimetableId(
+                    period?.id
+                );
+
+
+            if (
+                id
+            ) {
+
+                periodOrderMap.set(
+                    id,
+                    index
+                );
+
+            }
+
+        }
+    );
+
+
+    commonPeriodIds.sort(
+        (
+            a,
+            b
+        ) => {
+
+            return (
+                (periodOrderMap.get(a) ?? 999999) -
+                (periodOrderMap.get(b) ?? 999999)
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // HELPER:
+    // GET PERIOD OBJECT
+    // ========================================================
+
+    const getPeriod =
+        periodId => {
+
+            return periods.find(
+                period =>
+                    normalizeTimetableId(
+                        period?.id
+                    ) ===
+                    periodId
+            );
+
+        };
+
+
+    // ========================================================
+    // HELPER:
+    // FIND ROOM CANDIDATES FOR A TASK/PERIOD
+    // ========================================================
+
+    const getRoomsForTask =
+        (
+            task,
+            period
+        ) => {
+
+            const candidates =
+                candidateMap.get(
+                    getTaskId(
+                        task
+                    )
+                ) ||
+                [];
+
+
+            return candidates.filter(
+                candidate => {
+
+                    const candidatePeriodId =
+                        normalizeTimetableId(
+                            candidate.period?.id ??
+                            candidate.period_id ??
+                            candidate.periodId
+                        );
+
+
+                    return (
+                        candidatePeriodId ===
+                        normalizeTimetableId(
+                            period?.id
+                        )
+                    );
+
+                }
+            );
+
+        };
+
+
+    // ========================================================
+    // HELPER:
+    // CHECK WHETHER A ROOM IS ALREADY USED BY THIS GROUP
+    // ========================================================
+
+    const usedRooms =
+        rooms => {
+
+            return new Set(
+                rooms
+                    .filter(
+                        item =>
+                            item !==
+                            null &&
+                            item !==
+                            undefined
+                    )
+                    .map(
+                        item =>
+                            normalizeTimetableId(
+                                item.id ??
+                                item.roomId ??
+                                item.room_id
+                            )
+                    )
+                    .filter(
+                        Boolean
+                    )
+            );
+
+        };
+
+
+    // ========================================================
+    // HELPER:
+    // BUILD A ROOM ASSIGNMENT FOR THE ENTIRE GROUP
+    // ========================================================
+    //
+    // This performs a small backtracking search so that two
+    // parallel lessons cannot accidentally receive the same
+    // physical room.
+    //
+    // ========================================================
+
+    const findRoomAssignment =
+        (
+            taskIndex,
+            assignments
+        ) => {
+
+            if (
+                taskIndex >=
+                groupTasks.length
+            ) {
+
+                return [
+                    ...assignments
+                ];
+
+            }
+
+
+            const task =
+                groupTasks[
+                    taskIndex
+                ];
+
+
+            const taskCandidates =
+                currentRoomCandidates.get(
+                    getTaskId(
+                        task
+                    )
+                ) ||
+                [];
+
+
+            // ------------------------------------------------
+            // Roomless task
+            // ------------------------------------------------
+
+            if (
+                taskCandidates.length === 0
+            ) {
+
+                const candidate =
+                    getRoomsForTask(
+                        task,
+                        currentPeriod
+                    );
+
+
+                if (
+                    candidate.length === 0
+                ) {
+
+                    // A truly roomless task can be represented
+                    // by null only when the task does not require
+                    // a room.
+                    const requiresRoom =
+                        task?.requiresRoom ??
+                        task?.requires_room ??
+                        task?.roomRequired ??
+                        task?.room_required;
+
+
+                    if (
+                        !requiresRoom
+                    ) {
+
+                        assignments.push(
+                            {
+                                task,
+                                room:
+                                    null
+                            }
+                        );
+
+
+                        const result =
+                            findRoomAssignment(
+                                taskIndex + 1,
+                                assignments
+                            );
+
+
+                        if (
+                            result
+                        ) {
+
+                            return result;
+
+                        }
+
+
+                        assignments.pop();
+
+                    }
+
+
+                    return null;
+
+                }
+
+            }
+
+
+            const roomCandidates =
+                taskCandidates.length > 0
+                    ? taskCandidates
+                    : getRoomsForTask(
+                        task,
+                        currentPeriod
+                    );
+
+
+            for (
+                const candidate
+                of roomCandidates
+            ) {
+
+                const room =
+                    candidate.room ??
+                    candidate.roomData ??
+                    candidate.roomInfo ??
+                    null;
+
+
+                const roomId =
+                    normalizeTimetableId(
+                        candidate.room?.id ??
+                        candidate.room_id ??
+                        candidate.roomId ??
+                        room?.id
+                    );
+
+
+                // ------------------------------------------------
+                // Room conflict within the group.
+                // ------------------------------------------------
+
+                if (
+                    roomId
+                ) {
+
+                    const alreadyUsed =
+                        assignments.some(
+                            item =>
+                                normalizeTimetableId(
+                                    item.room?.id ??
+                                    item.room?.roomId ??
+                                    item.room?.room_id
+                                ) ===
+                                roomId
+                        );
+
+
+                    if (
+                        alreadyUsed
+                    ) {
+
+                        continue;
+
+                    }
+
+
+                    // ------------------------------------------------
+                    // Room conflict against existing timetable.
+                    // ------------------------------------------------
+
+                    const existingRoomTask =
+                        indexes.roomPeriod?.get(
+                            `${roomId}__${normalizeTimetableId(currentPeriod.id)}`
+                        );
+
+
+                    if (
+                        existingRoomTask
+                    ) {
+
+                        continue;
+
+                    }
+
+                }
+
+
+                assignments.push(
+                    {
+                        task,
+                        room:
+                            room ||
+                            candidate.room ||
+                            null
+                    }
+                );
+
+
+                const result =
+                    findRoomAssignment(
+                        taskIndex + 1,
+                        assignments
+                    );
+
+
+                if (
+                    result
+                ) {
+
+                    return result;
+
+                }
+
+
+                assignments.pop();
+
+            }
+
+
+            return null;
+
+        };
+
+
+    // ========================================================
+    // TRY EACH COMMON PERIOD
+    // ========================================================
+
+    let currentPeriod =
+        null;
+
+
+    let currentRoomCandidates =
+        new Map();
+
+
+    for (
+        const periodId
+        of commonPeriodIds
+    ) {
+
+        const period =
+            getPeriod(
+                periodId
+            );
+
+
+        if (
+            !period
+        ) {
+
+            continue;
+
+        }
+
+
+        currentPeriod =
+            period;
+
+
+        console.log(
+            "STAGE 7 GROUP: Testing common period:",
+            periodId
+        );
+
+
+        // ----------------------------------------------------
+        // First validate every task at this period without
+        // changing the live indexes.
+        // ----------------------------------------------------
+
+        let periodValid =
+            true;
+
+
+        currentRoomCandidates =
+            new Map();
+
+
+        for (
+            const task
+            of groupTasks
+        ) {
+
+            const candidates =
+                getRoomsForTask(
+                    task,
+                    period
+                );
+
+
+            if (
+                candidates.length === 0
+            ) {
+
+                const requiresRoom =
+                    task?.requiresRoom ??
+                    task?.requires_room ??
+                    task?.roomRequired ??
+                    task?.room_required;
+
+
+                if (
+                    requiresRoom
+                ) {
+
+                    periodValid =
+                        false;
+
+                    break;
+
+                }
+
+
+                currentRoomCandidates.set(
+                    getTaskId(
+                        task
+                    ),
+                    []
+                );
+
+                continue;
+
+            }
+
+
+            // ------------------------------------------------
+            // Keep only rooms which pass the normal single-slot
+            // conflict engine.
+            // ------------------------------------------------
+
+            const validCandidates =
+                candidates.filter(
+                    candidate => {
+
+                        const room =
+                            candidate.room ??
+                            candidate.roomData ??
+                            candidate.roomInfo ??
+                            null;
+
+
+                        const result =
+                            checkSingleSlotConflict(
+                                task,
+                                period,
+                                room,
+                                indexes
+                            );
+
+
+                        return (
+                            result ===
+                            true ||
+                            (
+                                result &&
+                                result.valid !==
+                                false &&
+                                result.conflict !==
+                                true
+                            )
+                        );
+
+                    }
+                );
+
+
+            if (
+                validCandidates.length === 0
+            ) {
+
+                periodValid =
+                    false;
+
+                break;
+
+            }
+
+
+            currentRoomCandidates.set(
+                getTaskId(
+                    task
+                ),
+                validCandidates
+            );
+
+        }
+
+
+        if (
+            !periodValid
+        ) {
+
+            console.log(
+                "STAGE 7 GROUP: Period rejected:",
+                periodId
+            );
+
+            continue;
+
+        }
+
+
+        // ----------------------------------------------------
+        // Find one unique room assignment for all members.
+        // ----------------------------------------------------
+
+        const roomAssignments =
+            findRoomAssignment(
+                0,
+                []
+            );
+
+
+        if (
+            !roomAssignments
+        ) {
+
+            console.log(
+                "STAGE 7 GROUP: No valid room assignment:",
+                periodId
+            );
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // FINAL VALIDATION BEFORE MUTATING ANYTHING
+        // ====================================================
+
+        let finalValid =
+            true;
+
+
+        for (
+            const assignment
+            of roomAssignments
+        ) {
+
+            const task =
+                assignment.task;
+
+
+            const room =
+                assignment.room;
+
+
+            const conflict =
+                checkSingleSlotConflict(
+                    task,
+                    period,
+                    room,
+                    indexes
+                );
+
+
+            const valid =
+                conflict ===
+                true ||
+                (
+                    conflict &&
+                    conflict.valid !==
+                    false &&
+                    conflict.conflict !==
+                    true
+                );
+
+
+            if (
+                !valid
+            ) {
+
+                finalValid =
+                    false;
+
+                break;
+
+            }
+
+        }
+
+
+        if (
+            !finalValid
+        ) {
+
+            console.log(
+                "STAGE 7 GROUP: Final validation failed:",
+                periodId
+            );
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // COMMIT THE ENTIRE GROUP
+        // ====================================================
+        //
+        // Important:
+        // We only begin modifying indexes after ALL members
+        // have passed validation and rooms have been assigned.
+        //
+        // ====================================================
+
+        const generatedEntries = [];
+
+
+        for (
+            const assignment
+            of roomAssignments
+        ) {
+
+            const task =
+                assignment.task;
+
+
+            const room =
+                assignment.room;
+
+
+            const candidate = {
+
+                period:
+                    period,
+
+                room:
+                    room
+
+            };
+
+
+            const placement =
+                placeSelectedSingleTask(
+                    task,
+                    candidate,
+                    indexes
+                );
+
+
+            if (
+                !placement ||
+                placement.placed ===
+                false
+            ) {
+
+                console.error(
+                    "STAGE 7 GROUP: Atomic placement failed for:",
+                    getTaskId(
+                        task
+                    )
+                );
+
+
+                // ------------------------------------------------
+                // We should not normally reach this point because
+                // everything was prevalidated. If one placement
+                // unexpectedly fails, return failure rather than
+                // pretending the group was repaired.
+                // ------------------------------------------------
+
+                return {
+
+                    repaired:
+                        false,
+
+                    entries:
+                        [],
+
+                    moved:
+                        [],
+
+                    reason:
+                        `Atomic placement failed for ${getTaskId(task)}.`
+
+                };
+
+            }
+
+
+            if (
+                Array.isArray(
+                    placement.entries
+                )
+            ) {
+
+                generatedEntries.push(
+                    ...placement.entries
+                );
+
+            }
+            else if (
+                placement.entry
+            ) {
+
+                generatedEntries.push(
+                    placement.entry
+                );
+
+            }
+
+        }
+
+
+        // ====================================================
+        // MARK GROUP MEMBERS AS PLACED
+        // ====================================================
+
+        for (
+            const task
+            of groupTasks
+        ) {
+
+            task.placed =
+                true;
+
+
+            if (
+                !generatorData.placedTasks.includes(
+                    task
+                )
+            ) {
+
+                generatorData.placedTasks.push(
+                    task
+                );
+
+            }
+
+        }
+
+
+        console.log(
+            "✅ STAGE 7 PARALLEL GROUP REPAIRED:",
+            {
+                parallelGroup:
+                    parallelGroup,
+
+                occurrence:
+                    sequenceKey,
+
+                period:
+                    period.id,
+
+                members:
+                    groupTasks.length,
+
+                entries:
+                    generatedEntries.length
+            }
+        );
+
+
+        return {
+
+            repaired:
+                true,
+
+            entries:
+                generatedEntries,
+
+            moved:
+                [],
+
+            tasks:
+                groupTasks,
+
+            period:
+                period,
+
+            reason:
+                "Parallel group repaired atomically."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // NO COMMON PERIOD WORKED
+    // ========================================================
+
+    console.log(
+        "❌ STAGE 7: Parallel group could not be repaired:",
+        {
+            parallelGroup:
+                parallelGroup,
+
+            occurrence:
+                sequenceKey,
+
+            members:
+                groupTasks.length,
+
+            commonPeriods:
+                commonPeriodIds.length
+        }
+    );
+
+
+    return {
+
+        repaired:
+            false,
+
+        entries:
+            [],
+
+        moved:
+            [],
+
+        reason:
+            "No common period passed validation for the complete parallel group."
+
+    };
+
+}
+
+
+
+
 
 
 
