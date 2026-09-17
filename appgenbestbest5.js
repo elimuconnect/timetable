@@ -4952,58 +4952,64 @@ function createOccupancyIndexes(
 // =================================================
 // STUDENT GROUP / PERIOD LESSON DETAILS
 // =================================================
+// =================================================
+            // STUDENT GROUP OCCUPANCY & LESSON DETAILS
+            // =================================================
 
-studentGroups.forEach(
-    studentGroupId => {
+            studentGroups.forEach(
+                studentGroupId => {
 
-        const studentGroupKey =
-            `${studentGroupId}__${periodId}`;
+                    // 1. Register student group occupancy
+                    occupancy.studentGroupPeriod.add(
+                        `${studentGroupId}__${periodId}`
+                    );
 
+                    // 2. Store student group lesson details
+                    const studentGroupKey =
+                        `${studentGroupId}__${periodId}`;
 
-        if (
-            !occupancy.studentGroupPeriodLessons.has(
-                studentGroupKey
-            )
-        ) {
+                    if (
+                        !occupancy.studentGroupPeriodLessons.has(
+                            studentGroupKey
+                        )
+                    ) {
 
-            occupancy.studentGroupPeriodLessons.set(
-                studentGroupKey,
-                []
+                        occupancy.studentGroupPeriodLessons.set(
+                            studentGroupKey,
+                            []
+                        );
+
+                    }
+
+                    occupancy.studentGroupPeriodLessons
+                        .get(
+                            studentGroupKey
+                        )
+                        .push({
+
+                            taskId:
+                                taskId ||
+                                null,
+
+                            subjectId:
+                                subjectId ||
+                                null,
+
+                            teacherId:
+                                teacherId ||
+                                null,
+
+                            parallelGroup:
+                                normalizeKey(
+                                    entry.parallelGroup ??
+                                    entry.parallel_group
+                                ) ||
+                                null
+
+                        });
+
+                }
             );
-
-        }
-
-
-        occupancy.studentGroupPeriodLessons
-            .get(
-                studentGroupKey
-            )
-            .push({
-
-                taskId:
-                    taskId ||
-                    null,
-
-                subjectId:
-                    subjectId ||
-                    null,
-
-                teacherId:
-                    teacherId ||
-                    null,
-
-                parallelGroup:
-                    normalizeKey(
-                        entry.parallelGroup ??
-                        entry.parallel_group
-                    ) ||
-                    null
-
-            });
-
-    }
-);    
-
 
 
 
@@ -7643,6 +7649,9 @@ function getConsecutiveTeachingPeriodPairs(
 // ============================================================
 
 
+
+
+
 function checkDoubleLessonConflict(
     task,
     firstPeriod,
@@ -7736,18 +7745,16 @@ function checkDoubleLessonConflict(
     // FIRST PERIOD
     // ========================================================
     //
-    // checkSingleSlotConflict() already validates:
+    // checkSingleSlotConflict() handles:
     //
     // - student group
+    // - parallel teaching
     // - teacher conflict
-    // - teacher daily limit +1
-    // - teacher weekly limit +1
+    // - teacher daily limit
+    // - teacher weekly limit
     // - teacher consecutive limit
     // - room
     // - requirement daily limit
-    //
-    // We additionally perform the TRUE double-lesson
-    // teacher-limit checks below using +2.
     //
     // ========================================================
 
@@ -7799,15 +7806,6 @@ function checkDoubleLessonConflict(
     // ========================================================
     //
     // A double lesson occupies TWO teaching periods.
-    //
-    // Therefore:
-    //
-    //     current teacher load + 2
-    //
-    // must remain within both:
-    //
-    //     maxLessonsPerDay
-    //     maxLessonsPerWeek
     //
     // ========================================================
 
@@ -7921,6 +7919,19 @@ function checkDoubleLessonConflict(
     // ========================================================
     // STUDENT GROUP / SECOND PERIOD
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // A student group may have another lesson in this period
+    // ONLY when this is legitimate parallel teaching:
+    //
+    // - different subject
+    // - different teacher
+    // - same parallel group
+    //
+    // Otherwise the placement is rejected.
+    //
+    // ========================================================
 
     const studentGroups =
         getTaskStudentGroups(
@@ -7941,8 +7952,14 @@ function checkDoubleLessonConflict(
         }
 
 
+        const normalizedStudentGroupId =
+            normalizeTimetableId(
+                studentGroupId
+            );
+
+
         const studentGroupKey =
-            `${studentGroupId}__${secondPeriodId}`;
+            `${normalizedStudentGroupId}__${secondPeriodId}`;
 
 
         if (
@@ -7952,15 +7969,148 @@ function checkDoubleLessonConflict(
             )
         ) {
 
-            return {
+            const existingLessons =
+                indexes.studentGroupPeriodLessons instanceof Map
+                    ? (
+                        indexes.studentGroupPeriodLessons.get(
+                            studentGroupKey
+                        ) || []
+                    )
+                    : [];
 
-                valid:
-                    false,
 
-                reason:
-                    "Student group is already occupied in the second period."
+            const taskSubjectId =
+                normalizeTimetableId(
+                    task.subjectId ??
+                    task.subject_id
+                );
 
-            };
+
+            const taskTeacherId =
+                normalizeTimetableId(
+                    task.teacherId ??
+                    task.teacher_id
+                );
+
+
+            const taskParallelGroup =
+                getTaskParallelGroup(
+                    task
+                );
+
+
+            const parallelTeachingAllowed =
+                existingLessons.length > 0 &&
+                existingLessons.every(
+                    existingLesson => {
+
+                        if (
+                            !existingLesson
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        const existingSubjectId =
+                            normalizeTimetableId(
+                                existingLesson.subjectId ??
+                                existingLesson.subject_id
+                            );
+
+
+                        const existingTeacherId =
+                            normalizeTimetableId(
+                                existingLesson.teacherId ??
+                                existingLesson.teacher_id
+                            );
+
+
+                        const existingParallelGroup =
+                            normalizeTimetableId(
+                                existingLesson.parallelGroup ??
+                                existingLesson.parallel_group
+                            );
+
+
+                        // --------------------------------------------
+                        // DIFFERENT SUBJECT REQUIRED
+                        // --------------------------------------------
+
+                        if (
+                            !taskSubjectId ||
+                            !existingSubjectId ||
+                            taskSubjectId ===
+                            existingSubjectId
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        // --------------------------------------------
+                        // DIFFERENT TEACHER REQUIRED
+                        // --------------------------------------------
+
+                        if (
+                            !taskTeacherId ||
+                            !existingTeacherId ||
+                            taskTeacherId ===
+                            existingTeacherId
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        // --------------------------------------------
+                        // SAME PARALLEL GROUP REQUIRED
+                        // --------------------------------------------
+
+                        if (
+                            taskParallelGroup ||
+                            existingParallelGroup
+                        ) {
+
+                            return (
+                                taskParallelGroup &&
+                                existingParallelGroup &&
+                                taskParallelGroup ===
+                                existingParallelGroup
+                            );
+
+                        }
+
+
+                        // --------------------------------------------
+                        // No parallel group means this is NOT
+                        // parallel teaching.
+                        // --------------------------------------------
+
+                        return false;
+
+                    }
+                );
+
+
+            if (
+                !parallelTeachingAllowed
+            ) {
+
+                return {
+
+                    valid:
+                        false,
+
+                    reason:
+                        "Student group is already occupied by a conflicting lesson in the second period."
+
+                };
+
+            }
 
         }
 
@@ -8178,9 +8328,6 @@ function checkDoubleLessonConflict(
 }
 
 
-// ============================================================
-// PLACE ONE DOUBLE LESSON
-// ============================================================
 
 // ============================================================
 // PLACE ONE DOUBLE LESSON
@@ -9972,7 +10119,7 @@ function getTeacherDailyLessonCount(
 
 
     // ========================================================
-    // THIS HELPER USES GLOBAL OCCUPANCY WHEN AVAILABLE
+    // USE CURRENT GENERATOR OCCUPANCY WHEN AVAILABLE
     // ========================================================
 
     const indexes =
@@ -9996,7 +10143,6 @@ function getTeacherDailyLessonCount(
     return 0;
 
 }
-
 
 
 // ============================================================
@@ -10075,10 +10221,23 @@ function getTeacherDailyLessonCountFromPeriods(
             }
 
 
-            periodMap.set(
+            const periodId =
                 normalizeTimetableId(
                     period.id
-                ),
+                );
+
+
+            if (
+                !periodId
+            ) {
+
+                return;
+
+            }
+
+
+            periodMap.set(
+                periodId,
                 period
             );
 
@@ -10087,14 +10246,19 @@ function getTeacherDailyLessonCountFromPeriods(
 
 
     // ========================================================
-    // UNIQUE SESSION SET
+    // UNIQUE TEACHER SESSION SET
     // ========================================================
     //
-    // Key:
+    // Identity:
     //
-    //     periodId + subjectId
+    //     teacher + period + subject
     //
-    // Teacher ID is already fixed by the function argument.
+    // Therefore:
+    //
+    // Teacher A + Biology + P1 + Stream 1
+    // Teacher A + Biology + P1 + Stream 2
+    //
+    // = ONE teacher session.
     //
     // ========================================================
 
@@ -10104,7 +10268,7 @@ function getTeacherDailyLessonCountFromPeriods(
 
     // ========================================================
     // PREFERRED SOURCE:
-    // TEACHER PERIOD LESSON DETAILS
+    // DETAILED TEACHER LESSON INDEX
     // ========================================================
 
     if (
@@ -10180,9 +10344,8 @@ function getTeacherDailyLessonCountFromPeriods(
 
 
                 // ------------------------------------------------
-                // A teacher's multiple entries in this period
-                // may represent concurrent teaching of the same
-                // subject to different streams.
+                // Each unique subject in this teacher-period
+                // represents one teaching session.
                 // ------------------------------------------------
 
                 lessons.forEach(
@@ -10203,14 +10366,6 @@ function getTeacherDailyLessonCountFromPeriods(
                                 lesson.subject_id
                             );
 
-
-                        // ------------------------------------------------
-                        // Subject is the important session identity.
-                        //
-                        // If subject is missing, use the task/lesson
-                        // identity as a safe fallback rather than
-                        // incorrectly merging unrelated lessons.
-                        // ------------------------------------------------
 
                         const sessionSubject =
                             subjectId ||
@@ -10244,14 +10399,6 @@ function getTeacherDailyLessonCountFromPeriods(
 
     // ========================================================
     // FALLBACK
-    // ========================================================
-    //
-    // Older occupancy data may not have teacherPeriodLessons.
-    //
-    // In that case, count teacher-period occupancy directly.
-    // This is less precise for concurrent shared teaching, but
-    // preserves compatibility.
-    //
     // ========================================================
 
     if (
@@ -10328,8 +10475,6 @@ function getTeacherDailyLessonCountFromPeriods(
     return uniqueSessions.size;
 
 }
-
-
 
 // ============================================================
 // GET TEACHER WEEKLY LESSON COUNT
@@ -10391,6 +10536,15 @@ function getTeacherWeeklyLessonCount(
                 teacherPeriodKey
             ) => {
 
+                if (
+                    !Array.isArray(lessons)
+                ) {
+
+                    return;
+
+                }
+
+
                 const prefix =
                     `${normalizedTeacherId}__`;
 
@@ -10399,15 +10553,6 @@ function getTeacherWeeklyLessonCount(
                     !teacherPeriodKey.startsWith(
                         prefix
                     )
-                ) {
-
-                    return;
-
-                }
-
-
-                if (
-                    !Array.isArray(lessons)
                 ) {
 
                     return;
@@ -10517,8 +10662,6 @@ function getTeacherWeeklyLessonCount(
 
 }
 
-
-
 // ============================================================
 // GET STREAM DAILY LESSON COUNT
 // ============================================================
@@ -10560,6 +10703,28 @@ function getStreamDailyLessonCount(
         );
 
 
+    if (
+        !normalizedStreamId
+    ) {
+
+        return 0;
+
+    }
+
+
+    if (
+        !(indexes.streamPeriod instanceof Set)
+    ) {
+
+        return 0;
+
+    }
+
+
+    // ========================================================
+    // BUILD PERIOD LOOKUP
+    // ========================================================
+
     const periodMap =
         new Map();
 
@@ -10567,16 +10732,61 @@ function getStreamDailyLessonCount(
     periods.forEach(
         period => {
 
-            periodMap.set(
+            if (
+                !period ||
+                period.id === null ||
+                period.id === undefined
+            ) {
+
+                return;
+
+            }
+
+
+            const periodId =
                 normalizeTimetableId(
                     period.id
-                ),
+                );
+
+
+            if (
+                !periodId
+            ) {
+
+                return;
+
+            }
+
+
+            periodMap.set(
+                periodId,
                 period
             );
 
         }
     );
 
+
+    // ========================================================
+    // COUNT STREAM PERIODS
+    // ========================================================
+    //
+    // streamPeriod contains:
+    //
+    //     stream + period
+    //
+    // Therefore a parallel lesson does NOT artificially
+    // increase the stream's daily count.
+    //
+    // Example:
+    //
+    // Stream 8A
+    // Mathematics P3
+    // English P3
+    //
+    // = ONE occupied stream period.
+    //
+    // ========================================================
 
     const prefix =
         `${normalizedStreamId}__`;
@@ -10612,8 +10822,23 @@ function getStreamDailyLessonCount(
 
 
             if (
-                period &&
-                Number(period.dayNumber) ===
+                !period
+            ) {
+
+                return;
+
+            }
+
+
+            const periodDay =
+                Number(
+                    period.dayNumber ??
+                    period.day_number
+                );
+
+
+            if (
+                periodDay ===
                 Number(dayNumber)
             ) {
 
@@ -10628,7 +10853,6 @@ function getStreamDailyLessonCount(
     return count;
 
 }
-
 
 // ============================================================
 // CHECK IF PERIOD IS LATE
@@ -10846,9 +11070,18 @@ function calculateCandidateSlotScore(
             }
 
 
-            const studentGroupKey =
-                `${studentGroupId}__${normalizeTimetableId(period.id)}`;
+           const normalizedStudentGroupId =
+    normalizeTimetableId(
+        studentGroupId
+    );
 
+const normalizedPeriodId =
+    normalizeTimetableId(
+        period.id
+    );
+
+const studentGroupKey =
+    `${normalizedStudentGroupId}__${normalizedPeriodId}`;
 
             const existingLessons =
                 indexes.studentGroupPeriodLessons instanceof Map
@@ -11711,13 +11944,240 @@ function calculateDoubleLessonCandidateScore(
 
 
     // ========================================================
+    // NORMALIZED IDS
+    // ========================================================
+
+    const taskRequirementId =
+        normalizeTimetableId(
+            task.requirementId ??
+            task.requirement_id
+        );
+
+
+    const taskStreamId =
+        normalizeTimetableId(
+            task.streamId ??
+            task.stream_id
+        );
+
+
+    const taskTeacherId =
+        normalizeTimetableId(
+            task.teacherId ??
+            task.teacher_id
+        );
+
+
+    const taskParallelGroup =
+        getTaskParallelGroup(
+            task
+        );
+
+
+    const firstPeriodId =
+        normalizeTimetableId(
+            firstPeriod.id
+        );
+
+
+    const secondPeriodId =
+        normalizeTimetableId(
+            secondPeriod.id
+        );
+
+
+    // ========================================================
     // DAY
     // ========================================================
 
     const dayNumber =
         Number(
-            firstPeriod.dayNumber
+            firstPeriod.dayNumber ??
+            firstPeriod.day_number
         );
+
+
+    // ========================================================
+    // PARALLEL-GROUP SYNCHRONIZATION
+    // ========================================================
+    //
+    // If this task belongs to a parallel group, strongly prefer
+    // the same TWO periods already being used by another lesson
+    // in that parallel group.
+    //
+    // This helps keep parallel lessons synchronized and prevents
+    // an early valid double placement from consuming a different
+    // pair of periods and making later parallel tasks impossible.
+    //
+    // IMPORTANT:
+    // This is scoring only.
+    //
+    // The actual conflict rules are still enforced by
+    // checkDoubleLessonConflict().
+    //
+    // ========================================================
+
+    if (
+        taskParallelGroup &&
+        indexes.studentGroupPeriodLessons instanceof Map
+    ) {
+
+        let synchronizedFirstPeriod =
+            false;
+
+        let synchronizedSecondPeriod =
+            false;
+
+
+        const taskStudentGroups =
+            getTaskStudentGroups(
+                task
+            );
+
+
+        if (
+            Array.isArray(taskStudentGroups) &&
+            taskStudentGroups.length > 0
+        ) {
+
+            for (
+                const rawStudentGroupId
+                of taskStudentGroups
+            ) {
+
+                const studentGroupId =
+                    normalizeTimetableId(
+                        rawStudentGroupId
+                    );
+
+
+                if (
+                    !studentGroupId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const firstKey =
+                    `${studentGroupId}__${firstPeriodId}`;
+
+
+                const secondKey =
+                    `${studentGroupId}__${secondPeriodId}`;
+
+
+                const firstExistingLessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        firstKey
+                    ) || [];
+
+
+                const secondExistingLessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        secondKey
+                    ) || [];
+
+
+                const firstMatches =
+                    Array.isArray(
+                        firstExistingLessons
+                    ) &&
+                    firstExistingLessons.some(
+                        existingLesson => {
+
+                            const existingParallelGroup =
+                                normalizeTimetableId(
+                                    existingLesson.parallelGroup ??
+                                    existingLesson.parallel_group
+                                );
+
+
+                            return (
+                                existingParallelGroup &&
+                                existingParallelGroup ===
+                                taskParallelGroup
+                            );
+
+                        }
+                    );
+
+
+                const secondMatches =
+                    Array.isArray(
+                        secondExistingLessons
+                    ) &&
+                    secondExistingLessons.some(
+                        existingLesson => {
+
+                            const existingParallelGroup =
+                                normalizeTimetableId(
+                                    existingLesson.parallelGroup ??
+                                    existingLesson.parallel_group
+                                );
+
+
+                            return (
+                                existingParallelGroup &&
+                                existingParallelGroup ===
+                                taskParallelGroup
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    firstMatches
+                ) {
+
+                    synchronizedFirstPeriod =
+                        true;
+
+                }
+
+
+                if (
+                    secondMatches
+                ) {
+
+                    synchronizedSecondPeriod =
+                        true;
+
+                }
+
+            }
+
+        }
+
+
+        if (
+            synchronizedFirstPeriod &&
+            synchronizedSecondPeriod
+        ) {
+
+            score += 100000;
+
+            reasons.push(
+                "Double lesson is synchronized with the existing parallel group in both periods."
+            );
+
+        }
+        else if (
+            synchronizedFirstPeriod ||
+            synchronizedSecondPeriod
+        ) {
+
+            score += 25000;
+
+            reasons.push(
+                "Double lesson partially matches the existing parallel group timing."
+            );
+
+        }
+
+    }
 
 
     // ========================================================
@@ -11726,21 +12186,15 @@ function calculateDoubleLessonCandidateScore(
     //
     // A double occupies TWO periods.
     //
-    // Therefore the current daily count is evaluated before
-    // adding both periods.
+    // However, the requirement lesson count treats the double
+    // as ONE lesson/session for daily frequency purposes.
     //
     // ========================================================
-
-    const requirementId =
-        normalizeTimetableId(
-            task.requirementId
-        );
-
 
     const currentRequirementDailyCount =
         getDailyRequirementLessonCount(
             indexes,
-            requirementId,
+            taskRequirementId,
             dayNumber
         );
 
@@ -11790,7 +12244,7 @@ function calculateDoubleLessonCandidateScore(
     const streamDailyCount =
         getStreamDailyLessonCount(
             indexes,
-            task.streamId,
+            taskStreamId,
             dayNumber,
             data.periods
         );
@@ -11798,8 +12252,7 @@ function calculateDoubleLessonCandidateScore(
 
     // IMPORTANT:
     //
-    // A double lesson adds TWO lessons to the stream's
-    // daily timetable.
+    // A double lesson occupies TWO periods in the stream.
 
     const projectedStreamDailyCount =
         streamDailyCount + 2;
@@ -11854,13 +12307,13 @@ function calculateDoubleLessonCandidateScore(
     // ========================================================
 
     if (
-        task.teacherId
+        taskTeacherId
     ) {
 
         const teacherDailyCount =
             getTeacherDailyLessonCountFromPeriods(
                 indexes,
-                task.teacherId,
+                taskTeacherId,
                 dayNumber,
                 data.periods
             );
@@ -11872,7 +12325,7 @@ function calculateDoubleLessonCandidateScore(
 
         const teacher =
             data.lookup.teachers.get(
-                task.teacherId
+                taskTeacherId
             );
 
 
@@ -11910,9 +12363,6 @@ function calculateDoubleLessonCandidateScore(
             maxTeacherDaily
         ) {
 
-            // This should normally already have been rejected
-            // by a stronger conflict check later.
-
             score -= 100;
 
             reasons.push(
@@ -11940,19 +12390,19 @@ function calculateDoubleLessonCandidateScore(
     // ========================================================
 
     if (
-        task.teacherId
+        taskTeacherId
     ) {
 
         const teacher =
             data.lookup.teachers.get(
-                task.teacherId
+                taskTeacherId
             );
 
 
         const weeklyCount =
             getTeacherWeeklyLessonCount(
                 indexes,
-                task.teacherId
+                taskTeacherId
             );
 
 
@@ -12015,13 +12465,18 @@ function calculateDoubleLessonCandidateScore(
     // ========================================================
 
     const dayPeriods =
-        data.periods.filter(
-            period =>
-                Number(
-                    period.dayNumber
-                ) ===
-                dayNumber
-        );
+        Array.isArray(
+            data.periods
+        )
+            ? data.periods.filter(
+                period =>
+                    Number(
+                        period.dayNumber ??
+                        period.day_number
+                    ) ===
+                    dayNumber
+            )
+            : [];
 
 
     const firstPositionScore =
@@ -12140,8 +12595,14 @@ function calculateDoubleLessonCandidateScore(
     // ========================================================
 
     if (
-        Number(firstPeriod.dayNumber) ===
-        Number(secondPeriod.dayNumber)
+        Number(
+            firstPeriod.dayNumber ??
+            firstPeriod.day_number
+        ) ===
+        Number(
+            secondPeriod.dayNumber ??
+            secondPeriod.day_number
+        )
     ) {
 
         score += 10;
@@ -12163,7 +12624,6 @@ function calculateDoubleLessonCandidateScore(
 
 }
 
-
 // ============================================================
 // GET SCORED DOUBLE LESSON CANDIDATES
 // ============================================================
@@ -12173,6 +12633,8 @@ function calculateDoubleLessonCandidateScore(
 // Nothing is reserved here.
 //
 // ============================================================
+
+
 
 function getScoredDoubleLessonCandidates(
     task,
@@ -12202,6 +12664,7 @@ function getScoredDoubleLessonCandidates(
 
 
     if (
+        !Array.isArray(pairs) ||
         pairs.length === 0
     ) {
 
@@ -12240,6 +12703,17 @@ function getScoredDoubleLessonCandidates(
 
     pairs.forEach(
         pair => {
+
+            if (
+                !pair ||
+                !pair.first ||
+                !pair.second
+            ) {
+
+                return;
+
+            }
+
 
             const candidateRooms =
                 task.requiresRoom
@@ -12289,6 +12763,18 @@ function getScoredDoubleLessonCandidates(
                         );
 
 
+                    if (
+                        !scoring ||
+                        !Number.isFinite(
+                            scoring.score
+                        )
+                    ) {
+
+                        return;
+
+                    }
+
+
                     candidates.push({
 
                         taskId:
@@ -12306,7 +12792,11 @@ function getScoredDoubleLessonCandidates(
                             scoring.score,
 
                         reasons:
-                            scoring.reasons
+                            Array.isArray(
+                                scoring.reasons
+                            )
+                                ? scoring.reasons
+                                : []
 
                     });
 
@@ -12340,6 +12830,9 @@ function getScoredDoubleLessonCandidates(
             }
 
 
+            // Preserve some variation between equally scored
+            // valid candidates.
+
             return (
                 Math.random() -
                 0.5
@@ -12352,7 +12845,6 @@ function getScoredDoubleLessonCandidates(
     return candidates;
 
 }
-
 
 // ============================================================
 // GET BEST DOUBLE LESSON CANDIDATE
@@ -12373,6 +12865,7 @@ function getBestDoubleLessonCandidate(
 
 
     if (
+        !Array.isArray(candidates) ||
         candidates.length === 0
     ) {
 
@@ -12384,8 +12877,6 @@ function getBestDoubleLessonCandidate(
     return candidates[0];
 
 }
-
-
 // ============================================================
 // DEBUG DOUBLE LESSON CANDIDATES
 // ============================================================
@@ -13406,7 +13897,6 @@ function placeSelectedSingleTask(
 //
 // ============================================================
 
-
 function placeSelectedDoubleTask(
     task,
     candidate,
@@ -13451,6 +13941,43 @@ function placeSelectedDoubleTask(
 
 
     // ========================================================
+    // NORMALIZED PERIOD IDS
+    // ========================================================
+
+    const firstPeriodId =
+        normalizeTimetableId(
+            firstPeriod.id
+        );
+
+
+    const secondPeriodId =
+        normalizeTimetableId(
+            secondPeriod.id
+        );
+
+
+    if (
+        !firstPeriodId ||
+        !secondPeriodId
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            reason:
+                "Double lesson contains an invalid period ID."
+
+        };
+
+    }
+
+
+    // ========================================================
     // FINAL CONSECUTIVE CHECK
     // ========================================================
 
@@ -13479,6 +14006,14 @@ function placeSelectedDoubleTask(
 
     // ========================================================
     // FINAL CONFLICT CHECK
+    // ========================================================
+    //
+    // Candidate scoring happened earlier.
+    //
+    // We MUST validate again immediately before reservation
+    // because occupancy may have changed since the candidate
+    // was generated.
+    //
     // ========================================================
 
     const conflict =
@@ -13564,7 +14099,7 @@ function placeSelectedDoubleTask(
     ) {
 
         // ----------------------------------------------------
-        // ROLLBACK FIRST PERIOD
+        // Roll back first reservation.
         // ----------------------------------------------------
 
         releaseReservedSlot(
@@ -13591,7 +14126,6 @@ function placeSelectedDoubleTask(
     }
 
 
-
     // ========================================================
     // CREATE ENTRIES
     // ========================================================
@@ -13615,26 +14149,23 @@ function placeSelectedDoubleTask(
     // ========================================================
     // ENTRY CREATION FAILURE
     // ========================================================
+    //
+    // Both reservations already happened.
+    //
+    // Roll back BOTH periods.
+    //
+    // There is NO separate requirement-count restoration here.
+    //
+    // reserveSlot() tracks daily requirement lessons through
+    // a unique requirement/day/lesson key, so the two periods
+    // of one double lesson remain ONE requirement lesson.
+    //
+    // ========================================================
 
     if (
         !firstEntry ||
         !secondEntry
     ) {
-
-        // ----------------------------------------------------
-        // Restore the second temporary requirement increment.
-        //
-        // Current count was corrected from +2 to +1.
-        // releaseReservedSlot() will remove one count for
-        // each period, so restore the removed increment first.
-        // ----------------------------------------------------
-
-        
-
-
-        // ----------------------------------------------------
-        // ROLLBACK BOTH PERIODS
-        // ----------------------------------------------------
 
         releaseReservedSlot(
             task,
@@ -13678,8 +14209,8 @@ function placeSelectedDoubleTask(
 
     task.periodIds =
         [
-            firstPeriod.id,
-            secondPeriod.id
+            firstPeriodId,
+            secondPeriodId
         ];
 
 
@@ -13710,8 +14241,6 @@ function placeSelectedDoubleTask(
 
 }
 
-
-
 // ============================================================
 // RELEASE RESERVED SLOT
 // ============================================================
@@ -13729,7 +14258,6 @@ function placeSelectedDoubleTask(
 // This is required so failed double-lesson attempts do not
 // leave stale conflict reservations behind.
 //
-
 function releaseReservedSlot(
     task,
     period,
@@ -13747,6 +14275,10 @@ function releaseReservedSlot(
 
     }
 
+
+    // ========================================================
+    // NORMALIZED IDS
+    // ========================================================
 
     const streamId =
         normalizeTimetableId(
@@ -13785,6 +14317,27 @@ function releaseReservedSlot(
         );
 
 
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId ??
+            task.teacher_id
+        );
+
+
+    const subjectId =
+        normalizeTimetableId(
+            task.subjectId ??
+            task.subject_id
+        );
+
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId ??
+            task.requirement_id
+        );
+
+
     // ========================================================
     // STUDENT GROUPS
     // ========================================================
@@ -13796,118 +14349,13 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // STREAM / PERIOD
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // Multiple legitimate parallel lessons can occupy the
-    // same stream + period.
-    //
-    // Therefore we must NOT blindly delete streamPeriod.
-    //
-    // First determine whether another lesson still occupies
-    // one of this task's student groups in this period.
-    //
-    // ========================================================
-
-    if (
-        streamId &&
-        indexes.streamPeriod
-    ) {
-
-        let streamStillOccupied =
-            false;
-
-
-        if (
-            indexes.studentGroupPeriodLessons instanceof Map
-        ) {
-
-            for (
-                const groupId of studentGroups
-            ) {
-
-                const normalizedGroupId =
-                    normalizeTimetableId(
-                        groupId
-                    );
-
-
-                if (
-                    !normalizedGroupId
-                ) {
-
-                    continue;
-
-                }
-
-
-                const studentGroupKey =
-                    `${normalizedGroupId}__${periodId}`;
-
-
-                const remainingLessons =
-                    indexes.studentGroupPeriodLessons.get(
-                        studentGroupKey
-                    );
-
-
-                if (
-                    Array.isArray(
-                        remainingLessons
-                    ) &&
-                    remainingLessons.length > 0
-                ) {
-
-                    streamStillOccupied =
-                        true;
-
-                    break;
-
-                }
-
-            }
-
-        }
-
-
-        if (
-            !streamStillOccupied
-        ) {
-
-            indexes.streamPeriod.delete(
-                `${streamId}__${periodId}`
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // TASK / PERIOD
-    // ========================================================
-    //
-    // Must mirror the task-specific occupancy index when it
-    // exists.
-    //
-    // ========================================================
-
-    if (
-        taskId &&
-        indexes.taskPeriod
-    ) {
-
-        indexes.taskPeriod.delete(
-            `${taskId}__${periodId}`
-        );
-
-    }
-
-
-    // ========================================================
     // STUDENT GROUP / PERIOD LESSON DETAILS
+    // ========================================================
+    //
+    // Remove ONLY this task/lesson.
+    //
+    // Other parallel lessons must remain.
+    //
     // ========================================================
 
     if (
@@ -13959,15 +14407,21 @@ function releaseReservedSlot(
 
                             const existingTaskId =
                                 normalizeTimetableId(
-                                    lesson?.taskId
+                                    lesson?.taskId ??
+                                    lesson?.task_id
                                 );
 
 
                             const existingLessonId =
                                 normalizeTimetableId(
-                                    lesson?.lessonId
+                                    lesson?.lessonId ??
+                                    lesson?.lesson_id
                                 );
 
+
+                            // --------------------------------
+                            // Match by task ID first
+                            // --------------------------------
 
                             if (
                                 taskId &&
@@ -13979,6 +14433,10 @@ function releaseReservedSlot(
 
                             }
 
+
+                            // --------------------------------
+                            // Match by lesson ID when supplied
+                            // --------------------------------
 
                             if (
                                 lessonId &&
@@ -14025,10 +14483,8 @@ function releaseReservedSlot(
     // STUDENT GROUP / PERIOD
     // ========================================================
     //
-    // IMPORTANT:
-    //
-    // Only remove the simple occupancy index when NO
-    // student-group lesson remains at this period.
+    // Only remove the simple occupancy index when there are
+    // no remaining lessons for that student group and period.
     //
     // This preserves legitimate parallel teaching.
     //
@@ -14100,20 +14556,188 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // TEACHER
+    // STREAM / PERIOD
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // This MUST happen AFTER removing the current lesson from
+    // studentGroupPeriodLessons.
+    //
+    // Otherwise the lesson being released is still visible and
+    // streamPeriod can never be correctly cleared.
+    //
+    // Multiple legitimate parallel lessons may share the same
+    // stream + period, so we only delete streamPeriod when no
+    // student-group lesson remains for this stream/period.
+    //
     // ========================================================
 
-    const teacherId =
-        normalizeTimetableId(
-            task.teacherId ??
-            task.teacher_id
+    if (
+        streamId &&
+        indexes.streamPeriod
+    ) {
+
+        let streamStillOccupied =
+            false;
+
+
+        if (
+            indexes.studentGroupPeriodLessons instanceof Map &&
+            studentGroups.length > 0
+        ) {
+
+            for (
+                const groupId
+                of studentGroups
+            ) {
+
+                const normalizedGroupId =
+                    normalizeTimetableId(
+                        groupId
+                    );
+
+
+                if (
+                    !normalizedGroupId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const studentGroupKey =
+                    `${normalizedGroupId}__${periodId}`;
+
+
+                const remainingLessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        studentGroupKey
+                    );
+
+
+                if (
+                    Array.isArray(
+                        remainingLessons
+                    ) &&
+                    remainingLessons.length > 0
+                ) {
+
+                    streamStillOccupied =
+                        true;
+
+                    break;
+
+                }
+
+            }
+
+        }
+
+
+        // ----------------------------------------------------
+        // If the task has no student groups, use the stream
+        // period index itself as the fallback.
+        // ----------------------------------------------------
+
+        if (
+            studentGroups.length === 0
+        ) {
+
+            let anotherStreamLesson =
+                false;
+
+
+            if (
+                indexes.taskPeriod instanceof Set
+            ) {
+
+                const taskPrefix =
+                    `${taskId}__`;
+
+
+                for (
+                    const key of indexes.taskPeriod
+                ) {
+
+                    if (
+                        typeof key !==
+                        "string" ||
+                        !key.startsWith(
+                            taskPrefix
+                        )
+                    ) {
+
+                        continue;
+
+                    }
+
+
+                    const indexedPeriodId =
+                        key.slice(
+                            taskPrefix.length
+                        );
+
+
+                    if (
+                        indexedPeriodId ===
+                        periodId
+                    ) {
+
+                        continue;
+
+                    }
+
+                }
+
+            }
+
+
+            anotherStreamLesson =
+                false;
+
+        }
+
+
+        if (
+            !streamStillOccupied
+        ) {
+
+            indexes.streamPeriod.delete(
+                `${streamId}__${periodId}`
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // TASK / PERIOD
+    // ========================================================
+
+    if (
+        taskId &&
+        indexes.taskPeriod
+    ) {
+
+        indexes.taskPeriod.delete(
+            `${taskId}__${periodId}`
         );
 
+    }
 
-    
 
     // ========================================================
     // TEACHER PERIOD LESSON TRACKING
+    // ========================================================
+    //
+    // Remove ONLY this task/lesson.
+    //
+    // Other concurrent lessons for the same teacher/period
+    // must remain.
+    //
     // ========================================================
 
     if (
@@ -14143,13 +14767,15 @@ function releaseReservedSlot(
 
                         const existingTaskId =
                             normalizeTimetableId(
-                                lesson?.taskId
+                                lesson?.taskId ??
+                                lesson?.task_id
                             );
 
 
                         const existingLessonId =
                             normalizeTimetableId(
-                                lesson?.lessonId
+                                lesson?.lessonId ??
+                                lesson?.lesson_id
                             );
 
 
@@ -14247,80 +14873,69 @@ function releaseReservedSlot(
 
     if (
         teacherId &&
+        subjectId &&
         indexes.teacherSubjectPeriod
     ) {
 
-        const subjectId =
-            normalizeTimetableId(
-                task.subjectId ??
-                task.subject_id
-            );
+        const teacherSubjectPeriodKey =
+            `${teacherId}__${subjectId}__${periodId}`;
+
+
+        let anotherMatchingLesson =
+            false;
 
 
         if (
-            subjectId
+            indexes.teacherPeriodLessons instanceof Map
         ) {
 
-            const teacherSubjectPeriodKey =
-                `${teacherId}__${subjectId}__${periodId}`;
+            const teacherKey =
+                `${teacherId}__${periodId}`;
 
 
-            let anotherMatchingLesson =
-                false;
-
-
-            if (
-                indexes.teacherPeriodLessons instanceof Map
-            ) {
-
-                const teacherKey =
-                    `${teacherId}__${periodId}`;
-
-
-                const remainingLessons =
-                    indexes.teacherPeriodLessons.get(
-                        teacherKey
-                    );
-
-
-                if (
-                    Array.isArray(
-                        remainingLessons
-                    )
-                ) {
-
-                    anotherMatchingLesson =
-                        remainingLessons.some(
-                            lesson => {
-
-                                const existingSubjectId =
-                                    normalizeTimetableId(
-                                        lesson?.subjectId
-                                    );
-
-
-                                return (
-                                    existingSubjectId ===
-                                    subjectId
-                                );
-
-                            }
-                        );
-
-                }
-
-            }
-
-
-            if (
-                !anotherMatchingLesson
-            ) {
-
-                indexes.teacherSubjectPeriod.delete(
-                    teacherSubjectPeriodKey
+            const remainingLessons =
+                indexes.teacherPeriodLessons.get(
+                    teacherKey
                 );
 
+
+            if (
+                Array.isArray(
+                    remainingLessons
+                )
+            ) {
+
+                anotherMatchingLesson =
+                    remainingLessons.some(
+                        lesson => {
+
+                            const existingSubjectId =
+                                normalizeTimetableId(
+                                    lesson?.subjectId ??
+                                    lesson?.subject_id
+                                );
+
+
+                            return (
+                                existingSubjectId ===
+                                subjectId
+                            );
+
+                        }
+                    );
+
             }
+
+        }
+
+
+        if (
+            !anotherMatchingLesson
+        ) {
+
+            indexes.teacherSubjectPeriod.delete(
+                teacherSubjectPeriodKey
+            );
 
         }
 
@@ -14357,7 +14972,7 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // DAY INDEXES
+    // DAY
     // ========================================================
 
     const dayNumber =
@@ -14367,22 +14982,15 @@ function releaseReservedSlot(
         );
 
 
-    const requirementId =
-        normalizeTimetableId(
-            task.requirementId ??
-            task.requirement_id
-        );
-
-
     if (
         Number.isFinite(
             dayNumber
         )
     ) {
 
-        // ----------------------------------------------------
+        // ====================================================
         // TEACHER DAY
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             teacherId &&
@@ -14534,9 +15142,9 @@ function releaseReservedSlot(
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // STREAM DAY
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             streamId &&
@@ -14657,9 +15265,9 @@ function releaseReservedSlot(
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // STUDENT GROUP DAY
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             indexes.studentGroupDay instanceof Map
@@ -14803,9 +15411,9 @@ function releaseReservedSlot(
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // ROOM DAY
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             room &&
@@ -14939,9 +15547,9 @@ function releaseReservedSlot(
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // REQUIREMENT DAY
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             requirementId &&
@@ -14966,12 +15574,8 @@ function releaseReservedSlot(
                     );
 
 
-                const requirementStillOnDay =
-                    count > 0;
-
-
                 if (
-                    !requirementStillOnDay
+                    count <= 0
                 ) {
 
                     requirementDays.delete(
@@ -15002,9 +15606,13 @@ function releaseReservedSlot(
     // DAILY REQUIREMENT LESSON COUNT
     // ========================================================
     //
-    // A double lesson occupies two periods but represents
-    // one lesson. The unique daily lesson key therefore
-    // determines whether the daily count should be removed.
+    // A double lesson occupies TWO periods but counts as ONE
+    // requirement lesson.
+    //
+    // Therefore:
+    //
+    // first release  -> count remains unchanged
+    // second release -> count decreases by one
     //
     // ========================================================
 
@@ -15040,8 +15648,8 @@ function releaseReservedSlot(
 
 
             for (
-                const indexedTaskPeriod of
-                indexes.taskPeriod
+                const indexedTaskPeriod
+                of indexes.taskPeriod
             ) {
 
                 if (
@@ -15061,16 +15669,6 @@ function releaseReservedSlot(
                     indexedTaskPeriod.slice(
                         taskPrefix.length
                     );
-
-
-                if (
-                    remainingPeriodId ===
-                    periodId
-                ) {
-
-                    continue;
-
-                }
 
 
                 const remainingPeriod =
@@ -15184,28 +15782,9 @@ function releaseReservedSlot(
 
 
                         if (
-                            lessonKey
-                        ) {
-
-                            if (
-                                uniqueKey ===
-                                `${prefix}${lessonKey}`
-                            ) {
-
-                                keysToRemove.push(
-                                    uniqueKey
-                                );
-
-                            }
-
-                            return;
-
-                        }
-
-
-                        if (
-                            keysToRemove.length ===
-                            0
+                            lessonKey &&
+                            uniqueKey ===
+                            `${prefix}${lessonKey}`
                         ) {
 
                             keysToRemove.push(
@@ -15238,8 +15817,6 @@ function releaseReservedSlot(
     return true;
 
 }
-
-
 
 function placeSelectedSmartTask(
     selection,
@@ -15560,6 +16137,7 @@ function getTaskDayPressure(
 
 
 
+
 function selectNextSmartTask(
     remainingTasks,
     data,
@@ -15716,6 +16294,21 @@ function selectNextSmartTask(
                         }
 
 
+                        const normalizedStudentGroupId =
+                            normalizeTimetableId(
+                                studentGroupId
+                            );
+
+
+                        if (
+                            !normalizedStudentGroupId
+                        ) {
+
+                            return;
+
+                        }
+
+
                         for (
                             const [
                                 key,
@@ -15770,13 +16363,21 @@ function selectNextSmartTask(
                                 );
 
 
-                            if (
-                                String(
+                            const normalizedKeyGroupId =
+                                normalizeTimetableId(
                                     keyGroupId
-                                ) !==
-                                String(
-                                    studentGroupId
-                                )
+                                );
+
+
+                            const normalizedPeriodId =
+                                normalizeTimetableId(
+                                    periodId
+                                );
+
+
+                            if (
+                                normalizedKeyGroupId !==
+                                normalizedStudentGroupId
                             ) {
 
                                 continue;
@@ -15815,11 +16416,12 @@ function selectNextSmartTask(
 
 
                             if (
-                                matchingParallelLesson
+                                matchingParallelLesson &&
+                                normalizedPeriodId
                             ) {
 
                                 synchronizedPeriods.add(
-                                    periodId
+                                    normalizedPeriodId
                                 );
 
                             }
@@ -15906,15 +16508,34 @@ function selectNextSmartTask(
         ) => {
 
             // ------------------------------------------------
-            // 1. ESTABLISHED PARALLEL GROUP FIRST
+            // 1. CRITICAL DAY DEFICIT FIRST
             // ------------------------------------------------
             //
-            // Once a lesson from a parallel group exists,
-            // its remaining members must be considered before
-            // unrelated tasks, regardless of day pressure.
+            // Protect tasks that are running out of usable
+            // school days before synchronizing less urgent
+            // parallel tasks.
             //
-            // This is what keeps an already-established
-            // parallel group synchronized.
+            // ------------------------------------------------
+
+            if (
+                a.dayDeficit !==
+                b.dayDeficit
+            ) {
+
+                return (
+                    b.dayDeficit -
+                    a.dayDeficit
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // 2. ESTABLISHED PARALLEL GROUP
+            // ------------------------------------------------
+            //
+            // Once a parallel group has already been started,
+            // prefer its remaining members.
             //
             // ------------------------------------------------
 
@@ -15931,7 +16552,7 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 2. MORE ESTABLISHED GROUP PERIODS FIRST
+            // 3. MORE ESTABLISHED GROUP PERIODS FIRST
             // ------------------------------------------------
 
             if (
@@ -15942,23 +16563,6 @@ function selectNextSmartTask(
                 return (
                     b.parallelGroupPeriods -
                     a.parallelGroupPeriods
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // 3. CRITICAL DAY DEFICIT FIRST
-            // ------------------------------------------------
-
-            if (
-                a.dayDeficit !==
-                b.dayDeficit
-            ) {
-
-                return (
-                    b.dayDeficit -
-                    a.dayDeficit
                 );
 
             }
@@ -16081,10 +16685,12 @@ function selectNextSmartTask(
 
             return String(
                 a.task.taskId ||
+                a.task.task_id ||
                 ""
             ).localeCompare(
                 String(
                     b.task.taskId ||
+                    b.task.task_id ||
                     ""
                 )
             );
@@ -16119,13 +16725,19 @@ function selectNextSmartTask(
         {
 
             taskId:
-                selected.task?.taskId,
+                selected.task?.taskId ??
+                selected.task?.task_id ??
+                null,
 
             taskType:
-                selected.task?.taskType,
+                selected.task?.taskType ??
+                selected.task?.task_type ??
+                null,
 
             requirementId:
-                selected.task?.requirementId,
+                selected.task?.requirementId ??
+                selected.task?.requirement_id ??
+                null,
 
             parallelGroup:
                 selected.task?.parallelGroup ??
@@ -16189,7 +16801,13 @@ function selectNextSmartTask(
             selected.availableDays,
 
         dayDeficit:
-            selected.dayDeficit
+            selected.dayDeficit,
+
+        parallelGroupEstablished:
+            selected.parallelGroupEstablished,
+
+        parallelGroupPeriods:
+            selected.parallelGroupPeriods
 
     };
 
@@ -16205,13 +16823,6 @@ function selectNextSmartTask(
 // Main Stage 6F engine.
 //
 // ============================================================
-
-
-
-
-
-
-
 
 function generateSmartTimetable(
     data
@@ -16259,22 +16870,6 @@ function generateSmartTimetable(
 
     // ========================================================
     // BUILD TEACHER LIMIT INDEX
-    // ========================================================
-    //
-    // The conflict functions use:
-    //
-    //     indexes.teacherLimits
-    //
-    // for:
-    //
-    //     - maxLessonsPerDay
-    //     - maxLessonsPerWeek
-    //     - maxConsecutiveLessons
-    //
-    // createOccupancyIndexes() does not need to own the
-    // normalized teacher-limit construction, so we prepare it
-    // here from the already normalized generator data.
-    //
     // ========================================================
 
     if (
@@ -16362,10 +16957,6 @@ function generateSmartTimetable(
     // ========================================================
     // COPY ACTIVE TASKS
     // ========================================================
-    //
-    // Do NOT modify the original task ordering here.
-    //
-    // ========================================================
 
     const remainingTasks =
         data.lessonTasks.filter(
@@ -16422,6 +17013,10 @@ function generateSmartTimetable(
             !selection
         ) {
 
+            console.warn(
+                "STAGE 6F — NO TASK SELECTION AVAILABLE."
+            );
+
             break;
 
         }
@@ -16429,6 +17024,19 @@ function generateSmartTimetable(
 
         const task =
             selection.task;
+
+
+        if (
+            !task
+        ) {
+
+            console.warn(
+                "STAGE 6F — INVALID TASK SELECTION."
+            );
+
+            break;
+
+        }
 
 
         // ====================================================
@@ -16444,22 +17052,59 @@ function generateSmartTimetable(
                 {
 
                     taskId:
-                        task.taskId,
+                        task.taskId ??
+                        task.task_id ??
+                        null,
 
                     taskType:
-                        task.taskType,
+                        task.taskType ??
+                        task.task_type ??
+                        null,
 
                     streamId:
-                        task.streamId,
+                        task.streamId ??
+                        task.stream_id ??
+                        null,
 
                     subjectId:
-                        task.subjectId,
+                        task.subjectId ??
+                        task.subject_id ??
+                        null,
 
                     teacherId:
-                        task.teacherId,
+                        task.teacherId ??
+                        task.teacher_id ??
+                        null,
 
                     requirementId:
-                        task.requirementId
+                        task.requirementId ??
+                        task.requirement_id ??
+                        null,
+
+                    parallelGroup:
+                        task.parallelGroup ??
+                        task.parallel_group ??
+                        null,
+
+                    parallelGroupEstablished:
+                        selection.parallelGroupEstablished ??
+                        false,
+
+                    parallelGroupPeriods:
+                        selection.parallelGroupPeriods ??
+                        0,
+
+                    requiredDays:
+                        selection.requiredDays ??
+                        0,
+
+                    availableDays:
+                        selection.availableDays ??
+                        0,
+
+                    dayDeficit:
+                        selection.dayDeficit ??
+                        0
 
                 }
             );
@@ -16517,14 +17162,6 @@ function generateSmartTimetable(
         // ====================================================
         // TRY ALL RANKED CANDIDATES
         // ====================================================
-        //
-        // IMPORTANT:
-        //
-        // We do NOT fail the task after candidate #1 fails.
-        //
-        // We try every candidate returned by 6C / 6D.
-        //
-        // ====================================================
 
         let successfulPlacement =
             null;
@@ -16541,6 +17178,15 @@ function generateSmartTimetable(
         for (
             const candidate of selection.candidates
         ) {
+
+            if (
+                !candidate
+            ) {
+
+                continue;
+
+            }
+
 
             const candidateSelection = {
 
@@ -16594,13 +17240,22 @@ function generateSmartTimetable(
                 {
 
                     taskId:
-                        task.taskId,
+                        task.taskId ??
+                        task.task_id ??
+                        null,
 
                     taskType:
-                        task.taskType,
+                        task.taskType ??
+                        task.task_type ??
+                        null,
 
                     candidateScore:
-                        candidate?.score,
+                        candidate?.score ??
+                        null,
+
+                    candidateReason:
+                        candidate?.reason ??
+                        null,
 
                     reason:
                         attempt?.reason ||
@@ -16661,14 +17316,6 @@ function generateSmartTimetable(
             // =================================================
             // TASK DURATION IS AUTHORITATIVE
             // =================================================
-            //
-            // Single:
-            //     duration = 1
-            //
-            // Double:
-            //     duration = 2
-            //
-            // =================================================
 
             result.statistics.totalPeriodsPlaced +=
                 Number(
@@ -16703,19 +17350,32 @@ function generateSmartTimetable(
                 {
 
                     taskId:
-                        task.taskId,
+                        task.taskId ??
+                        task.task_id ??
+                        null,
 
                     type:
-                        task.taskType,
+                        task.taskType ??
+                        task.task_type ??
+                        null,
 
                     requirementId:
-                        task.requirementId,
+                        task.requirementId ??
+                        task.requirement_id ??
+                        null,
+
+                    parallelGroup:
+                        task.parallelGroup ??
+                        task.parallel_group ??
+                        null,
 
                     periods:
-                        task.periodIds,
+                        task.periodIds ??
+                        [],
 
                     room:
-                        task.roomId,
+                        task.roomId ??
+                        null,
 
                     score:
                         successfulCandidate?.score ??
@@ -16739,16 +17399,52 @@ function generateSmartTimetable(
             {
 
                 taskId:
-                    task.taskId,
+                    task.taskId ??
+                    task.task_id ??
+                    null,
 
                 taskType:
-                    task.taskType,
+                    task.taskType ??
+                    task.task_type ??
+                    null,
 
                 requirementId:
-                    task.requirementId,
+                    task.requirementId ??
+                    task.requirement_id ??
+                    null,
 
                 teacherId:
-                    task.teacherId,
+                    task.teacherId ??
+                    task.teacher_id ??
+                    null,
+
+                parallelGroup:
+                    task.parallelGroup ??
+                    task.parallel_group ??
+                    null,
+
+                parallelGroupEstablished:
+                    selection.parallelGroupEstablished ??
+                    false,
+
+                parallelGroupPeriods:
+                    selection.parallelGroupPeriods ??
+                    0,
+
+                candidateCount:
+                    selection.candidateCount,
+
+                requiredDays:
+                    selection.requiredDays ??
+                    0,
+
+                availableDays:
+                    selection.availableDays ??
+                    0,
+
+                dayDeficit:
+                    selection.dayDeficit ??
+                    0,
 
                 reason:
                     lastFailureReason
@@ -16762,7 +17458,27 @@ function generateSmartTimetable(
             task,
 
             reason:
-                lastFailureReason
+                lastFailureReason,
+
+            candidateCount:
+                selection.candidateCount,
+
+            requiredDays:
+                selection.requiredDays,
+
+            availableDays:
+                selection.availableDays,
+
+            dayDeficit:
+                selection.dayDeficit,
+
+            parallelGroupEstablished:
+                selection.parallelGroupEstablished ??
+                false,
+
+            parallelGroupPeriods:
+                selection.parallelGroupPeriods ??
+                0
 
         });
 
@@ -16850,11 +17566,6 @@ function generateSmartTimetable(
         );
 
 
-        // ----------------------------------------------------
-        // Make sure the active queue does not retain tasks
-        // after they have been recorded as failed.
-        // ----------------------------------------------------
-
         remainingTasks.length =
             0;
 
@@ -16928,27 +17639,54 @@ function generateSmartTimetable(
                 item => ({
 
                     taskId:
-                        item.task?.taskId ||
+                        item.task?.taskId ??
+                        item.task?.task_id ??
                         null,
 
                     type:
-                        item.task?.taskType ||
+                        item.task?.taskType ??
+                        item.task?.task_type ??
                         null,
 
                     streamId:
-                        item.task?.streamId ||
+                        item.task?.streamId ??
+                        item.task?.stream_id ??
                         null,
 
                     subjectId:
-                        item.task?.subjectId ||
+                        item.task?.subjectId ??
+                        item.task?.subject_id ??
                         null,
 
                     teacherId:
-                        item.task?.teacherId ||
+                        item.task?.teacherId ??
+                        item.task?.teacher_id ??
                         null,
 
                     requirementId:
-                        item.task?.requirementId ||
+                        item.task?.requirementId ??
+                        item.task?.requirement_id ??
+                        null,
+
+                    parallelGroup:
+                        item.task?.parallelGroup ??
+                        item.task?.parallel_group ??
+                        null,
+
+                    candidateCount:
+                        item.candidateCount ??
+                        null,
+
+                    requiredDays:
+                        item.requiredDays ??
+                        null,
+
+                    availableDays:
+                        item.availableDays ??
+                        null,
+
+                    dayDeficit:
+                        item.dayDeficit ??
                         null,
 
                     reason:
@@ -16961,186 +17699,31 @@ function generateSmartTimetable(
     }
 
 
+    // ========================================================
+    // FAILURE REASON SUMMARY
+    // ========================================================
 
-
-
-// ========================================================
-// FAILURE REASON SUMMARY
-// ========================================================
-
-const failureReasonCounts =
-    new Map();
-
-
-result.failedTasks.forEach(
-    item => {
-
-        const reason =
-            item?.reason ||
-            "Unknown failure";
-
-
-        failureReasonCounts.set(
-            reason,
-            (
-                failureReasonCounts.get(
-                    reason
-                ) ||
-                0
-            ) + 1
-        );
-
-    }
-);
-
-
-console.log(
-    "======================================"
-);
-
-console.log(
-    "STAGE 6F — FAILURE REASON SUMMARY"
-);
-
-console.log(
-    "======================================"
-);
-
-
-
-
-console.table(
-    [
-        ...failureReasonCounts.entries()
-    ]
-    .map(
-        (
-            [
-                reason,
-                count
-            ]
-        ) => ({
-
-            count,
-
-            reason
-
-        })
-    )
-    .sort(
-        (
-            a,
-            b
-        ) =>
-            b.count -
-            a.count
-    )
-);
-
-
-// ============================================================
-// STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
-// ============================================================
-//
-// Shows exactly which requirements still have unplaced tasks.
-//
-// This is especially useful when Stage 6F completes with:
-//
-//     "No valid placement candidate exists."
-//
-// ============================================================
-
-if (
-    result.failedTasks.length > 0
-) {
-
-    const failedRequirementMap =
+    const failureReasonCounts =
         new Map();
 
 
     result.failedTasks.forEach(
         item => {
 
-            const task =
-                item?.task ||
-                item;
+            const reason =
+                item?.reason ||
+                "Unknown failure";
 
 
-            if (
-                !task
-            ) {
-
-                return;
-
-            }
-
-
-            const requirementId =
-                task.requirementId ??
-                task.requirement_id ??
-                null;
-
-
-            if (
-                !requirementId
-            ) {
-
-                return;
-
-            }
-
-
-            if (
-                !failedRequirementMap.has(
-                    requirementId
-                )
-            ) {
-
-                failedRequirementMap.set(
-                    requirementId,
-                    []
-                );
-
-            }
-
-
-            failedRequirementMap
-                .get(
-                    requirementId
-                )
-                .push({
-
-                    taskId:
-                        task.taskId ??
-                        task.task_id ??
-                        task.id ??
-                        null,
-
-                    taskType:
-                        task.taskType ??
-                        task.type ??
-                        null,
-
-                    streamId:
-                        task.streamId ??
-                        task.stream_id ??
-                        null,
-
-                    subjectId:
-                        task.subjectId ??
-                        task.subject_id ??
-                        null,
-
-                    teacherId:
-                        task.teacherId ??
-                        task.teacher_id ??
-                        null,
-
-                    reason:
-                        item?.reason ||
-                        "Unknown"
-
-                });
+            failureReasonCounts.set(
+                reason,
+                (
+                    failureReasonCounts.get(
+                        reason
+                    ) ||
+                    0
+                ) + 1
+            );
 
         }
     );
@@ -17151,7 +17734,7 @@ if (
     );
 
     console.log(
-        "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        "STAGE 6F — FAILURE REASON SUMMARY"
     );
 
     console.log(
@@ -17161,144 +17744,337 @@ if (
 
     console.table(
         [
-            ...failedRequirementMap.entries()
+            ...failureReasonCounts.entries()
         ]
         .map(
             (
                 [
-                    requirementId,
-                    tasks
+                    reason,
+                    count
                 ]
             ) => ({
 
-                requirementId,
+                count,
 
-                failedTasks:
-                    tasks.length,
-
-                taskIds:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                taskTypes:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskType
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                streams:
-                    tasks
-                        .map(
-                            task =>
-                                task.streamId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                subjects:
-                    tasks
-                        .map(
-                            task =>
-                                task.subjectId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                teachers:
-                    tasks
-                        .map(
-                            task =>
-                                task.teacherId
-                        )
-                        .join(
-                            ", "
-                        )
+                reason
 
             })
+        )
+        .sort(
+            (
+                a,
+                b
+            ) =>
+                b.count -
+                a.count
         )
     );
 
 
-    console.log(
-        "======================================"
-    );
+    // ============================================================
+    // STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
+    // ============================================================
+
+    if (
+        result.failedTasks.length > 0
+    ) {
+
+        const failedRequirementMap =
+            new Map();
+
+
+        result.failedTasks.forEach(
+            item => {
+
+                const task =
+                    item?.task ||
+                    item;
+
+
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
+                const requirementId =
+                    task.requirementId ??
+                    task.requirement_id ??
+                    null;
+
+
+                if (
+                    !requirementId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !failedRequirementMap.has(
+                        requirementId
+                    )
+                ) {
+
+                    failedRequirementMap.set(
+                        requirementId,
+                        []
+                    );
+
+                }
+
+
+                failedRequirementMap
+                    .get(
+                        requirementId
+                    )
+                    .push({
+
+                        taskId:
+                            task.taskId ??
+                            task.task_id ??
+                            task.id ??
+                            null,
+
+                        taskType:
+                            task.taskType ??
+                            task.task_type ??
+                            task.type ??
+                            null,
+
+                        streamId:
+                            task.streamId ??
+                            task.stream_id ??
+                            null,
+
+                        subjectId:
+                            task.subjectId ??
+                            task.subject_id ??
+                            null,
+
+                        teacherId:
+                            task.teacherId ??
+                            task.teacher_id ??
+                            null,
+
+                        parallelGroup:
+                            task.parallelGroup ??
+                            task.parallel_group ??
+                            null,
+
+                        candidateCount:
+                            item.candidateCount ??
+                            null,
+
+                        requiredDays:
+                            item.requiredDays ??
+                            null,
+
+                        availableDays:
+                            item.availableDays ??
+                            null,
+
+                        dayDeficit:
+                            item.dayDeficit ??
+                            null,
+
+                        reason:
+                            item?.reason ||
+                            "Unknown"
+
+                    });
+
+            }
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            [
+                ...failedRequirementMap.entries()
+            ]
+            .map(
+                (
+                    [
+                        requirementId,
+                        tasks
+                    ]
+                ) => ({
+
+                    requirementId,
+
+                    failedTasks:
+                        tasks.length,
+
+                    taskIds:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    taskTypes:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskType
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    streams:
+                        tasks
+                            .map(
+                                task =>
+                                    task.streamId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    subjects:
+                        tasks
+                            .map(
+                                task =>
+                                    task.subjectId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    teachers:
+                        tasks
+                            .map(
+                                task =>
+                                    task.teacherId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    parallelGroups:
+                        tasks
+                            .map(
+                                task =>
+                                    task.parallelGroup
+                            )
+                            .filter(
+                                value =>
+                                    value
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    reasons:
+                        tasks
+                            .map(
+                                task =>
+                                    task.reason
+                            )
+                            .join(
+                                " | "
+                            )
+
+                })
+            )
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+    }
+
+
+    // ============================================================
+    // SUCCESS TABLE
+    // ============================================================
+
+    if (
+        result.placedTasks.length > 0
+    ) {
+
+        console.table(
+            result.placedTasks.map(
+                item => ({
+
+                    taskId:
+                        item.task?.taskId ??
+                        item.task?.task_id ??
+                        null,
+
+                    type:
+                        item.task?.taskType ??
+                        item.task?.task_type ??
+                        null,
+
+                    requirementId:
+                        item.task?.requirementId ??
+                        item.task?.requirement_id ??
+                        null,
+
+                    parallelGroup:
+                        item.task?.parallelGroup ??
+                        item.task?.parallel_group ??
+                        null,
+
+                    periods:
+                        item.task?.periodIds?.join(
+                            ", "
+                        ) ||
+                        "",
+
+                    room:
+                        item.task?.roomId ??
+                        null,
+
+                    score:
+                        item.candidate?.score ??
+                        null
+
+                })
+            )
+        );
+
+    }
+
+
+    // ============================================================
+    // RETURN COMPLETE RESULT
+    // ============================================================
+
+    return {
+
+        ...result,
+
+        indexes
+
+    };
 
 }
-
-
-// ============================================================
-// SUCCESS TABLE
-// ============================================================
-
-if (
-    result.placedTasks.length > 0
-) {
-
-    console.table(
-        result.placedTasks.map(
-            item => ({
-
-                taskId:
-                    item.task?.taskId ||
-                    null,
-
-                type:
-                    item.task?.taskType ||
-                    null,
-
-                requirementId:
-                    item.task?.requirementId ||
-                    null,
-
-                periods:
-                    item.task?.periodIds?.join(
-                        ", "
-                    ) ||
-                    "",
-
-                room:
-                    item.task?.roomId ||
-                    null,
-
-                score:
-                    item.candidate?.score ??
-                    null
-
-            })
-        )
-    );
-
-}
-
-
-// ============================================================
-// RETURN COMPLETE RESULT
-// ============================================================
-
-return {
-
-    ...result,
-
-    indexes
-
-};
-
-}
-
-
-
 
 async function generateTimetable() {
 
@@ -17670,6 +18446,120 @@ async function generateTimetable() {
 
             result.entries.push(
                 ...repairResult.entries
+            );
+
+        }
+
+
+        // ====================================================
+        // UPDATE PLACED TASKS AFTER STAGE 7
+        // ====================================================
+        //
+        // Stage 7 may:
+        //
+        // 1. Repair a previously failed task.
+        // 2. Move an already placed task.
+        //
+        // Keep result.placedTasks synchronized so later
+        // audit/reporting code sees the repaired task list.
+        //
+        // ====================================================
+
+        if (
+            Array.isArray(
+                result.placedTasks
+            ) &&
+            repairResult &&
+            Array.isArray(
+                repairResult.repaired
+            )
+        ) {
+
+            const existingPlacedTaskIds =
+                new Set(
+                    result.placedTasks
+                        .map(
+                            item =>
+                                normalizeTimetableId(
+                                    item?.task?.taskId ??
+                                    item?.task?.task_id ??
+                                    item?.task?.id ??
+                                    item?.taskId ??
+                                    item?.task_id ??
+                                    item?.id
+                                )
+                        )
+                        .filter(
+                            Boolean
+                        )
+                );
+
+
+            repairResult.repaired.forEach(
+                repairedTask => {
+
+                    if (
+                        !repairedTask
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const repairedTaskId =
+                        normalizeTimetableId(
+                            repairedTask.taskId ??
+                            repairedTask.task_id ??
+                            repairedTask.id
+                        );
+
+
+                    if (
+                        !repairedTaskId
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    if (
+                        !existingPlacedTaskIds.has(
+                            repairedTaskId
+                        )
+                    ) {
+
+                        result.placedTasks.push(
+                            {
+                                task:
+                                    repairedTask,
+
+                                entries:
+                                    repairResult.entries
+                                        .filter(
+                                            entry =>
+                                                normalizeTimetableId(
+                                                    entry?.task_id ??
+                                                    entry?.taskId
+                                                ) ===
+                                                repairedTaskId
+                                        ),
+
+                                candidate:
+                                    null
+
+                            }
+                        );
+
+
+                        existingPlacedTaskIds.add(
+                            repairedTaskId
+                        );
+
+                    }
+
+                }
             );
 
         }
@@ -18325,7 +19215,6 @@ async function generateTimetable() {
     }
 
 }
-
 
 
 
@@ -23283,7 +24172,6 @@ function repairSingleFailedTask(
 }
 
 
-
 function buildStage7PeriodCandidates(
     task,
     periods
@@ -23305,7 +24193,35 @@ function buildStage7PeriodCandidates(
             .filter(
                 period =>
                     period &&
-                    period.id
+                    (
+                        period.id ||
+                        period.period_id
+                    )
+            )
+            .map(
+                period => {
+
+                    return {
+
+                        ...period,
+
+                        id:
+                            period.id ??
+                            period.period_id,
+
+                        dayNumber:
+                            period.dayNumber ??
+                            period.day_number,
+
+                        periodOrder:
+                            period.periodOrder ??
+                            period.period_order ??
+                            period.periodNumber ??
+                            period.period_number
+
+                    };
+
+                }
             )
             .sort(
                 (
@@ -23315,14 +24231,16 @@ function buildStage7PeriodCandidates(
 
                     const dayA =
                         Number(
-                            a.day_number ||
+                            a.dayNumber ??
+                            a.day_number ??
                             0
                         );
 
 
                     const dayB =
                         Number(
-                            b.day_number ||
+                            b.dayNumber ??
+                            b.day_number ??
                             0
                         );
 
@@ -23342,7 +24260,9 @@ function buildStage7PeriodCandidates(
 
                     const orderA =
                         Number(
+                            a.periodOrder ??
                             a.period_order ??
+                            a.periodNumber ??
                             a.period_number ??
                             0
                         );
@@ -23350,7 +24270,9 @@ function buildStage7PeriodCandidates(
 
                     const orderB =
                         Number(
+                            b.periodOrder ??
                             b.period_order ??
+                            b.periodNumber ??
                             b.period_number ??
                             0
                         );
@@ -23368,7 +24290,6 @@ function buildStage7PeriodCandidates(
     return candidates;
 
 }
-
 
 
 // ============================================================
@@ -23399,12 +24320,13 @@ function buildStage7RoomCandidates(
 
 
     // ========================================================
-    // SUBJECTS / LESSONS THAT DO NOT REQUIRE ROOMS
+    // ROOMLESS TASK
     // ========================================================
     //
-    // A roomless task must use null.
+    // A lesson that does not require a room must be placed
+    // with null.
     //
-    // This does NOT mean "try every room".
+    // Do NOT allow it to consume an actual room.
     //
     // ========================================================
 
@@ -23422,17 +24344,6 @@ function buildStage7RoomCandidates(
     // ========================================================
     // ROOM IS REQUIRED
     // ========================================================
-    //
-    // A room-required task cannot be placed without a room.
-    //
-    // Therefore:
-    //
-    //     invalid room list -> []
-    //     no compatible room -> []
-    //
-    // Never return [null] here.
-    //
-    // ========================================================
 
     if (
         !Array.isArray(rooms) ||
@@ -23445,7 +24356,7 @@ function buildStage7RoomCandidates(
 
 
     // ========================================================
-    // FILTER VALID ROOMS
+    // NORMALIZE VALID ROOMS
     // ========================================================
 
     const validRooms =
@@ -23466,74 +24377,102 @@ function buildStage7RoomCandidates(
 
 
     // ========================================================
-    // ROOM TYPE / REQUIREMENT MATCHING
+    // FIND REQUIRED ROOM TYPE
     // ========================================================
     //
-    // Stage 7 must respect the same room requirements used by
-    // the normal timetable generator.
-    //
-    // Only apply filtering when the task actually specifies
-    // a room-type requirement.
+    // Support all room-type field names used elsewhere in the
+    // timetable data.
     //
     // ========================================================
 
     const requiredRoomType =
-        task.roomTypeId ||
-        task.room_type_id ||
-        task.requiredRoomTypeId ||
-        task.required_room_type_id ||
+        task.roomTypeId ??
+        task.room_type_id ??
+        task.requiredRoomTypeId ??
+        task.required_room_type_id ??
+        task.requiredRoomType ??
+        task.required_room_type ??
         null;
 
 
+    // ========================================================
+    // NO ROOM TYPE SPECIFIED
+    // ========================================================
+    //
+    // The task requires a room, but does not specify a type.
+    //
+    // Any valid room may therefore be considered.
+    //
+    // ========================================================
+
     if (
-        requiredRoomType
+        !requiredRoomType
     ) {
 
-        const compatibleRooms =
-            validRooms.filter(
-                room => {
-
-                    const roomTypeId =
-                        room.roomTypeId ||
-                        room.room_type_id ||
-                        room.typeId ||
-                        room.type_id ||
-                        null;
-
-
-                    return (
-                        roomTypeId &&
-                        String(roomTypeId) ===
-                        String(requiredRoomType)
-                    );
-
-                }
-            );
-
-
-        return compatibleRooms;
+        return [
+            ...validRooms
+        ];
 
     }
 
 
     // ========================================================
-    // NO SPECIFIC ROOM TYPE
-    // ========================================================
-    //
-    // Any valid room may be used.
-    //
+    // FILTER BY ROOM TYPE
     // ========================================================
 
-    return validRooms;
+    const normalizedRequiredRoomType =
+        normalizeTimetableId(
+            requiredRoomType
+        );
+
+
+    if (
+        !normalizedRequiredRoomType
+    ) {
+
+        return [
+            ...validRooms
+        ];
+
+    }
+
+
+    const compatibleRooms =
+        validRooms.filter(
+            room => {
+
+                const roomTypeId =
+                    room.roomTypeId ??
+                    room.room_type_id ??
+                    room.typeId ??
+                    room.type_id ??
+                    null;
+
+
+                const normalizedRoomTypeId =
+                    normalizeTimetableId(
+                        roomTypeId
+                    );
+
+
+                return (
+                    normalizedRoomTypeId &&
+                    normalizedRoomTypeId ===
+                    normalizedRequiredRoomType
+                );
+
+            }
+        );
+
+
+    return compatibleRooms;
 
 }
-
 
 
 // ============================================================
 // STAGE 7 TASK PLACEMENT ADAPTER
 // ============================================================
-
 
 
 
@@ -23572,19 +24511,22 @@ function placeStage7Task(
     // ========================================================
 
     const taskType =
-        task.taskType ||
-        task.type ||
+        task.taskType ??
+        task.task_type ??
+        task.type ??
         null;
 
 
     if (
         taskType === "double" ||
-        task.isDouble === true
+        task.isDouble === true ||
+        task.is_double === true
     ) {
 
         console.warn(
             "STAGE 7: Double lesson placement adapter is not enabled.",
             task.taskId ||
+            task.task_id ||
             task.id
         );
 
@@ -23611,8 +24553,9 @@ function placeStage7Task(
     const candidate = {
 
         taskId:
-            task.taskId ||
-            task.id ||
+            task.taskId ??
+            task.task_id ??
+            task.id ??
             null,
 
         period,
@@ -23633,7 +24576,31 @@ function placeStage7Task(
 
 
     // ========================================================
-    // USE THE EXISTING SINGLE-LESSON PLACEMENT ENGINE
+    // FINAL PLACEMENT THROUGH STAGE 6F ENGINE
+    // ========================================================
+    //
+    // This is important.
+    //
+    // Stage 7 must NOT have its own independent conflict rules.
+    //
+    // placeSelectedSingleTask()
+    //      ->
+    // checkSingleSlotConflict()
+    //      ->
+    // reserveSlot()
+    //      ->
+    // createGeneratedEntry()
+    //
+    // Therefore Stage 7 inherits the same:
+    //
+    // - parallel rules
+    // - teacher rules
+    // - student-group rules
+    // - room rules
+    // - daily limits
+    // - weekly limits
+    // - consecutive limits
+    //
     // ========================================================
 
     const placement =
@@ -23683,7 +24650,9 @@ function placeStage7Task(
             Array.isArray(
                 placement.entries
             )
-                ? placement.entries
+                ? [
+                    ...placement.entries
+                ]
                 : [],
 
         reason:
@@ -23694,11 +24663,6 @@ function placeStage7Task(
 }
 
 
-
-
-// ============================================================
-// STAGE 7 — RELOCATION
-// ============================================================
 
 
 
@@ -23731,8 +24695,6 @@ function placeStage7Task(
 //     placement.placed === true
 //
 // ============================================================
-
-
 
 function attemptStage7Relocation(
     failedTask,
@@ -23797,12 +24759,60 @@ function attemptStage7Relocation(
 
 
     // ========================================================
+    // BUILD FAILED-TASK ROOM CANDIDATES ONCE
+    // ========================================================
+
+    const failedTaskRoomCandidates =
+        buildStage7RoomCandidates(
+            failedTask,
+            rooms
+        );
+
+
+    if (
+        !Array.isArray(
+            failedTaskRoomCandidates
+        ) ||
+        failedTaskRoomCandidates.length === 0
+    ) {
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                []
+
+        };
+
+    }
+
+
+    // ========================================================
     // LOOK FOR A SINGLE LESSON TO MOVE
     // ========================================================
 
     for (
         const existingTask of placedTasks
     ) {
+
+        // ----------------------------------------------------
+        // MOVE LIMIT
+        // ----------------------------------------------------
+
+        if (
+            moveAttempts >=
+            STAGE7_CONFIG.maxMovesPerTask
+        ) {
+
+            break;
+
+        }
+
 
         if (
             !existingTask
@@ -23814,12 +24824,13 @@ function attemptStage7Relocation(
 
 
         // ====================================================
-        // NORMALIZE EXISTING TASK
+        // NORMALIZE EXISTING TASK TYPE
         // ====================================================
 
         const existingTaskType =
-            existingTask.taskType ||
-            existingTask.type ||
+            existingTask.taskType ??
+            existingTask.task_type ??
+            existingTask.type ??
             null;
 
 
@@ -23829,7 +24840,8 @@ function attemptStage7Relocation(
 
         if (
             existingTaskType === "double" ||
-            existingTask.isDouble === true
+            existingTask.isDouble === true ||
+            existingTask.is_double === true
         ) {
 
             continue;
@@ -23856,16 +24868,6 @@ function attemptStage7Relocation(
         ) {
 
             continue;
-
-        }
-
-
-        if (
-            moveAttempts >=
-            STAGE7_CONFIG.maxMovesPerTask
-        ) {
-
-            break;
 
         }
 
@@ -23899,7 +24901,7 @@ function attemptStage7Relocation(
 
         // ====================================================
         // CAPTURE MOVED ENTRY
-        // ====================================================
+        // ========================================================
 
         const movedEntry =
             existingTask.stage7MovedEntry ||
@@ -23907,91 +24909,7 @@ function attemptStage7Relocation(
 
 
         // ====================================================
-        // BUILD ROOMS FOR FAILED TASK
-        // ====================================================
-
-        const failedTaskRoomCandidates =
-            buildStage7RoomCandidates(
-                failedTask,
-                rooms
-            );
-
-
-        if (
-            !Array.isArray(
-                failedTaskRoomCandidates
-            ) ||
-            failedTaskRoomCandidates.length === 0
-        ) {
-
-            // ------------------------------------------------
-            // Failed task has no usable room option.
-            // Restore the moved existing task.
-            // ------------------------------------------------
-
-            const restored =
-                moveStage7Task(
-                    existingTask,
-                    alternative.oldPeriod,
-                    alternative.oldRoom,
-                    generatorData,
-                    alternative.period,
-                    alternative.room
-                );
-
-
-            if (
-                restored !== true
-            ) {
-
-                console.error(
-                    "STAGE 7: CRITICAL — failed to restore existing task after room candidate failure.",
-                    {
-
-                        taskId:
-                            existingTask?.taskId ||
-                            existingTask?.id
-
-                    }
-                );
-
-                return {
-
-                    repaired:
-                        false,
-
-                    entries:
-                        [],
-
-                    moved:
-                        []
-
-                };
-
-            }
-
-
-            existingTask.stage7MovedEntry =
-                null;
-
-
-            continue;
-
-        }
-
-
-        // ====================================================
         // BUILD ORDERED FAILED-TASK ROOMS
-        // ====================================================
-        //
-        // findAlternativeSlotForExistingTask() has already
-        // identified a room that was valid for the failed task
-        // while the original slot was temporarily freed.
-        //
-        // Try that exact room first.
-        //
-        // Then try the remaining rooms as a fallback.
-        //
         // ====================================================
 
         const orderedFailedTaskRooms = [];
@@ -24012,17 +24930,33 @@ function attemptStage7Relocation(
             const failedRoom of failedTaskRoomCandidates
         ) {
 
+            if (
+                !failedRoom
+            ) {
+
+                if (
+                    !orderedFailedTaskRooms.includes(
+                        null
+                    )
+                ) {
+
+                    orderedFailedTaskRooms.push(
+                        null
+                    );
+
+                }
+
+                continue;
+
+            }
+
+
             const alreadyIncluded =
                 orderedFailedTaskRooms.some(
                     candidate =>
                         candidate &&
-                        failedRoom &&
-                        String(
-                            candidate.id
-                        ) ===
-                        String(
-                            failedRoom.id
-                        )
+                        String(candidate.id) ===
+                        String(failedRoom.id)
                 );
 
 
@@ -24070,10 +25004,6 @@ function attemptStage7Relocation(
             }
 
 
-            // ------------------------------------------------
-            // ATTEMPT FAILED TASK PLACEMENT
-            // ------------------------------------------------
-
             const placement =
                 placeStage7Task(
                     failedTask,
@@ -24118,7 +25048,7 @@ function attemptStage7Relocation(
 
 
             // ------------------------------------------------
-            // Add the MOVED existing lesson's new entry.
+            // ADD MOVED EXISTING LESSON
             // ------------------------------------------------
 
             if (
@@ -24132,9 +25062,9 @@ function attemptStage7Relocation(
             }
 
 
-            // =================================================
-            // MOVE RECORD
-            // =================================================
+            // ------------------------------------------------
+            // RECORD MOVE
+            // ------------------------------------------------
 
             const movedRecord = {
 
@@ -24143,6 +25073,7 @@ function attemptStage7Relocation(
 
                 from:
                     {
+
                         period:
                             alternative.oldPeriod,
 
@@ -24153,6 +25084,7 @@ function attemptStage7Relocation(
 
                 to:
                     {
+
                         period:
                             alternative.period,
 
@@ -24165,7 +25097,7 @@ function attemptStage7Relocation(
 
 
             // ------------------------------------------------
-            // Clean temporary marker.
+            // CLEAN TEMPORARY MARKER
             // ------------------------------------------------
 
             existingTask.stage7MovedEntry =
@@ -24194,7 +25126,7 @@ function attemptStage7Relocation(
         // FAILED TASK COULD NOT USE FREED SLOT
         // ====================================================
         //
-        // Restore the existing task completely.
+        // Restore the moved lesson exactly where it came from.
         //
         // ====================================================
 
@@ -24219,6 +25151,7 @@ function attemptStage7Relocation(
 
                     taskId:
                         existingTask?.taskId ||
+                        existingTask?.task_id ||
                         existingTask?.id,
 
                     originalPeriod:
@@ -24276,10 +25209,9 @@ function attemptStage7Relocation(
         moved:
             []
 
-        };
+    };
 
 }
-
 
 
 // ============================================================
