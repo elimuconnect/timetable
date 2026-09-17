@@ -11486,7 +11486,6 @@ const studentGroupKey =
 // ============================================================
 
 
-
 function getScoredSingleLessonCandidates(
     task,
     data,
@@ -11508,6 +11507,16 @@ function getScoredSingleLessonCandidates(
         getTeachingPeriods(
             data.periods
         );
+
+
+    if (
+        !Array.isArray(teachingPeriods) ||
+        teachingPeriods.length === 0
+    ) {
+
+        return [];
+
+    }
 
 
     const compatibleRooms =
@@ -11551,15 +11560,13 @@ function getScoredSingleLessonCandidates(
     // FIND ESTABLISHED PARALLEL-GROUP PERIODS
     // ========================================================
     //
-    // Once another member of the same parallel group has been
-    // placed, this task MUST use that same period.
+    // OPTIMIZED:
     //
-    // This is now a HARD scheduling rule.
+    // Instead of scanning every teaching period for every
+    // student group, scan the existing occupancy entries once.
     //
-    // We do NOT bypass conflict validation.
-    //
-    // If the teacher is unavailable at the synchronized period,
-    // the candidate is rejected normally.
+    // Once another member of this parallel group has been
+    // placed, this task MUST use the same period.
     //
     // ========================================================
 
@@ -11570,111 +11577,150 @@ function getScoredSingleLessonCandidates(
     if (
         taskParallelGroup &&
         indexes.studentGroupPeriodLessons instanceof Map &&
-        Array.isArray(taskStudentGroups)
+        Array.isArray(taskStudentGroups) &&
+        taskStudentGroups.length > 0
     ) {
 
-        taskStudentGroups.forEach(
-            rawStudentGroupId => {
+        const normalizedStudentGroupIds =
+            new Set(
+                taskStudentGroups
+                    .map(
+                        rawStudentGroupId =>
+                            normalizeTimetableId(
+                                rawStudentGroupId
+                            )
+                    )
+                    .filter(
+                        Boolean
+                    )
+            );
 
-                const studentGroupId =
-                    normalizeTimetableId(
-                        rawStudentGroupId
-                    );
 
+        if (
+            normalizedStudentGroupIds.size > 0
+        ) {
+
+            for (
+                const [
+                    key,
+                    existingLessons
+                ]
+                of indexes.studentGroupPeriodLessons.entries()
+            ) {
 
                 if (
-                    !studentGroupId
+                    !Array.isArray(
+                        existingLessons
+                    ) ||
+                    existingLessons.length === 0
                 ) {
 
-                    return;
+                    continue;
 
                 }
 
 
-                teachingPeriods.forEach(
-                    period => {
-
-                        if (
-                            !period ||
-                            period.id === null ||
-                            period.id === undefined
-                        ) {
-
-                            return;
-
-                        }
+                const separatorIndex =
+                    String(
+                        key
+                    ).lastIndexOf(
+                        "__"
+                    );
 
 
-                        const periodId =
-                            normalizeTimetableId(
-                                period.id
+                if (
+                    separatorIndex < 0
+                ) {
+
+                    continue;
+
+                }
+
+
+                const keyStudentGroupId =
+                    normalizeTimetableId(
+                        String(
+                            key
+                        ).slice(
+                            0,
+                            separatorIndex
+                        )
+                    );
+
+
+                if (
+                    !normalizedStudentGroupIds.has(
+                        keyStudentGroupId
+                    )
+                ) {
+
+                    continue;
+
+                }
+
+
+                const periodId =
+                    normalizeTimetableId(
+                        String(
+                            key
+                        ).slice(
+                            separatorIndex + 2
+                        )
+                    );
+
+
+                if (
+                    !periodId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const hasMatchingParallelLesson =
+                    existingLessons.some(
+                        existingLesson => {
+
+                            if (
+                                !existingLesson
+                            ) {
+
+                                return false;
+
+                            }
+
+
+                            const existingParallelGroup =
+                                normalizeTimetableId(
+                                    existingLesson.parallelGroup ??
+                                    existingLesson.parallel_group
+                                );
+
+
+                            return (
+                                existingParallelGroup &&
+                                existingParallelGroup ===
+                                taskParallelGroup
                             );
 
-
-                        if (
-                            !periodId
-                        ) {
-
-                            return;
-
                         }
+                    );
 
 
-                        const key =
-                            `${studentGroupId}__${periodId}`;
+                if (
+                    hasMatchingParallelLesson
+                ) {
 
+                    synchronizedPeriodIds.add(
+                        periodId
+                    );
 
-                        const existingLessons =
-                            indexes.studentGroupPeriodLessons.get(
-                                key
-                            ) || [];
-
-
-                        const hasMatchingParallelLesson =
-                            existingLessons.some(
-                                existingLesson => {
-
-                                    if (
-                                        !existingLesson
-                                    ) {
-
-                                        return false;
-
-                                    }
-
-
-                                    const existingParallelGroup =
-                                        normalizeTimetableId(
-                                            existingLesson.parallelGroup ??
-                                            existingLesson.parallel_group
-                                        );
-
-
-                                    return (
-                                        existingParallelGroup &&
-                                        existingParallelGroup ===
-                                        taskParallelGroup
-                                    );
-
-                                }
-                            );
-
-
-                        if (
-                            hasMatchingParallelLesson
-                        ) {
-
-                            synchronizedPeriodIds.add(
-                                periodId
-                            );
-
-                        }
-
-                    }
-                );
+                }
 
             }
-        );
+
+        }
 
     }
 
@@ -11718,10 +11764,9 @@ function getScoredSingleLessonCandidates(
             // HARD PARALLEL SYNCHRONIZATION
             // ==================================================
             //
-            // If this group has already started, DO NOT allow
-            // the remaining task to escape to another period.
-            //
-            // This is the key fix for the 10M problem.
+            // If another member of this parallel group has
+            // already been placed, this task may ONLY use one
+            // of those synchronized periods.
             //
             // ==================================================
 
@@ -11811,9 +11856,9 @@ function getScoredSingleLessonCandidates(
                             : [];
 
 
-                    // =================================================
-                    // SYNCHRONIZED PARALLEL GROUP BONUS
-                    // =================================================
+                    // ========================================
+                    // SYNCHRONIZED GROUP BONUS
+                    // ========================================
 
                     if (
                         parallelGroupEstablished &&
@@ -11836,7 +11881,8 @@ function getScoredSingleLessonCandidates(
                     candidates.push({
 
                         taskId:
-                            task.taskId,
+                            task.taskId ??
+                            task.task_id,
 
                         period,
 
@@ -11878,20 +11924,17 @@ function getScoredSingleLessonCandidates(
             }
 
 
-            // Deterministic tie-break.
-            //
-            // This is preferable to Math.random() here because
-            // parallel scheduling should remain reproducible.
-
             const aPeriod =
                 Number(
-                    a.period?.periodOrder
+                    a.period?.periodOrder ??
+                    a.period?.period_order
                 ) || 0;
 
 
             const bPeriod =
                 Number(
-                    b.period?.periodOrder
+                    b.period?.periodOrder ??
+                    b.period?.period_order
                 ) || 0;
 
 
@@ -11925,7 +11968,6 @@ function getScoredSingleLessonCandidates(
     return candidates;
 
 }
-
 
 // ============================================================
 // GET BEST SINGLE LESSON CANDIDATE
@@ -16225,7 +16267,6 @@ function getTaskDayPressure(
 // ============================================================
 
 
-
 function selectNextSmartTask(
     remainingTasks,
     data,
@@ -16242,9 +16283,6 @@ function selectNextSmartTask(
         return null;
 
     }
-
-
-    const taskCandidates = [];
 
 
     // ========================================================
@@ -16270,11 +16308,6 @@ function selectNextSmartTask(
 
     // ========================================================
     // BUILD PARALLEL GROUP MAP
-    // ========================================================
-    //
-    // Each explicit parallel group is treated as a scheduling
-    // unit when choosing its first member.
-    //
     // ========================================================
 
     const parallelGroups =
@@ -16314,10 +16347,377 @@ function selectNextSmartTask(
             }
 
 
-            parallelGroups.get(
-                parallelGroup
-            ).push(
-                task
+            parallelGroups
+                .get(
+                    parallelGroup
+                )
+                .push(
+                    task
+                );
+
+        }
+    );
+
+
+    // ========================================================
+    // CACHE PARALLEL-GROUP INFORMATION
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Each group's common periods are calculated ONCE.
+    //
+    // Previously this calculation was repeated for every task
+    // belonging to the same group.
+    //
+    // ========================================================
+
+    const parallelGroupCache =
+        new Map();
+
+
+    parallelGroups.forEach(
+        (
+            groupTasks,
+            parallelGroup
+        ) => {
+
+            const groupInfo = {
+
+                established:
+                    false,
+
+                establishedPeriods:
+                    new Set(),
+
+                commonPeriods:
+                    new Set(),
+
+                memberCandidates:
+                    new Map(),
+
+                initialized:
+                    false
+
+            };
+
+
+            // ==================================================
+            // CHECK WHETHER GROUP IS ALREADY ESTABLISHED
+            // ==================================================
+
+            groupTasks.forEach(
+                groupTask => {
+
+                    if (
+                        groupInfo.established
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const studentGroups =
+                        getTaskStudentGroups(
+                            groupTask
+                        );
+
+
+                    if (
+                        !Array.isArray(
+                            studentGroups
+                        ) ||
+                        studentGroups.length === 0
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    if (
+                        !(indexes.studentGroupPeriodLessons instanceof Map)
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const normalizedStudentGroupIds =
+                        new Set(
+                            studentGroups
+                                .map(
+                                    rawStudentGroupId =>
+                                        normalizeTimetableId(
+                                            rawStudentGroupId
+                                        )
+                                )
+                                .filter(
+                                    Boolean
+                                )
+                        );
+
+
+                    if (
+                        normalizedStudentGroupIds.size === 0
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    for (
+                        const [
+                            key,
+                            lessons
+                        ]
+                        of indexes.studentGroupPeriodLessons.entries()
+                    ) {
+
+                        if (
+                            !Array.isArray(
+                                lessons
+                            ) ||
+                            lessons.length === 0
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const separatorIndex =
+                            String(
+                                key
+                            ).lastIndexOf(
+                                "__"
+                            );
+
+
+                        if (
+                            separatorIndex < 0
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const studentGroupId =
+                            normalizeTimetableId(
+                                String(
+                                    key
+                                ).slice(
+                                    0,
+                                    separatorIndex
+                                )
+                            );
+
+
+                        if (
+                            !normalizedStudentGroupIds.has(
+                                studentGroupId
+                            )
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const periodId =
+                            normalizeTimetableId(
+                                String(
+                                    key
+                                ).slice(
+                                    separatorIndex + 2
+                                )
+                            );
+
+
+                        if (
+                            !periodId
+                        ) {
+
+                            continue;
+
+                        }
+
+
+                        const hasMatchingParallelLesson =
+                            lessons.some(
+                                lesson => {
+
+                                    if (
+                                        !lesson
+                                    ) {
+
+                                        return false;
+
+                                    }
+
+
+                                    const lessonParallelGroup =
+                                        normalizeTimetableId(
+                                            lesson.parallelGroup ??
+                                            lesson.parallel_group
+                                        );
+
+
+                                    return (
+                                        lessonParallelGroup &&
+                                        lessonParallelGroup ===
+                                        parallelGroup
+                                    );
+
+                                }
+                            );
+
+
+                        if (
+                            hasMatchingParallelLesson
+                        ) {
+
+                            groupInfo
+                                .establishedPeriods
+                                .add(
+                                    periodId
+                                );
+
+                        }
+
+                    }
+
+                }
+            );
+
+
+            if (
+                groupInfo.establishedPeriods.size > 0
+            ) {
+
+                groupInfo.established =
+                    true;
+
+
+                groupInfo.commonPeriods =
+                    new Set(
+                        groupInfo.establishedPeriods
+                    );
+
+            }
+            else {
+
+                // ==============================================
+                // GROUP NOT STARTED
+                //
+                // Calculate candidate periods for every member
+                // exactly ONCE.
+                // ==============================================
+
+                groupTasks.forEach(
+                    groupTask => {
+
+                        // --------------------------------------
+                        // Double parallel groups are handled by
+                        // the double candidate engine.
+                        // --------------------------------------
+
+                        if (
+                            groupTask.taskType ===
+                            "double"
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const groupCandidates =
+                            getScoredSingleLessonCandidates(
+                                groupTask,
+                                data,
+                                indexes
+                            );
+
+
+                        groupInfo
+                            .memberCandidates
+                            .set(
+                                groupTask,
+                                groupCandidates
+                            );
+
+
+                        const groupPeriods =
+                            new Set();
+
+
+                        groupCandidates.forEach(
+                            candidate => {
+
+                                const periodId =
+                                    normalizeTimetableId(
+                                        candidate.period?.id
+                                    );
+
+
+                                if (
+                                    periodId
+                                ) {
+
+                                    groupPeriods.add(
+                                        periodId
+                                    );
+
+                                }
+
+                            }
+                        );
+
+
+                        if (
+                            !groupInfo.initialized
+                        ) {
+
+                            groupInfo.commonPeriods =
+                                new Set(
+                                    groupPeriods
+                                );
+
+
+                            groupInfo.initialized =
+                                true;
+
+                        }
+                        else {
+
+                            groupInfo.commonPeriods =
+                                new Set(
+                                    [
+                                        ...groupInfo.commonPeriods
+                                    ].filter(
+                                        periodId =>
+                                            groupPeriods.has(
+                                                periodId
+                                            )
+                                    )
+                                );
+
+                        }
+
+                    }
+                );
+
+            }
+
+
+            parallelGroupCache.set(
+                parallelGroup,
+                groupInfo
             );
 
         }
@@ -16327,6 +16727,9 @@ function selectNextSmartTask(
     // ========================================================
     // ANALYSE EVERY REMAINING TASK
     // ========================================================
+
+    const taskCandidates = [];
+
 
     activeTasks.forEach(
         task => {
@@ -16374,327 +16777,40 @@ function selectNextSmartTask(
 
 
             let parallelGroupCommonPeriods =
-                new Set();
-
-
-            // ==================================================
-            // ESTABLISHED GROUP
-            // ==================================================
-
-            if (
-                taskParallelGroup
-            ) {
-
-                const studentGroups =
-                    getTaskStudentGroups(
-                        task
-                    );
-
-
-                const synchronizedPeriods =
-                    new Set();
-
-
-                if (
-                    indexes.studentGroupPeriodLessons instanceof Map &&
-                    Array.isArray(studentGroups)
-                ) {
-
-                    studentGroups.forEach(
-                        rawStudentGroupId => {
-
-                            const studentGroupId =
-                                normalizeTimetableId(
-                                    rawStudentGroupId
-                                );
-
-
-                            if (
-                                !studentGroupId
-                            ) {
-
-                                return;
-
-                            }
-
-
-                            for (
-                                const [
-                                    key,
-                                    lessons
-                                ]
-                                of indexes.studentGroupPeriodLessons.entries()
-                            ) {
-
-                                if (
-                                    !Array.isArray(
-                                        lessons
-                                    ) ||
-                                    lessons.length === 0
-                                ) {
-
-                                    continue;
-
-                                }
-
-
-                                const separatorIndex =
-                                    String(
-                                        key
-                                    ).lastIndexOf(
-                                        "__"
-                                    );
-
-
-                                if (
-                                    separatorIndex < 0
-                                ) {
-
-                                    continue;
-
-                                }
-
-
-                                const keyGroupId =
-                                    normalizeTimetableId(
-                                        String(
-                                            key
-                                        ).slice(
-                                            0,
-                                            separatorIndex
-                                        )
-                                    );
-
-
-                                const periodId =
-                                    normalizeTimetableId(
-                                        String(
-                                            key
-                                        ).slice(
-                                            separatorIndex + 2
-                                        )
-                                    );
-
-
-                                if (
-                                    keyGroupId !==
-                                    studentGroupId
-                                ) {
-
-                                    continue;
-
-                                }
-
-
-                                const matchingParallelLesson =
-                                    lessons.some(
-                                        existingLesson => {
-
-                                            if (
-                                                !existingLesson
-                                            ) {
-
-                                                return false;
-
-                                            }
-
-
-                                            const existingParallelGroup =
-                                                normalizeTimetableId(
-                                                    existingLesson.parallelGroup ??
-                                                    existingLesson.parallel_group
-                                                );
-
-
-                                            return (
-                                                existingParallelGroup &&
-                                                existingParallelGroup ===
-                                                taskParallelGroup
-                                            );
-
-                                        }
-                                    );
-
-
-                                if (
-                                    matchingParallelLesson &&
-                                    periodId
-                                ) {
-
-                                    synchronizedPeriods.add(
-                                        periodId
-                                    );
-
-                                }
-
-                            }
-
-                        }
-                    );
-
-                }
-
-
-                if (
-                    synchronizedPeriods.size > 0
-                ) {
-
-                    parallelGroupEstablished =
-                        true;
-
-
-                    parallelGroupPeriods =
-                        synchronizedPeriods.size;
-
-
-                    parallelGroupCommonPeriods =
-                        new Set(
-                            synchronizedPeriods
-                        );
-
-                }
-
-            }
-
-
-            // ==================================================
-            // IF GROUP IS NOT ESTABLISHED:
-            //
-            // FIND PERIODS THAT WORK FOR THE WHOLE GROUP.
-            //
-            // ==================================================
-
-            let commonGroupPeriods =
-                new Set();
+                0;
 
 
             if (
                 taskParallelGroup &&
-                !parallelGroupEstablished
+                parallelGroupCache.has(
+                    taskParallelGroup
+                )
             ) {
 
-                const groupTasks =
-                    parallelGroups.get(
+                const groupInfo =
+                    parallelGroupCache.get(
                         taskParallelGroup
-                    ) || [];
+                    );
 
 
-                // ----------------------------------------------
-                // Include this task and all remaining members.
-                // ----------------------------------------------
-
-                const relevantGroupTasks =
-                    groupTasks.length > 0
-                        ? groupTasks
-                        : [task];
+                parallelGroupEstablished =
+                    groupInfo.established;
 
 
-                let initialized =
-                    false;
+                parallelGroupPeriods =
+                    groupInfo.establishedPeriods.size;
 
 
-                relevantGroupTasks.forEach(
-                    groupTask => {
-
-                        if (
-                            groupTask.taskType ===
-                            "double"
-                        ) {
-
-                            // ----------------------------------
-                            // Double parallel groups are handled
-                            // separately by their double
-                            // candidate engine.
-                            //
-                            // Do not incorrectly treat their
-                            // single periods as group matches.
-                            // ----------------------------------
-
-                            return;
-
-                        }
+                parallelGroupCommonPeriods =
+                    groupInfo.commonPeriods.size;
 
 
-                        const groupCandidates =
-                            getScoredSingleLessonCandidates(
-                                groupTask,
-                                data,
-                                indexes
-                            );
-
-
-                        const groupPeriods =
-                            new Set();
-
-
-                        groupCandidates.forEach(
-                            candidate => {
-
-                                const periodId =
-                                    normalizeTimetableId(
-                                        candidate.period?.id
-                                    );
-
-
-                                if (
-                                    periodId
-                                ) {
-
-                                    groupPeriods.add(
-                                        periodId
-                                    );
-
-                                }
-
-                            }
-                        );
-
-
-                        if (
-                            !initialized
-                        ) {
-
-                            commonGroupPeriods =
-                                new Set(
-                                    groupPeriods
-                                );
-
-
-                            initialized =
-                                true;
-
-                        }
-                        else {
-
-                            commonGroupPeriods =
-                                new Set(
-                                    [
-                                        ...commonGroupPeriods
-                                    ].filter(
-                                        periodId =>
-                                            groupPeriods.has(
-                                                periodId
-                                            )
-                                    )
-                                );
-
-                        }
-
-                    }
-                );
-
-
-                // ------------------------------------------------
-                // IMPORTANT:
-                //
-                // The task's own candidate list is restricted
-                // to periods that are valid for every remaining
-                // member of the parallel group.
-                //
-                // ------------------------------------------------
+                // ==============================================
+                // HARD FILTER — ESTABLISHED GROUP
+                // ==============================================
 
                 if (
-                    commonGroupPeriods.size > 0
+                    groupInfo.established
                 ) {
 
                     candidates =
@@ -16707,29 +16823,49 @@ function selectNextSmartTask(
                                     );
 
 
-                                return commonGroupPeriods.has(
-                                    periodId
-                                );
+                                return groupInfo
+                                    .establishedPeriods
+                                    .has(
+                                        periodId
+                                    );
 
                             }
                         );
 
                 }
 
-            }
+
+                // ==============================================
+                // HARD FILTER — UNSTARTED GROUP
+                //
+                // Only allow periods that every remaining member
+                // can use.
+                // ==============================================
+
+                else if (
+                    groupInfo.commonPeriods.size > 0
+                ) {
+
+                    candidates =
+                        candidates.filter(
+                            candidate => {
+
+                                const periodId =
+                                    normalizeTimetableId(
+                                        candidate.period?.id
+                                    );
 
 
-            // ==================================================
-            // UPDATE GROUP PERIOD INFORMATION
-            // ==================================================
+                                return groupInfo
+                                    .commonPeriods
+                                    .has(
+                                        periodId
+                                    );
 
-            if (
-                !parallelGroupEstablished &&
-                commonGroupPeriods.size > 0
-            ) {
+                            }
+                        );
 
-                parallelGroupCommonPeriods =
-                    commonGroupPeriods;
+                }
 
             }
 
@@ -16794,8 +16930,7 @@ function selectNextSmartTask(
 
                 parallelGroupPeriods,
 
-                parallelGroupCommonPeriods:
-                    parallelGroupCommonPeriods.size
+                parallelGroupCommonPeriods
 
             });
 
@@ -16851,24 +16986,12 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 2. CRITICAL DAY DEFICIT
+            // 2. ESTABLISHED PARALLEL GROUP
             // ------------------------------------------------
-
-            if (
-                a.dayDeficit !==
-                b.dayDeficit
-            ) {
-
-                return (
-                    b.dayDeficit -
-                    a.dayDeficit
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // 3. ESTABLISHED PARALLEL GROUP
+            //
+            // Once a group has started, finish its members
+            // before unrelated tasks take those periods.
+            //
             // ------------------------------------------------
 
             if (
@@ -16879,6 +17002,55 @@ function selectNextSmartTask(
                 return a.parallelGroupEstablished
                     ? -1
                     : 1;
+
+            }
+
+
+            // ------------------------------------------------
+            // 3. UNSTARTED PARALLEL GROUP CONSTRAINT
+            // ------------------------------------------------
+            //
+            // Groups with fewer common periods are more
+            // constrained and should be scheduled earlier.
+            //
+            // ------------------------------------------------
+
+            if (
+                a.parallelGroupCommonPeriods !==
+                b.parallelGroupCommonPeriods
+            ) {
+
+                if (
+                    a.parallelGroupCommonPeriods > 0 &&
+                    b.parallelGroupCommonPeriods > 0
+                ) {
+
+                    return (
+                        a.parallelGroupCommonPeriods -
+                        b.parallelGroupCommonPeriods
+                    );
+
+                }
+
+
+                if (
+                    a.parallelGroupCommonPeriods > 0 &&
+                    b.parallelGroupCommonPeriods === 0
+                ) {
+
+                    return -1;
+
+                }
+
+
+                if (
+                    a.parallelGroupCommonPeriods === 0 &&
+                    b.parallelGroupCommonPeriods > 0
+                ) {
+
+                    return 1;
+
+                }
 
             }
 
@@ -16901,30 +17073,18 @@ function selectNextSmartTask(
 
 
             // ------------------------------------------------
-            // 5. UNSTARTED GROUP WITH FEWER COMMON PERIODS
-            // ------------------------------------------------
-            //
-            // A parallel group with fewer common periods is more
-            // constrained and should be started earlier.
-            //
+            // 5. CRITICAL DAY DEFICIT
             // ------------------------------------------------
 
             if (
-                a.parallelGroupCommonPeriods !==
-                b.parallelGroupCommonPeriods
+                a.dayDeficit !==
+                b.dayDeficit
             ) {
 
-                if (
-                    a.parallelGroupCommonPeriods > 0 &&
-                    b.parallelGroupCommonPeriods > 0
-                ) {
-
-                    return (
-                        a.parallelGroupCommonPeriods -
-                        b.parallelGroupCommonPeriods
-                    );
-
-                }
+                return (
+                    b.dayDeficit -
+                    a.dayDeficit
+                );
 
             }
 
@@ -17011,14 +17171,30 @@ function selectNextSmartTask(
             // 10. DOUBLE FIRST
             // ------------------------------------------------
 
+            const durationA =
+                Number(
+                    a.task.duration ??
+                    a.task.lessonDuration ??
+                    1
+                );
+
+
+            const durationB =
+                Number(
+                    b.task.duration ??
+                    b.task.lessonDuration ??
+                    1
+                );
+
+
             if (
-                a.task.duration !==
-                b.task.duration
+                durationA !==
+                durationB
             ) {
 
                 return (
-                    b.task.duration -
-                    a.task.duration
+                    durationB -
+                    durationA
                 );
 
             }
@@ -17028,12 +17204,26 @@ function selectNextSmartTask(
             // 11. ROOM REQUIRED
             // ------------------------------------------------
 
+            const requiresRoomA =
+                Boolean(
+                    a.task.requiresRoom ??
+                    a.task.requires_room
+                );
+
+
+            const requiresRoomB =
+                Boolean(
+                    b.task.requiresRoom ??
+                    b.task.requires_room
+                );
+
+
             if (
-                a.task.requiresRoom !==
-                b.task.requiresRoom
+                requiresRoomA !==
+                requiresRoomB
             ) {
 
-                return a.task.requiresRoom
+                return requiresRoomA
                     ? -1
                     : 1;
 
@@ -17045,13 +17235,13 @@ function selectNextSmartTask(
             // ------------------------------------------------
 
             return String(
-                a.task.taskId ||
-                a.task.task_id ||
+                a.task.taskId ??
+                a.task.task_id ??
                 ""
             ).localeCompare(
                 String(
-                    b.task.taskId ||
-                    b.task.task_id ||
+                    b.task.taskId ??
+                    b.task.task_id ??
                     ""
                 )
             );
