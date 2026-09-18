@@ -23929,7 +23929,6 @@ const STAGE7_CONFIG = {
 // STAGE 7 — MAIN ENTRY POINT
 // ============================================================
 
-
 function runStage7Repair(
     failedTasks,
     placedTasks,
@@ -24134,11 +24133,11 @@ function runStage7Repair(
     //
     // Example:
     //
-    // BIO/PHY + S1
-    // RE/GE/BS + S4
+    // BIO/PHY::S1
+    // BIO/PHY::S2
+    // RE/GE/BS::S4
     //
-    // This prevents the same synchronized occurrence from
-    // being processed repeatedly during one repair pass.
+    // Every synchronized occurrence is processed atomically.
     // ========================================================
 
     const getParallelGroupOccurrenceKey =
@@ -24194,6 +24193,10 @@ function runStage7Repair(
             }
 
 
+            // ----------------------------------------------------
+            // FALLBACK SEQUENCE FIELDS
+            // ----------------------------------------------------
+
             if (
                 !sequence
             ) {
@@ -24221,6 +24224,10 @@ function runStage7Repair(
             }
 
 
+            // ----------------------------------------------------
+            // PRIMARY OCCURRENCE KEY
+            // ----------------------------------------------------
+
             if (
                 sequence
             ) {
@@ -24233,6 +24240,10 @@ function runStage7Repair(
 
             }
 
+
+            // ----------------------------------------------------
+            // FINAL FALLBACK
+            // ----------------------------------------------------
 
             const requirementId =
                 String(
@@ -24297,20 +24308,26 @@ function runStage7Repair(
 
 
         // ====================================================
-        // IMPORTANT:
+        // PARALLEL GROUP STATUS
         //
-        // Prevent the same parallel-group occurrence from being
-        // repaired repeatedly during the SAME pass.
+        // Possible values:
         //
-        // Example:
+        // "repaired"
+        // "failed"
         //
-        // RE/GE/BS S2 has 15 failed members.
+        // This is deliberately a Map rather than a Set.
         //
-        // We attempt S2 once, not 15 times.
+        // A Set cannot tell the difference between:
+        //
+        //     group was successfully repaired
+        //
+        // and:
+        //
+        //     group was attempted and failed.
         // ====================================================
 
-        const processedParallelGroups =
-            new Set();
+        const parallelGroupStatus =
+            new Map();
 
 
         // ====================================================
@@ -24353,39 +24370,94 @@ function runStage7Repair(
                     );
 
 
-                // ------------------------------------------------
-                // If this exact group occurrence was already
-                // processed successfully OR unsuccessfully in
-                // this pass, do not run it again.
-                //
-                // On failure, the task is still carried into
-                // nextFailed below.
-                // ------------------------------------------------
+                const existingStatus =
+                    parallelGroupStatus.get(
+                        occurrenceKey
+                    );
+
+
+                // =================================================
+                // ALREADY PROCESSED OCCURRENCE
+                // =================================================
 
                 if (
-                    processedParallelGroups.has(
-                        occurrenceKey
-                    )
+                    existingStatus
                 ) {
 
-                    nextFailed.push(
-                        task
-                    );
+                    // ------------------------------------------------
+                    // IMPORTANT:
+                    //
+                    // If the group was already repaired, this task
+                    // was repaired together with the group.
+                    //
+                    // DO NOT put it into nextFailed.
+                    // ------------------------------------------------
 
-                    console.log(
-                        "STAGE 7: Parallel-group occurrence already processed this pass:",
-                        occurrenceKey
-                    );
+                    if (
+                        existingStatus ===
+                        "repaired"
+                    ) {
 
-                    continue;
+                        console.log(
+                            "STAGE 7: Parallel-group occurrence already REPAIRED this pass:",
+                            occurrenceKey
+                        );
+
+                        continue;
+
+                    }
+
+
+                    // ------------------------------------------------
+                    // If the group was already attempted and failed,
+                    // this task remains failed.
+                    // ------------------------------------------------
+
+                    if (
+                        existingStatus ===
+                        "failed"
+                    ) {
+
+                        console.log(
+                            "STAGE 7: Parallel-group occurrence already FAILED this pass:",
+                            occurrenceKey
+                        );
+
+
+                        if (
+                            !nextFailed.includes(
+                                task
+                            )
+                        ) {
+
+                            nextFailed.push(
+                                task
+                            );
+
+                        }
+
+
+                        continue;
+
+                    }
 
                 }
 
 
-                processedParallelGroups.add(
-                    occurrenceKey
-                );
+                // =================================================
+                // MARK OCCURRENCE AS BEING PROCESSED
+                // =================================================
 
+                // We don't use "processed" as a final state.
+                // The state will be changed to either:
+                //
+                //     repaired
+                //
+                // or:
+                //
+                //     failed
+                //
+                // after the repair attempt.
 
                 console.log(
                     "STAGE 7: Parallel-group task detected:",
@@ -24402,9 +24474,9 @@ function runStage7Repair(
                 );
 
 
-                // ------------------------------------------------
+                // =================================================
                 // ATOMIC PARALLEL-GROUP REPAIR
-                // ------------------------------------------------
+                // =================================================
 
                 let result;
 
@@ -24462,6 +24534,20 @@ function runStage7Repair(
                 ) {
 
                     // ------------------------------------------------
+                    // Mark this occurrence as SUCCESSFULLY REPAIRED.
+                    //
+                    // All duplicate members encountered later in this
+                    // same pass will now be skipped rather than placed
+                    // into nextFailed.
+                    // ------------------------------------------------
+
+                    parallelGroupStatus.set(
+                        occurrenceKey,
+                        "repaired"
+                    );
+
+
+                    // ------------------------------------------------
                     // The group repair function returns the COMPLETE
                     // synchronized occurrence.
                     // ------------------------------------------------
@@ -24491,7 +24577,7 @@ function runStage7Repair(
                     // was actually in the failed queue.
                     //
                     // Already-placed members are NOT counted as
-                    // newly repaired tasks.
+                    // newly repaired.
                     // ------------------------------------------------
 
                     for (
@@ -24643,11 +24729,12 @@ function runStage7Repair(
                     // ------------------------------------------------
                     // VERY IMPORTANT:
                     //
-                    // Do NOT add the group's other failed members
-                    // to nextFailed.
+                    // Do not add any members of this occurrence to
+                    // nextFailed.
                     //
-                    // They were repaired as part of this atomic
-                    // group operation.
+                    // Duplicate members encountered later in this
+                    // same pass will see status = "repaired" and
+                    // simply continue.
                     // ------------------------------------------------
 
                     continue;
@@ -24658,6 +24745,12 @@ function runStage7Repair(
                 // =================================================
                 // PARALLEL GROUP REPAIR FAILED
                 // =================================================
+
+                parallelGroupStatus.set(
+                    occurrenceKey,
+                    "failed"
+                );
+
 
                 console.log(
                     "❌ STAGE 7 COULD NOT REPAIR GROUP:",
@@ -24679,13 +24772,11 @@ function runStage7Repair(
 
 
                 // ------------------------------------------------
-                // IMPORTANT:
+                // The entire occurrence remains failed because
+                // parallel groups are atomic.
                 //
-                // The remaining members of this SAME occurrence
-                // must also remain failed.
-                //
-                // They were not individually attempted because
-                // the group is atomic.
+                // Do this only once for the first failed attempt.
+                // Subsequent members will simply see status="failed".
                 // ------------------------------------------------
 
                 for (
@@ -25017,9 +25108,6 @@ function runStage7Repair(
     };
 
 }
-
-
-
 // ============================================================
 // STAGE 7 — PARALLEL GROUP REPAIR
 // ============================================================
@@ -26165,10 +26253,11 @@ function repairParallelGroupFailedTask(
 
 
         const candidates =
-            getScoredSingleLessonCandidates(
-                task,
-                generatorData
-            );
+    getScoredSingleLessonCandidates(
+        task,
+        generatorData,
+        indexes
+    );
 
 
         if (
