@@ -25108,32 +25108,7 @@ function runStage7Repair(
     };
 
 }
-// ============================================================
-// STAGE 7 — PARALLEL GROUP REPAIR
-// ============================================================
-//
-// PURPOSE:
-//
-// A parallel group must never be repaired one task at a time.
-//
-// Example:
-//
-//     RE / GE / BS / CRE / IRE
-//
-// If S4 cannot be placed, Stage 7 must find ONE common period
-// where all members can be placed together.
-//
-// This function:
-//
-// 1. Identifies the failed parallel-group occurrence.
-// 2. Finds all tasks belonging to that same group occurrence.
-// 3. Finds periods common to all members.
-// 4. Checks teacher / stream / room / daily constraints.
-// 5. Assigns rooms without room conflicts.
-// 6. Places the entire group at the same period.
-// 7. Does not split the group.
-//
-// ============================================================
+
 
 // ============================================================
 // STAGE 7 — REPAIR PARALLEL GROUP FAILED TASK
@@ -25369,6 +25344,10 @@ function repairParallelGroupFailedTask(
     };
 
 
+    // ========================================================
+    // GET OCCURRENCE / SEQUENCE NUMBER
+    // ========================================================
+
     const getSequenceNumber = task => {
 
         const id =
@@ -25432,6 +25411,58 @@ function repairParallelGroupFailedTask(
 
             return Number(
                 task.lesson_index
+            );
+
+        }
+
+
+        if (
+            Number.isFinite(
+                Number(task?.occurrenceIndex)
+            )
+        ) {
+
+            return Number(
+                task.occurrenceIndex
+            );
+
+        }
+
+
+        if (
+            Number.isFinite(
+                Number(task?.occurrence_index)
+            )
+        ) {
+
+            return Number(
+                task.occurrence_index
+            );
+
+        }
+
+
+        if (
+            Number.isFinite(
+                Number(task?.sessionIndex)
+            )
+        ) {
+
+            return Number(
+                task.sessionIndex
+            );
+
+        }
+
+
+        if (
+            Number.isFinite(
+                Number(task?.session_index)
+            )
+        ) {
+
+            return Number(
+                task.session_index
             );
 
         }
@@ -25562,9 +25593,17 @@ function repairParallelGroupFailedTask(
                 getSequenceNumber(task);
 
 
+            // ------------------------------------------------
+            // IMPORTANT:
+            //
+            // If we are repairing S5, ONLY S5 belongs here.
+            //
+            // A task with an unknown sequence is NOT allowed
+            // to silently enter the S5 occurrence.
+            // ------------------------------------------------
+
             if (
                 failedSequence !== null &&
-                sequence !== null &&
                 sequence !== failedSequence
             ) {
 
@@ -25757,8 +25796,6 @@ function repairParallelGroupFailedTask(
 
     // ========================================================
     // GENERIC SNAPSHOT OF PLACED TASK STATE
-    //
-    // This is used for rollback after relocating blockers.
     // ========================================================
 
     const placedTasksSnapshot =
@@ -26104,11 +26141,6 @@ function repairParallelGroupFailedTask(
 
     // ========================================================
     // BLOCKER DIAGNOSTICS
-    // ========================================================
-    //
-    // We inspect every teaching period and every compatible
-    // room without changing the scheduler's conflict rules.
-    //
     // ========================================================
 
     const diagnosePeriod =
@@ -26484,9 +26516,26 @@ function repairParallelGroupFailedTask(
     // ========================================================
     // BUILD COMMON PERIOD CANDIDATES
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // A member having ZERO candidates is NOT an immediate
+    // failure.
+    //
+    // It may simply mean an existing SINGLE lesson is blocking
+    // all currently available periods.
+    //
+    // We therefore keep the empty candidate set and allow the
+    // blocker-relocation engine below to run.
+    //
+    // ========================================================
 
     const candidateSets =
         [];
+
+
+    let initialCandidateFailure =
+        false;
 
 
     for (
@@ -26507,15 +26556,15 @@ function repairParallelGroupFailedTask(
             candidates.length === 0
         ) {
 
+            initialCandidateFailure =
+                true;
+
+
             console.warn(
-                "STAGE 7 GROUP: Member has no candidates AFTER RELEASE:",
+                "STAGE 7 GROUP: Member currently has no candidates. Blocker relocation will be attempted:",
                 getTaskId(task)
             );
 
-
-            // ------------------------------------------------
-            // Log useful blocker information.
-            // ------------------------------------------------
 
             const diagnostics =
                 groupDiagnostics.find(
@@ -26535,21 +26584,13 @@ function repairParallelGroupFailedTask(
             }
 
 
-            rollbackEverything();
+            candidateSets.push({
+                task,
+                candidates: []
+            });
 
-            console.groupEnd();
 
-            return {
-                repaired: false,
-                entries: [],
-                moved: [],
-                reason:
-                    `No candidates for group member ${getTaskId(task)} after releasing the existing group occurrence.`,
-                occurrence:
-                    occurrenceKey,
-                diagnostics:
-                    groupDiagnostics
-            };
+            continue;
 
         }
 
@@ -26560,6 +26601,12 @@ function repairParallelGroupFailedTask(
         });
 
     }
+
+
+    console.log(
+        "STAGE 7 GROUP: Initial candidate failure:",
+        initialCandidateFailure
+    );
 
 
     // ========================================================
@@ -26683,6 +26730,59 @@ function repairParallelGroupFailedTask(
         };
 
 
+    // ========================================================
+    // FIND ORIGINAL TASK DEFINITION
+    //
+    // Used when relocating blockers so that properties such as
+    // requiresRoom, duration, parallelGroup, etc. are preserved.
+    // ========================================================
+
+    const getOriginalTaskDefinition =
+        taskId => {
+
+            const sources = [
+                generatorData.lessonTasks,
+                generatorData.tasks,
+                generatorData.allTasks
+            ];
+
+
+            for (
+                const source
+                of sources
+            ) {
+
+                if (
+                    !Array.isArray(source)
+                ) {
+
+                    continue;
+
+                }
+
+
+                const found =
+                    source.find(
+                        task =>
+                            getTaskId(task) ===
+                            taskId
+                    );
+
+
+                if (found) {
+
+                    return found;
+
+                }
+
+            }
+
+
+            return null;
+
+        };
+
+
     const relocateSingleBlocker =
         blockerTaskId => {
 
@@ -26707,10 +26807,41 @@ function repairParallelGroupFailedTask(
             }
 
 
-            const blocker =
+            const placedBlocker =
                 getTaskFromPlaced(
                     blockerTaskId
                 );
+
+
+            const blockerDefinition =
+                getOriginalTaskDefinition(
+                    blockerTaskId
+                );
+
+
+            if (
+                !placedBlocker &&
+                !blockerDefinition
+            ) {
+
+                return false;
+
+            }
+
+
+            // ------------------------------------------------
+            // Use the original task definition when available,
+            // but copy the CURRENT placement information from
+            // the placed entry.
+            // ------------------------------------------------
+
+            const blocker =
+                blockerDefinition
+                    ? {
+                        ...blockerDefinition,
+                        ...placedBlocker
+                    }
+                    : placedBlocker;
 
 
             if (!blocker) {
@@ -28154,406 +28285,7 @@ function repairParallelGroupFailedTask(
 
 }
 
-function repairSingleFailedTask(
-    task,
-    generatorData
-) {
 
-    if (
-        !task ||
-        !generatorData
-    ) {
-
-        return {
-
-            repaired:
-                false,
-
-            entries:
-                [],
-
-            moved:
-                []
-
-        };
-
-    }
-
-
-    // ========================================================
-    // NORMALIZE TASK TYPE
-    // ========================================================
-
-    const taskType =
-        task.taskType ||
-        task.type ||
-        null;
-
-
-    // ========================================================
-    // DOUBLE LESSONS
-    // ========================================================
-    //
-    // Stage 7 currently repairs SINGLE lessons only.
-    //
-    // Double lessons must remain two consecutive periods and
-    // require a dedicated double-relocation strategy.
-    //
-    // ========================================================
-
-    if (
-        (
-            taskType === "double" ||
-            task.isDouble === true
-        ) &&
-        !STAGE7_CONFIG.allowMovingDoubleLessons
-    ) {
-
-        console.log(
-            "STAGE 7: Double lesson repair is disabled:",
-            task?.taskId ||
-            task?.id
-        );
-
-        return {
-
-            repaired:
-                false,
-
-            entries:
-                [],
-
-            moved:
-                []
-
-        };
-
-    }
-
-
-    // ========================================================
-    // GENERATOR DATA
-    // ========================================================
-
-    const periods =
-        Array.isArray(
-            generatorData.periods
-        )
-            ? generatorData.periods
-            : [];
-
-
-    const rooms =
-        Array.isArray(
-            generatorData.rooms
-        )
-            ? generatorData.rooms
-            : [];
-
-
-    const indexes =
-        generatorData.indexes;
-
-
-    if (
-        !indexes
-    ) {
-
-        return {
-
-            repaired:
-                false,
-
-            entries:
-                [],
-
-            moved:
-                []
-
-        };
-
-    }
-
-
-    // ========================================================
-    // BUILD PERIOD CANDIDATES
-    // ========================================================
-
-    const candidatePeriods =
-        buildStage7PeriodCandidates(
-            task,
-            periods
-        );
-
-
-    if (
-        candidatePeriods.length === 0
-    ) {
-
-        return {
-
-            repaired:
-                false,
-
-            entries:
-                [],
-
-            moved:
-                []
-
-        };
-
-    }
-
-
-    let attempts =
-        0;
-
-
-    // ========================================================
-    // TRY DIRECT SINGLE-LESSON REPAIR FIRST
-    // ========================================================
-
-    if (
-        taskType !== "double" &&
-        task.isDouble !== true
-    ) {
-
-        const candidateRooms =
-            buildStage7RoomCandidates(
-                task,
-                rooms
-            );
-
-
-        if (
-            Array.isArray(
-                candidateRooms
-            ) &&
-            candidateRooms.length > 0
-        ) {
-
-            for (
-                const period of candidatePeriods
-            ) {
-
-                if (
-                    attempts >=
-                    STAGE7_CONFIG.maxCandidatesPerTask
-                ) {
-
-                    break;
-
-                }
-
-
-                for (
-                    const room of candidateRooms
-                ) {
-
-                    if (
-                        attempts >=
-                        STAGE7_CONFIG.maxCandidatesPerTask
-                    ) {
-
-                        break;
-
-                    }
-
-
-                    attempts++;
-
-
-                    // ==================================================
-                    // FINAL CONFLICT CHECK
-                    // ==================================================
-
-                    const conflict =
-                        checkSingleSlotConflict(
-                            task,
-                            period,
-                            room,
-                            indexes
-                        );
-
-
-                    if (
-                        !conflict ||
-                        conflict.valid !== true
-                    ) {
-
-                        continue;
-
-                    }
-
-
-                    // ==================================================
-                    // ATTEMPT ACTUAL PLACEMENT
-                    // ==================================================
-
-                    const placement =
-                        placeStage7Task(
-                            task,
-                            period,
-                            room,
-                            generatorData
-                        );
-
-
-                    // ==================================================
-                    // IMPORTANT CONTRACT CHECK
-                    //
-                    // placeStage7Task() returns:
-                    //
-                    // {
-                    //     placed,
-                    //     entries,
-                    //     reason
-                    // }
-                    // ==================================================
-
-                    if (
-                        !placement ||
-                        placement.placed !== true
-                    ) {
-
-                        console.warn(
-                            "STAGE 7 DIRECT PLACEMENT REJECTED:",
-                            {
-
-                                taskId:
-                                    task?.taskId ||
-                                    task?.id,
-
-                                periodId:
-                                    period?.id,
-
-                                roomId:
-                                    room?.id ||
-                                    null,
-
-                                reason:
-                                    placement?.reason ||
-                                    "Unknown placement failure."
-
-                            }
-                        );
-
-
-                        continue;
-
-                    }
-
-
-                    // ==================================================
-                    // SUCCESS
-                    //
-                    // DO NOT recreate the entry here.
-                    //
-                    // placeStage7Task() already returns the generated
-                    // entry created by placeSelectedSingleTask().
-                    // ==================================================
-
-                    return {
-
-                        repaired:
-                            true,
-
-                        entries:
-                            Array.isArray(
-                                placement.entries
-                            )
-                                ? placement.entries
-                                : [],
-
-                        moved:
-                            []
-
-                    };
-
-                }
-
-            }
-
-        }
-
-    }
-
-
-    // ========================================================
-    // DIRECT SLOT FAILED
-    //
-    // TRY RELOCATING AN EXISTING SINGLE LESSON
-    // ========================================================
-
-    if (
-        taskType !== "double" &&
-        task.isDouble !== true &&
-        STAGE7_CONFIG.allowMovingSingleLessons
-    ) {
-
-        const moveResult =
-            attemptStage7Relocation(
-                task,
-                candidatePeriods,
-                rooms,
-                generatorData
-            );
-
-
-        // ====================================================
-        // VERIFY THE REPAIR CONTRACT
-        // ====================================================
-
-        if (
-            moveResult &&
-            moveResult.repaired === true
-        ) {
-
-            return {
-
-                repaired:
-                    true,
-
-                entries:
-                    Array.isArray(
-                        moveResult.entries
-                    )
-                        ? moveResult.entries
-                        : [],
-
-                moved:
-                    Array.isArray(
-                        moveResult.moved
-                    )
-                        ? moveResult.moved
-                        : []
-
-            };
-
-        }
-
-    }
-
-
-    // ========================================================
-    // FINAL FAILURE
-    // ========================================================
-
-    return {
-
-        repaired:
-            false,
-
-        entries:
-            [],
-
-        moved:
-            []
-
-    };
-
-}
 
 
 function buildStage7PeriodCandidates(
