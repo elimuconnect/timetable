@@ -6781,7 +6781,6 @@ function checkSingleSlotConflict(
 //
 // ============================================================
 
-
 function reserveSlot(
     task,
     period,
@@ -6803,6 +6802,10 @@ function reserveSlot(
 
     }
 
+
+    // ========================================================
+    // NORMALIZED IDENTIFIERS
+    // ========================================================
 
     const streamId =
         normalizeTimetableId(
@@ -6833,6 +6836,51 @@ function reserveSlot(
         );
 
 
+    const taskId =
+        normalizeTimetableId(
+            task.taskId ??
+            task.task_id ??
+            task.id
+        );
+
+
+    const lessonId =
+        normalizeTimetableId(
+            task.lessonId ??
+            task.lesson_id ??
+            task.taskId ??
+            task.task_id ??
+            task.id
+        );
+
+
+    const subjectId =
+        normalizeTimetableId(
+            task.subjectId ??
+            task.subject_id
+        );
+
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId ??
+            task.teacher_id
+        );
+
+
+    const parallelGroup =
+        normalizeTimetableId(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    const studentGroups =
+        getTaskStudentGroups(
+            task
+        );
+
+
     // ========================================================
     // TASK / PERIOD
     // ========================================================
@@ -6844,14 +6892,6 @@ function reserveSlot(
     // day, especially for double lessons.
     //
     // ========================================================
-
-    const taskId =
-        normalizeTimetableId(
-            task.taskId ??
-            task.task_id ??
-            task.id
-        );
-
 
     if (
         taskId
@@ -6879,9 +6919,18 @@ function reserveSlot(
     // ========================================================
 
     if (
-        streamId &&
-        indexes.streamPeriod
+        streamId
     ) {
+
+        if (
+            !(indexes.streamPeriod instanceof Set)
+        ) {
+
+            indexes.streamPeriod =
+                new Set();
+
+        }
+
 
         indexes.streamPeriod.add(
             `${streamId}__${periodId}`
@@ -6894,15 +6943,32 @@ function reserveSlot(
     // STUDENT GROUP / PERIOD
     // ========================================================
 
-    const studentGroups =
-        getTaskStudentGroups(
-            task
-        );
-
-
     if (
-        indexes.studentGroupPeriod
+        studentGroups.length > 0
     ) {
+
+        if (
+            !(indexes.studentGroupPeriod instanceof Set)
+        ) {
+
+            indexes.studentGroupPeriod =
+                new Set();
+
+        }
+
+
+        if (
+            !(
+                indexes.studentGroupPeriodLessons
+                instanceof Map
+            )
+        ) {
+
+            indexes.studentGroupPeriodLessons =
+                new Map();
+
+        }
+
 
         for (
             const studentGroupId of studentGroups
@@ -6921,27 +6987,18 @@ function reserveSlot(
                 `${studentGroupId}__${periodId}`;
 
 
+            // ------------------------------------------------
+            // OCCUPANCY
+            // ------------------------------------------------
+
             indexes.studentGroupPeriod.add(
                 studentGroupKey
             );
 
 
-            // ========================================================
-            // STUDENT GROUP / PERIOD LESSON DETAILS
-            // ========================================================
-
-            if (
-                !(
-                    indexes.studentGroupPeriodLessons
-                    instanceof Map
-                )
-            ) {
-
-                indexes.studentGroupPeriodLessons =
-                    new Map();
-
-            }
-
+            // ------------------------------------------------
+            // LESSON DETAILS
+            // ------------------------------------------------
 
             if (
                 !indexes.studentGroupPeriodLessons.has(
@@ -6964,24 +7021,19 @@ function reserveSlot(
                 .push({
 
                     taskId:
-                        task.taskId ??
-                        task.task_id ??
-                        task.id ??
+                        taskId ||
                         null,
 
                     subjectId:
-                        task.subjectId ??
-                        task.subject_id ??
+                        subjectId ||
                         null,
 
                     teacherId:
-                        task.teacherId ??
-                        task.teacher_id ??
+                        teacherId ||
                         null,
 
                     parallelGroup:
-                        task.parallelGroup ??
-                        task.parallel_group ??
+                        parallelGroup ||
                         null
 
                 });
@@ -6995,19 +7047,12 @@ function reserveSlot(
     // TEACHER / PERIOD
     // ========================================================
 
-    const teacherId =
-        normalizeTimetableId(
-            task.teacherId ??
-            task.teacher_id
-        );
-
-
     if (
         teacherId
     ) {
 
         if (
-            !indexes.teacherPeriod
+            !(indexes.teacherPeriod instanceof Set)
         ) {
 
             indexes.teacherPeriod =
@@ -7063,29 +7108,23 @@ function reserveSlot(
             .push({
 
                 taskId:
-                    task.taskId ??
-                    task.task_id ??
-                    task.id ??
+                    taskId ||
                     null,
 
                 lessonId:
-                    task.lessonId ??
-                    task.lesson_id ??
+                    lessonId ||
                     null,
 
                 subjectId:
-                    task.subjectId ??
-                    task.subject_id ??
+                    subjectId ||
                     null,
 
                 streamId:
-                    task.streamId ??
-                    task.stream_id ??
+                    streamId ||
                     null,
 
                 parallelGroup:
-                    task.parallelGroup ??
-                    task.parallel_group ??
+                    parallelGroup ||
                     null,
 
                 studentGroupIds:
@@ -7094,6 +7133,42 @@ function reserveSlot(
                     ]
 
             });
+
+
+        // ----------------------------------------------------
+        // TEACHER + SUBJECT + PERIOD
+        // ----------------------------------------------------
+        //
+        // This must stay synchronized with
+        // createOccupancyIndexes().
+        //
+        // Same teacher + same subject + same period represents
+        // one concurrent/shared teacher session.
+        //
+        // ----------------------------------------------------
+
+        if (
+            subjectId
+        ) {
+
+            if (
+                !(
+                    indexes.teacherSubjectPeriod
+                    instanceof Set
+                )
+            ) {
+
+                indexes.teacherSubjectPeriod =
+                    new Set();
+
+            }
+
+
+            indexes.teacherSubjectPeriod.add(
+                `${teacherId}__${subjectId}__${periodId}`
+            );
+
+        }
 
     }
 
@@ -7108,7 +7183,7 @@ function reserveSlot(
     ) {
 
         if (
-            !indexes.roomPeriod
+            !(indexes.roomPeriod instanceof Set)
         ) {
 
             indexes.roomPeriod =
@@ -7124,7 +7199,8 @@ function reserveSlot(
 
 
         if (
-            roomId
+            roomId &&
+            roomId.toLowerCase() !== "none"
         ) {
 
             indexes.roomPeriod.add(
@@ -7137,7 +7213,7 @@ function reserveSlot(
 
 
     // ========================================================
-    // DAY INDEXES
+    // DAY
     // ========================================================
 
     const dayNumber =
@@ -7158,9 +7234,21 @@ function reserveSlot(
         // ----------------------------------------------------
 
         if (
-            teacherId &&
-            indexes.teacherDay instanceof Map
+            teacherId
         ) {
+
+            if (
+                !(
+                    indexes.teacherDay
+                    instanceof Map
+                )
+            ) {
+
+                indexes.teacherDay =
+                    new Map();
+
+            }
+
 
             if (
                 !indexes.teacherDay.has(
@@ -7192,9 +7280,21 @@ function reserveSlot(
         // ----------------------------------------------------
 
         if (
-            streamId &&
-            indexes.streamDay instanceof Map
+            streamId
         ) {
+
+            if (
+                !(
+                    indexes.streamDay
+                    instanceof Map
+                )
+            ) {
+
+                indexes.streamDay =
+                    new Map();
+
+            }
+
 
             if (
                 !indexes.streamDay.has(
@@ -7226,38 +7326,54 @@ function reserveSlot(
         // ----------------------------------------------------
 
         if (
-            indexes.studentGroupDay instanceof Map
+            !(
+                indexes.studentGroupDay
+                instanceof Map
+            )
         ) {
 
-            studentGroups.forEach(
-                studentGroupId => {
-
-                    if (
-                        !indexes.studentGroupDay.has(
-                            studentGroupId
-                        )
-                    ) {
-
-                        indexes.studentGroupDay.set(
-                            studentGroupId,
-                            new Set()
-                        );
-
-                    }
-
-
-                    indexes.studentGroupDay
-                        .get(
-                            studentGroupId
-                        )
-                        .add(
-                            dayNumber
-                        );
-
-                }
-            );
+            indexes.studentGroupDay =
+                new Map();
 
         }
+
+
+        studentGroups.forEach(
+            studentGroupId => {
+
+                if (
+                    !studentGroupId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !indexes.studentGroupDay.has(
+                        studentGroupId
+                    )
+                ) {
+
+                    indexes.studentGroupDay.set(
+                        studentGroupId,
+                        new Set()
+                    );
+
+                }
+
+
+                indexes.studentGroupDay
+                    .get(
+                        studentGroupId
+                    )
+                    .add(
+                        dayNumber
+                    );
+
+            }
+        );
 
 
         // ----------------------------------------------------
@@ -7266,8 +7382,7 @@ function reserveSlot(
 
         if (
             room &&
-            room.id &&
-            indexes.roomDay instanceof Map
+            room.id
         ) {
 
             const roomId =
@@ -7277,8 +7392,22 @@ function reserveSlot(
 
 
             if (
-                roomId
+                roomId &&
+                roomId.toLowerCase() !== "none"
             ) {
+
+                if (
+                    !(
+                        indexes.roomDay
+                        instanceof Map
+                    )
+                ) {
+
+                    indexes.roomDay =
+                        new Map();
+
+                }
+
 
                 if (
                     !indexes.roomDay.has(
@@ -7312,9 +7441,21 @@ function reserveSlot(
         // ----------------------------------------------------
 
         if (
-            requirementId &&
-            indexes.requirementDay instanceof Map
+            requirementId
         ) {
+
+            if (
+                !(
+                    indexes.requirementDay
+                    instanceof Map
+                )
+            ) {
+
+                indexes.requirementDay =
+                    new Map();
+
+            }
+
 
             if (
                 !indexes.requirementDay.has(
@@ -7340,6 +7481,56 @@ function reserveSlot(
 
         }
 
+
+        // ----------------------------------------------------
+        // LESSON DAY
+        // ----------------------------------------------------
+        //
+        // Keep this synchronized with createOccupancyIndexes().
+        //
+        // ----------------------------------------------------
+
+        if (
+            lessonId
+        ) {
+
+            if (
+                !(
+                    indexes.lessonDay
+                    instanceof Map
+                )
+            ) {
+
+                indexes.lessonDay =
+                    new Map();
+
+            }
+
+
+            if (
+                !indexes.lessonDay.has(
+                    lessonId
+                )
+            ) {
+
+                indexes.lessonDay.set(
+                    lessonId,
+                    new Set()
+                );
+
+            }
+
+
+            indexes.lessonDay
+                .get(
+                    lessonId
+                )
+                .add(
+                    dayNumber
+                );
+
+        }
+
     }
 
 
@@ -7347,15 +7538,11 @@ function reserveSlot(
     // DAILY REQUIREMENT LESSON COUNT
     // ========================================================
     //
-    // CRITICAL:
-    //
     // A double lesson occupies two periods but is ONE lesson.
     //
-    // Use:
+    // Therefore the unique key is:
     //
-    //     requirement + day + lesson/task
-    //
-    // as the unique key.
+    //     requirement + day + lesson
     //
     // ========================================================
 
@@ -7377,16 +7564,6 @@ function reserveSlot(
                 new Set();
 
         }
-
-
-        const lessonId =
-            normalizeTimetableId(
-                task.lessonId ??
-                task.lesson_id ??
-                task.taskId ??
-                task.task_id ??
-                task.id
-            );
 
 
         const lessonKey =
@@ -7424,7 +7601,6 @@ function reserveSlot(
     return true;
 
 }
-
 
 // ============================================================
 // CREATE GENERATED ENTRY
@@ -7636,8 +7812,6 @@ function getConsecutiveTeachingPeriodPairs(
 
 
 
-
-
 function checkDoubleLessonConflict(
     task,
     firstPeriod,
@@ -7660,6 +7834,42 @@ function checkDoubleLessonConflict(
 
             reason:
                 "Invalid double lesson placement data."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // NORMALIZED PERIOD IDS
+    // ========================================================
+
+    const firstPeriodId =
+        normalizeTimetableId(
+            firstPeriod.id ??
+            firstPeriod.period_id
+        );
+
+
+    const secondPeriodId =
+        normalizeTimetableId(
+            secondPeriod.id ??
+            secondPeriod.period_id
+        );
+
+
+    if (
+        !firstPeriodId ||
+        !secondPeriodId
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "Double lesson periods must have valid identifiers."
 
         };
 
@@ -7709,8 +7919,24 @@ function checkDoubleLessonConflict(
 
 
     if (
-        Number.isFinite(firstDay) &&
-        Number.isFinite(secondDay) &&
+        !Number.isFinite(firstDay) ||
+        !Number.isFinite(secondDay)
+    ) {
+
+        return {
+
+            valid:
+                false,
+
+            reason:
+                "Double lesson periods must have valid day numbers."
+
+        };
+
+    }
+
+
+    if (
         firstDay !== secondDay
     ) {
 
@@ -7731,15 +7957,18 @@ function checkDoubleLessonConflict(
     // FIRST PERIOD
     // ========================================================
     //
-    // checkSingleSlotConflict() handles:
+    // The first period goes through the normal single-slot
+    // conflict engine.
     //
-    // - student group
+    // This preserves:
+    //
+    // - student-group conflicts
     // - parallel teaching
-    // - teacher conflict
+    // - teacher conflicts
     // - teacher daily limit
     // - teacher weekly limit
     // - teacher consecutive limit
-    // - room
+    // - room conflicts
     // - requirement daily limit
     //
     // ========================================================
@@ -7754,7 +7983,8 @@ function checkDoubleLessonConflict(
 
 
     if (
-        !firstCheck.valid
+        !firstCheck ||
+        firstCheck.valid !== true
     ) {
 
         return {
@@ -7763,7 +7993,10 @@ function checkDoubleLessonConflict(
                 false,
 
             reason:
-                `First period unavailable: ${firstCheck.reason}`
+                `First period unavailable: ${
+                    firstCheck?.reason ||
+                    "Unknown conflict."
+                }`
 
         };
 
@@ -7774,12 +8007,6 @@ function checkDoubleLessonConflict(
     // IDENTIFIERS
     // ========================================================
 
-    const secondPeriodId =
-        normalizeTimetableId(
-            secondPeriod.id
-        );
-
-
     const teacherId =
         normalizeTimetableId(
             task.teacherId ??
@@ -7789,10 +8016,6 @@ function checkDoubleLessonConflict(
 
     // ========================================================
     // TEACHER LIMITS
-    // ========================================================
-    //
-    // A double lesson occupies TWO teaching periods.
-    //
     // ========================================================
 
     if (
@@ -7810,16 +8033,26 @@ function checkDoubleLessonConflict(
         // ====================================================
         // DAILY LIMIT
         // ====================================================
+        //
+        // A double lesson occupies TWO teaching periods.
+        //
+        // The first period has already been validated by
+        // checkSingleSlotConflict().
+        //
+        // We therefore verify the projected two-period
+        // occupancy against the teacher's daily maximum.
+        //
+        // ====================================================
 
         const maximumDailyLessons =
             Number(
-                teacherLimits?.maxLessonsPerDay
+                teacherLimits?.maxLessonsPerDay ??
+                teacherLimits?.max_lessons_per_day
             ) || 0;
 
 
         if (
-            maximumDailyLessons > 0 &&
-            Number.isFinite(firstDay)
+            maximumDailyLessons > 0
         ) {
 
             const currentDailyLessons =
@@ -7861,7 +8094,8 @@ function checkDoubleLessonConflict(
 
         const maximumWeeklyLessons =
             Number(
-                teacherLimits?.maxLessonsPerWeek
+                teacherLimits?.maxLessonsPerWeek ??
+                teacherLimits?.max_lessons_per_week
             ) || 0;
 
 
@@ -7906,16 +8140,12 @@ function checkDoubleLessonConflict(
     // STUDENT GROUP / SECOND PERIOD
     // ========================================================
     //
-    // IMPORTANT:
-    //
     // A student group may have another lesson in this period
-    // ONLY when this is legitimate parallel teaching:
+    // only when legitimate parallel teaching exists:
     //
     // - different subject
     // - different teacher
     // - same parallel group
-    //
-    // Otherwise the placement is rejected.
     //
     // ========================================================
 
@@ -7942,6 +8172,15 @@ function checkDoubleLessonConflict(
             normalizeTimetableId(
                 studentGroupId
             );
+
+
+        if (
+            !normalizedStudentGroupId
+        ) {
+
+            continue;
+
+        }
 
 
         const studentGroupKey =
@@ -8020,9 +8259,9 @@ function checkDoubleLessonConflict(
                             );
 
 
-                        // --------------------------------------------
+                        // ------------------------------------
                         // DIFFERENT SUBJECT REQUIRED
-                        // --------------------------------------------
+                        // ------------------------------------
 
                         if (
                             !taskSubjectId ||
@@ -8036,9 +8275,9 @@ function checkDoubleLessonConflict(
                         }
 
 
-                        // --------------------------------------------
+                        // ------------------------------------
                         // DIFFERENT TEACHER REQUIRED
-                        // --------------------------------------------
+                        // ------------------------------------
 
                         if (
                             !taskTeacherId ||
@@ -8052,9 +8291,9 @@ function checkDoubleLessonConflict(
                         }
 
 
-                        // --------------------------------------------
+                        // ------------------------------------
                         // SAME PARALLEL GROUP REQUIRED
-                        // --------------------------------------------
+                        // ------------------------------------
 
                         if (
                             taskParallelGroup ||
@@ -8062,8 +8301,12 @@ function checkDoubleLessonConflict(
                         ) {
 
                             return (
-                                taskParallelGroup &&
-                                existingParallelGroup &&
+                                Boolean(
+                                    taskParallelGroup
+                                ) &&
+                                Boolean(
+                                    existingParallelGroup
+                                ) &&
                                 taskParallelGroup ===
                                 existingParallelGroup
                             );
@@ -8071,10 +8314,9 @@ function checkDoubleLessonConflict(
                         }
 
 
-                        // --------------------------------------------
-                        // No parallel group means this is NOT
-                        // parallel teaching.
-                        // --------------------------------------------
+                        // ------------------------------------
+                        // NO PARALLEL GROUP
+                        // ------------------------------------
 
                         return false;
 
@@ -8205,12 +8447,16 @@ function checkDoubleLessonConflict(
 
     if (
         room &&
-        room.id
+        (
+            room.id ||
+            room.room_id
+        )
     ) {
 
         const roomId =
             normalizeTimetableId(
-                room.id
+                room.id ??
+                room.room_id
             );
 
 
@@ -8244,8 +8490,18 @@ function checkDoubleLessonConflict(
     // DAILY REQUIREMENT LIMIT
     // ========================================================
     //
-    // A double lesson counts as ONE lesson for the
-    // requirement daily limit.
+    // IMPORTANT:
+    //
+    // A double lesson counts as ONE requirement lesson for
+    // the daily requirement limit.
+    //
+    // Therefore:
+    //
+    //     currentCount + 1
+    //
+    // NOT:
+    //
+    //     currentCount + 2
     //
     // ========================================================
 
@@ -8265,8 +8521,7 @@ function checkDoubleLessonConflict(
 
     if (
         requirementId &&
-        maxPerDay > 0 &&
-        Number.isFinite(firstDay)
+        maxPerDay > 0
     ) {
 
         const currentCount =
@@ -8312,9 +8567,6 @@ function checkDoubleLessonConflict(
     };
 
 }
-
-
-
 // ============================================================
 // PLACE ONE DOUBLE LESSON
 // ============================================================
@@ -10032,36 +10284,6 @@ function prepareSmartLessonTaskOrder(
     return orderedTasks;
 
 }
-// ============================================================
-// STAGE 6C — CANDIDATE SLOT SCORING
-// ============================================================
-//
-// Determines how GOOD a valid timetable slot is.
-//
-// Stage 6B asks:
-//
-//     "Which lesson should be placed first?"
-//
-// Stage 6C asks:
-//
-//     "Of all valid slots, which slot is BEST for this lesson?"
-//
-// IMPORTANT:
-//
-// This stage does NOT reserve or place lessons.
-//
-// It only:
-//
-//     1. examines candidate slots
-//     2. calculates a score
-//     3. explains the score
-//     4. returns candidates ordered from BEST → WORST
-//
-// Higher score = better slot.
-//
-// ============================================================
-
-
 
 
 
@@ -11485,7 +11707,6 @@ const studentGroupKey =
 //
 // ============================================================
 
-
 function getScoredSingleLessonCandidates(
     task,
     data,
@@ -11560,13 +11781,26 @@ function getScoredSingleLessonCandidates(
     // FIND ESTABLISHED PARALLEL-GROUP PERIODS
     // ========================================================
     //
-    // OPTIMIZED:
+    // These periods receive a very large score bonus.
     //
-    // Instead of scanning every teaching period for every
-    // student group, scan the existing occupancy entries once.
+    // IMPORTANT:
     //
-    // Once another member of this parallel group has been
-    // placed, this task MUST use the same period.
+    // We DO NOT hard-filter the task to these periods here.
+    //
+    // The reason is that this function is also used by
+    // intelligent placement / repair logic.
+    //
+    // The actual parallel-group synchronization rule is still
+    // enforced by the placement/conflict/atomic-commit logic.
+    //
+    // Therefore:
+    //
+    //     established period = strongly preferred
+    //     other valid period = still available as fallback
+    //
+    // This prevents candidate generation from returning ZERO
+    // candidates merely because an established parallel period
+    // currently has no valid room or another temporary blocker.
     //
     // ========================================================
 
@@ -11761,25 +11995,16 @@ function getScoredSingleLessonCandidates(
 
 
             // ==================================================
-            // HARD PARALLEL SYNCHRONIZATION
+            // DO NOT HARD-REJECT NON-SYNCHRONIZED PERIODS HERE
             // ==================================================
             //
-            // If another member of this parallel group has
-            // already been placed, this task may ONLY use one
-            // of those synchronized periods.
+            // Established synchronized periods are preferred
+            // later through the score.
+            //
+            // This function must still expose other valid
+            // periods to the repair/candidate-selection logic.
             //
             // ==================================================
-
-            if (
-                parallelGroupEstablished &&
-                !synchronizedPeriodIds.has(
-                    periodId
-                )
-            ) {
-
-                return;
-
-            }
 
 
             const candidateRooms =
@@ -11858,6 +12083,15 @@ function getScoredSingleLessonCandidates(
 
                     // ========================================
                     // SYNCHRONIZED GROUP BONUS
+                    // ========================================
+                    //
+                    // Existing synchronized periods remain
+                    // overwhelmingly preferred.
+                    //
+                    // This preserves normal parallel-group
+                    // behavior without preventing fallback
+                    // candidates from being generated.
+                    //
                     // ========================================
 
                     if (
@@ -11968,7 +12202,6 @@ function getScoredSingleLessonCandidates(
     return candidates;
 
 }
-
 // ============================================================
 // GET BEST SINGLE LESSON CANDIDATE
 // ============================================================
@@ -14389,6 +14622,36 @@ function placeSelectedDoubleTask(
 // This is required so failed double-lesson attempts do not
 // leave stale conflict reservations behind.
 //
+
+// ============================================================
+// RELEASE RESERVED SLOT
+// ============================================================
+//
+// Used only for rollback.
+//
+// This reverses reserveSlot() for ONE period.
+//
+// IMPORTANT:
+//
+// Also releases:
+//     - student-group occupancy
+//     - teacher-period lesson tracking
+//     - teacher + subject + period tracking
+//     - room occupancy
+//     - daily occupancy indexes
+//     - daily requirement lesson count
+//
+// IMPORTANT FOR DOUBLES:
+//
+// A double lesson reserves two periods but represents ONE
+// requirement lesson.
+//
+// Therefore the daily requirement count is reduced only when
+// the LAST period belonging to that task/lesson has been
+// released.
+//
+// ============================================================
+
 function releaseReservedSlot(
     task,
     period,
@@ -14470,6 +14733,17 @@ function releaseReservedSlot(
 
 
     // ========================================================
+    // DAY
+    // ========================================================
+
+    const dayNumber =
+        Number(
+            period.dayNumber ??
+            period.day_number
+        );
+
+
+    // ========================================================
     // STUDENT GROUPS
     // ========================================================
 
@@ -14483,7 +14757,7 @@ function releaseReservedSlot(
     // STUDENT GROUP / PERIOD LESSON DETAILS
     // ========================================================
     //
-    // Remove ONLY this task/lesson.
+    // Remove ONLY the lesson belonging to this task.
     //
     // Other parallel lessons must remain.
     //
@@ -14536,22 +14810,31 @@ function releaseReservedSlot(
                     lessons.filter(
                         lesson => {
 
+                            if (
+                                !lesson
+                            ) {
+
+                                return true;
+
+                            }
+
+
                             const existingTaskId =
                                 normalizeTimetableId(
-                                    lesson?.taskId ??
-                                    lesson?.task_id
+                                    lesson.taskId ??
+                                    lesson.task_id
                                 );
 
 
                             const existingLessonId =
                                 normalizeTimetableId(
-                                    lesson?.lessonId ??
-                                    lesson?.lesson_id
+                                    lesson.lessonId ??
+                                    lesson.lesson_id
                                 );
 
 
                             // --------------------------------
-                            // Match by task ID first
+                            // Match by task ID first.
                             // --------------------------------
 
                             if (
@@ -14566,7 +14849,7 @@ function releaseReservedSlot(
 
 
                             // --------------------------------
-                            // Match by lesson ID when supplied
+                            // Match by lesson ID when supplied.
                             // --------------------------------
 
                             if (
@@ -14614,8 +14897,7 @@ function releaseReservedSlot(
     // STUDENT GROUP / PERIOD
     // ========================================================
     //
-    // Only remove the simple occupancy index when there are
-    // no remaining lessons for that student group and period.
+    // Remove simple occupancy ONLY when no lesson remains.
     //
     // This preserves legitimate parallel teaching.
     //
@@ -14692,26 +14974,34 @@ function releaseReservedSlot(
     //
     // IMPORTANT:
     //
-    // This MUST happen AFTER removing the current lesson from
-    // studentGroupPeriodLessons.
+    // streamPeriod represents whether the stream is occupied
+    // during this period.
     //
-    // Otherwise the lesson being released is still visible and
-    // streamPeriod can never be correctly cleared.
+    // We MUST NOT blindly delete it when releasing one lesson
+    // because another parallel lesson may still occupy the same
+    // stream and period.
     //
-    // Multiple legitimate parallel lessons may share the same
-    // stream + period, so we only delete streamPeriod when no
-    // student-group lesson remains for this stream/period.
+    // Student-group lesson details are the preferred source
+    // for determining whether occupancy remains.
     //
     // ========================================================
 
     if (
         streamId &&
-        indexes.streamPeriod
+        indexes.streamPeriod instanceof Set
     ) {
 
         let streamStillOccupied =
             false;
 
+
+        // ----------------------------------------------------
+        // Preferred check:
+        //
+        // Inspect remaining student-group lessons belonging to
+        // this stream.
+        //
+        // ----------------------------------------------------
 
         if (
             indexes.studentGroupPeriodLessons instanceof Map &&
@@ -14768,67 +15058,18 @@ function releaseReservedSlot(
 
 
         // ----------------------------------------------------
-        // If the task has no student groups, use the stream
-        // period index itself as the fallback.
+        // If there are no student groups, inspect task-period
+        // reservations belonging to the stream where possible.
+        //
+        // A task-period entry by itself does not contain the
+        // stream ID, so we do not invent a second occupancy
+        // source here.
+        //
+        // In the normal timetable model, stream lessons have
+        // student-group membership. Therefore the absence of
+        // student-group occupancy is sufficient for removal.
+        //
         // ----------------------------------------------------
-
-        if (
-            studentGroups.length === 0
-        ) {
-
-            let anotherStreamLesson =
-                false;
-
-
-            if (
-                indexes.taskPeriod instanceof Set
-            ) {
-
-                const taskPrefix =
-                    `${taskId}__`;
-
-
-                for (
-                    const key of indexes.taskPeriod
-                ) {
-
-                    if (
-                        typeof key !==
-                        "string" ||
-                        !key.startsWith(
-                            taskPrefix
-                        )
-                    ) {
-
-                        continue;
-
-                    }
-
-
-                    const indexedPeriodId =
-                        key.slice(
-                            taskPrefix.length
-                        );
-
-
-                    if (
-                        indexedPeriodId ===
-                        periodId
-                    ) {
-
-                        continue;
-
-                    }
-
-                }
-
-            }
-
-
-            anotherStreamLesson =
-                false;
-
-        }
 
 
         if (
@@ -14850,7 +15091,7 @@ function releaseReservedSlot(
 
     if (
         taskId &&
-        indexes.taskPeriod
+        indexes.taskPeriod instanceof Set
     ) {
 
         indexes.taskPeriod.delete(
@@ -14896,19 +15137,32 @@ function releaseReservedSlot(
                 teacherLessons.filter(
                     lesson => {
 
+                        if (
+                            !lesson
+                        ) {
+
+                            return true;
+
+                        }
+
+
                         const existingTaskId =
                             normalizeTimetableId(
-                                lesson?.taskId ??
-                                lesson?.task_id
+                                lesson.taskId ??
+                                lesson.task_id
                             );
 
 
                         const existingLessonId =
                             normalizeTimetableId(
-                                lesson?.lessonId ??
-                                lesson?.lesson_id
+                                lesson.lessonId ??
+                                lesson.lesson_id
                             );
 
+
+                        // --------------------------------
+                        // Match by task ID first.
+                        // --------------------------------
 
                         if (
                             taskId &&
@@ -14920,6 +15174,10 @@ function releaseReservedSlot(
 
                         }
 
+
+                        // --------------------------------
+                        // Match by lesson ID.
+                        // --------------------------------
 
                         if (
                             lessonId &&
@@ -14967,7 +15225,7 @@ function releaseReservedSlot(
 
     if (
         teacherId &&
-        indexes.teacherPeriod
+        indexes.teacherPeriod instanceof Set
     ) {
 
         const teacherKey =
@@ -15005,7 +15263,7 @@ function releaseReservedSlot(
     if (
         teacherId &&
         subjectId &&
-        indexes.teacherSubjectPeriod
+        indexes.teacherSubjectPeriod instanceof Set
     ) {
 
         const teacherSubjectPeriodKey =
@@ -15040,10 +15298,19 @@ function releaseReservedSlot(
                     remainingLessons.some(
                         lesson => {
 
+                            if (
+                                !lesson
+                            ) {
+
+                                return false;
+
+                            }
+
+
                             const existingSubjectId =
                                 normalizeTimetableId(
-                                    lesson?.subjectId ??
-                                    lesson?.subject_id
+                                    lesson.subjectId ??
+                                    lesson.subject_id
                                 );
 
 
@@ -15080,7 +15347,7 @@ function releaseReservedSlot(
     if (
         room &&
         room.id &&
-        indexes.roomPeriod
+        indexes.roomPeriod instanceof Set
     ) {
 
         const roomId =
@@ -15103,15 +15370,8 @@ function releaseReservedSlot(
 
 
     // ========================================================
-    // DAY
+    // DAY INDEXES
     // ========================================================
-
-    const dayNumber =
-        Number(
-            period.dayNumber ??
-            period.day_number
-        );
-
 
     if (
         Number.isFinite(
@@ -15305,7 +15565,8 @@ function releaseReservedSlot(
 
 
                     for (
-                        const key of indexes.streamPeriod
+                        const key
+                        of indexes.streamPeriod
                     ) {
 
                         if (
@@ -15450,7 +15711,8 @@ function releaseReservedSlot(
 
 
                         for (
-                            const key of indexes.studentGroupPeriod
+                            const key
+                            of indexes.studentGroupPeriod
                         ) {
 
                             if (
@@ -15585,7 +15847,8 @@ function releaseReservedSlot(
 
 
                         for (
-                            const key of indexes.roomPeriod
+                            const key
+                            of indexes.roomPeriod
                         ) {
 
                             if (
@@ -15750,7 +16013,7 @@ function releaseReservedSlot(
     if (
         requirementId &&
         Number.isFinite(dayNumber) &&
-        indexes.dailyRequirementLessons
+        indexes.dailyRequirementLessons instanceof Map
     ) {
 
         const dailyKey =
@@ -15845,6 +16108,12 @@ function releaseReservedSlot(
         }
 
 
+        // ----------------------------------------------------
+        // Only decrement the requirement lesson count when
+        // the final period belonging to this task on this day
+        // has been released.
+        // ----------------------------------------------------
+
         if (
             !anotherTaskPeriodRemains
         ) {
@@ -15875,6 +16144,11 @@ function releaseReservedSlot(
 
             }
 
+
+            // ------------------------------------------------
+            // Remove the unique lesson key belonging to this
+            // requirement/day.
+            // ------------------------------------------------
 
             if (
                 indexes.dailyRequirementLessonKeys instanceof Set
@@ -15948,6 +16222,7 @@ function releaseReservedSlot(
     return true;
 
 }
+
 
 function placeSelectedSmartTask(
     selection,
@@ -16266,6 +16541,35 @@ function getTaskDayPressure(
 // No Math.random() is used here.
 // ============================================================
 
+// ============================================================
+// STAGE 6E — SELECT NEXT SMART TASK
+// ============================================================
+//
+// Combines:
+//
+// 1. Day pressure
+// 2. Candidate availability
+// 3. Stage 6B priority
+// 4. Best candidate score
+// 5. Task duration
+// 6. Room requirement
+//
+// IMPORTANT:
+//
+// The scheduler now protects requirements that need
+// different days before flexible tasks consume those days.
+//
+// The final tie-break is deterministic.
+// No Math.random() is used here.
+//
+// PARALLEL GROUP RULE:
+//
+// Every member of a parallel group must use the same
+// synchronized period.
+//
+// For double lessons, the synchronization period is the
+// FIRST period of the double.
+// ============================================================
 
 function selectNextSmartTask(
     remainingTasks,
@@ -16367,8 +16671,10 @@ function selectNextSmartTask(
     //
     // Each group's common periods are calculated ONCE.
     //
-    // Previously this calculation was repeated for every task
-    // belonging to the same group.
+    // Both SINGLE and DOUBLE tasks are included.
+    //
+    // For a DOUBLE task, candidate.firstPeriod is used as
+    // the synchronized starting period.
     //
     // ========================================================
 
@@ -16437,7 +16743,10 @@ function selectNextSmartTask(
 
 
                     if (
-                        !(indexes.studentGroupPeriodLessons instanceof Map)
+                        !(
+                            indexes.studentGroupPeriodLessons
+                            instanceof Map
+                        )
                     ) {
 
                         return;
@@ -16474,7 +16783,9 @@ function selectNextSmartTask(
                             key,
                             lessons
                         ]
-                        of indexes.studentGroupPeriodLessons.entries()
+                        of indexes
+                            .studentGroupPeriodLessons
+                            .entries()
                     ) {
 
                         if (
@@ -16616,28 +16927,22 @@ function selectNextSmartTask(
                 //
                 // Calculate candidate periods for every member
                 // exactly ONCE.
+                //
+                // SINGLE:
+                //     candidate.period
+                //
+                // DOUBLE:
+                //     candidate.firstPeriod
+                //
+                // The first period is the synchronization point
+                // for the parallel group.
                 // ==============================================
 
                 groupTasks.forEach(
                     groupTask => {
 
-                        // --------------------------------------
-                        // Double parallel groups are handled by
-                        // the double candidate engine.
-                        // --------------------------------------
-
-                        if (
-                            groupTask.taskType ===
-                            "double"
-                        ) {
-
-                            return;
-
-                        }
-
-
                         const groupCandidates =
-                            getScoredSingleLessonCandidates(
+                            getSmartCandidatesForTask(
                                 groupTask,
                                 data,
                                 indexes
@@ -16659,9 +16964,41 @@ function selectNextSmartTask(
                         groupCandidates.forEach(
                             candidate => {
 
+                                if (
+                                    !candidate
+                                ) {
+
+                                    return;
+
+                                }
+
+
+                                // --------------------------------
+                                // SINGLE:
+                                //     candidate.period
+                                //
+                                // DOUBLE:
+                                //     candidate.firstPeriod
+                                // --------------------------------
+
+                                const period =
+                                    candidate.period ||
+                                    candidate.firstPeriod ||
+                                    null;
+
+
+                                if (
+                                    !period
+                                ) {
+
+                                    return;
+
+                                }
+
+
                                 const periodId =
                                     normalizeTimetableId(
-                                        candidate.period?.id
+                                        period.id
                                     );
 
 
@@ -16808,6 +17145,15 @@ function selectNextSmartTask(
                 // ==============================================
                 // HARD FILTER — ESTABLISHED GROUP
                 // ==============================================
+                //
+                // SINGLE:
+                //     candidate.period
+                //
+                // DOUBLE:
+                //     candidate.firstPeriod
+                //
+                // Both use the first/synchronized period.
+                // ==============================================
 
                 if (
                     groupInfo.established
@@ -16817,9 +17163,33 @@ function selectNextSmartTask(
                         candidates.filter(
                             candidate => {
 
+                                if (
+                                    !candidate
+                                ) {
+
+                                    return false;
+
+                                }
+
+
+                                const period =
+                                    candidate.period ||
+                                    candidate.firstPeriod ||
+                                    null;
+
+
+                                if (
+                                    !period
+                                ) {
+
+                                    return false;
+
+                                }
+
+
                                 const periodId =
                                     normalizeTimetableId(
-                                        candidate.period?.id
+                                        period.id
                                     );
 
 
@@ -16840,6 +17210,7 @@ function selectNextSmartTask(
                 //
                 // Only allow periods that every remaining member
                 // can use.
+                //
                 // ==============================================
 
                 else if (
@@ -16850,9 +17221,33 @@ function selectNextSmartTask(
                         candidates.filter(
                             candidate => {
 
+                                if (
+                                    !candidate
+                                ) {
+
+                                    return false;
+
+                                }
+
+
+                                const period =
+                                    candidate.period ||
+                                    candidate.firstPeriod ||
+                                    null;
+
+
+                                if (
+                                    !period
+                                ) {
+
+                                    return false;
+
+                                }
+
+
                                 const periodId =
                                     normalizeTimetableId(
-                                        candidate.period?.id
+                                        period.id
                                     );
 
 
@@ -17369,7 +17764,6 @@ function selectNextSmartTask(
     };
 
 }
-
 
 // ============================================================
 // SMART TIMETABLE GENERATION
@@ -21198,6 +21592,23 @@ function auditRequirementWeeklyTotals(
 //
 // ============================================================
 
+// ============================================================
+// AUDIT DAILY REQUIREMENT LIMITS
+// ============================================================
+//
+// Requirement daily limits count LESSONS, not timetable
+// periods.
+//
+// Therefore:
+//
+//     single lesson = 1 lesson
+//     double lesson = 1 lesson
+//
+// A double lesson creates TWO generated entries, but both
+// entries share the same taskId.
+//
+// ============================================================
+
 function auditDailyRequirementLimits(
     data,
     entries,
@@ -21332,11 +21743,44 @@ function auditDailyRequirementLimits(
             // ------------------------------------------------
             // DAY NUMBER
             // ------------------------------------------------
+            //
+            // Support both:
+            //
+            //     dayNumber
+            //     day_number
+            //
+            // ------------------------------------------------
 
             const dayNumber =
                 Number(
-                    period.dayNumber
+                    period.dayNumber ??
+                    period.day_number
                 );
+
+
+            if (
+                !Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "dailyRequirementLimits",
+                    "Period has no valid day number, so its daily requirement limit cannot be audited.",
+                    {
+                        periodId:
+                            normalized.periodId,
+
+                        requirementId
+
+                    }
+                );
+
+
+                return;
+
+            }
 
 
             // ------------------------------------------------
@@ -21346,7 +21790,8 @@ function auditDailyRequirementLimits(
             // Both entries of a double lesson have the same
             // taskId.
             //
-            // Count that task only once for the requirement/day.
+            // Count that task only once for the
+            // requirement/day.
             //
             // ------------------------------------------------
 
@@ -21452,7 +21897,8 @@ function auditDailyRequirementLimits(
 
             const maxPerDay =
                 Number(
-                    requirement.maxLessonsPerDay
+                    requirement.maxLessonsPerDay ??
+                    requirement.max_lessons_per_day
                 ) || 0;
 
 
@@ -21490,8 +21936,6 @@ function auditDailyRequirementLimits(
     );
 
 }
-
-
 
 // ============================================================
 // AUDIT TEACHER DAILY LIMITS
@@ -21905,6 +22349,19 @@ function auditTeacherWeeklyLimits(
 //
 // ============================================================
 
+// ============================================================
+// AUDIT TEACHER CONSECUTIVE LIMITS
+// ============================================================
+//
+// Groups each teacher's lessons by day and checks the longest
+// consecutive run using periodOrder.
+//
+// Same teacher + same subject + same period across multiple
+// streams counts as ONE teaching period because the period is
+// deduplicated below.
+//
+// ============================================================
+
 function auditTeacherConsecutiveLimits(
     entries,
     audit,
@@ -21930,7 +22387,8 @@ function auditTeacherConsecutiveLimits(
 
             if (
                 !normalized ||
-                !normalized.teacherId
+                !normalized.teacherId ||
+                !normalized.periodId
             ) {
 
                 return;
@@ -21953,10 +22411,29 @@ function auditTeacherConsecutiveLimits(
             }
 
 
+            // ------------------------------------------------
+            // SUPPORT BOTH:
+            //
+            //     dayNumber
+            //     day_number
+            // ------------------------------------------------
+
             const dayNumber =
                 Number(
-                    period.dayNumber
+                    period.dayNumber ??
+                    period.day_number
                 );
+
+
+            if (
+                !Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                return;
+
+            }
 
 
             const key =
@@ -22035,7 +22512,8 @@ function auditTeacherConsecutiveLimits(
 
             const maximum =
                 Number(
-                    teacher.maxConsecutiveLessons
+                    teacher.maxConsecutiveLessons ??
+                    teacher.max_consecutive_lessons
                 ) || 0;
 
 
@@ -22055,12 +22533,17 @@ function auditTeacherConsecutiveLimits(
             const orders =
                 [
                     ...new Set(
-                        periods.map(
-                            period =>
-                                Number(
-                                    period.periodOrder
-                                )
-                        )
+                        periods
+                            .map(
+                                period =>
+                                    Number(
+                                        period.periodOrder ??
+                                        period.period_order
+                                    )
+                            )
+                            .filter(
+                                Number.isFinite
+                            )
                     )
                 ]
                 .sort(
@@ -22070,6 +22553,15 @@ function auditTeacherConsecutiveLimits(
                     ) =>
                         a - b
                 );
+
+
+            if (
+                orders.length === 0
+            ) {
+
+                return;
+
+            }
 
 
             let currentRun =
@@ -22144,10 +22636,6 @@ function auditTeacherConsecutiveLimits(
     );
 
 }
-
-
-
-
 
 
 // ============================================================
@@ -23269,6 +23757,10 @@ function auditGeneratedEntityReferences(
 // BUILD HUMAN-READABLE AUDIT TABLE
 // ============================================================
 
+// ============================================================
+// BUILD HUMAN-READABLE AUDIT TABLE
+// ============================================================
+
 function buildTimetableAuditEntryTable(
     result,
     lookups
@@ -23345,32 +23837,77 @@ function buildTimetableAuditEntryTable(
                                 : null;
 
 
+                        // ------------------------------------------------
+                        // SUPPORT BOTH camelCase AND snake_case
+                        // ------------------------------------------------
+
+                        const dayNumber =
+                            period
+                                ? (
+                                    period.dayNumber ??
+                                    period.day_number ??
+                                    null
+                                )
+                                : null;
+
+
+                        const dayName =
+                            period
+                                ? (
+                                    period.dayName ??
+                                    period.day_name ??
+                                    null
+                                )
+                                : null;
+
+
+                        const periodNumber =
+                            period
+                                ? (
+                                    period.periodNumber ??
+                                    period.period_number ??
+                                    null
+                                )
+                                : null;
+
+
+                        const periodOrder =
+                            period
+                                ? (
+                                    period.periodOrder ??
+                                    period.period_order ??
+                                    null
+                                )
+                                : null;
+
+
                         rows.push({
 
                             taskId:
-                                task?.taskId ||
+                                task?.taskId ??
+                                task?.task_id ??
+                                normalized.taskId ??
                                 null,
 
                             requirementId:
-    normalized.requirementId ||
-    null,
+                                normalized.requirementId ||
+                                null,
 
                             type:
-                                task?.taskType ||
+                                task?.taskType ??
+                                task?.task_type ??
                                 null,
 
                             day:
-                                period?.dayName ||
-                                period?.dayNumber ||
+                                dayName ||
+                                dayNumber ||
                                 null,
 
                             period:
-                                period?.periodNumber ||
-                                null,
+                                periodNumber,
 
                             periodOrder:
-                                period?.periodOrder ||
-                                null,
+                                periodOrder,
 
                             stream:
                                 getTimetableStreamName(
@@ -23409,7 +23946,6 @@ function buildTimetableAuditEntryTable(
     return rows;
 
 }
-
 
 // ============================================================
 // RUN COMPLETE STAGE 6G AUDIT
@@ -23906,6 +24442,7 @@ function auditGeneratedTimetable(
 
 
 
+
 // ============================================================
 // STAGE 7 CONFIGURATION
 // ============================================================
@@ -24201,7 +24738,7 @@ function runStage7Repair(
                 !sequence
             ) {
 
-                sequence =
+                const rawSequence =
                     String(
                         task.lessonIndex ??
                         task.lesson_index ??
@@ -24213,11 +24750,26 @@ function runStage7Repair(
 
 
                 if (
-                    sequence
+                    rawSequence
                 ) {
 
+                    // --------------------------------------------
+                    // IMPORTANT:
+                    //
+                    // Prevent:
+                    //
+                    //     S2 -> SS2
+                    //
+                    // If the stored sequence already begins with
+                    // "S", preserve it.
+                    // --------------------------------------------
+
                     sequence =
-                        `S${sequence}`;
+                        /^S\d+$/i.test(
+                            rawSequence
+                        )
+                            ? rawSequence.toUpperCase()
+                            : `S${rawSequence}`;
 
                 }
 
@@ -24384,15 +24936,6 @@ function runStage7Repair(
                     existingStatus
                 ) {
 
-                    // ------------------------------------------------
-                    // IMPORTANT:
-                    //
-                    // If the group was already repaired, this task
-                    // was repaired together with the group.
-                    //
-                    // DO NOT put it into nextFailed.
-                    // ------------------------------------------------
-
                     if (
                         existingStatus ===
                         "repaired"
@@ -24407,11 +24950,6 @@ function runStage7Repair(
 
                     }
 
-
-                    // ------------------------------------------------
-                    // If the group was already attempted and failed,
-                    // this task remains failed.
-                    // ------------------------------------------------
 
                     if (
                         existingStatus ===
@@ -24448,17 +24986,6 @@ function runStage7Repair(
                 // MARK OCCURRENCE AS BEING PROCESSED
                 // =================================================
 
-                // We don't use "processed" as a final state.
-                // The state will be changed to either:
-                //
-                //     repaired
-                //
-                // or:
-                //
-                //     failed
-                //
-                // after the repair attempt.
-
                 console.log(
                     "STAGE 7: Parallel-group task detected:",
                     {
@@ -24488,12 +25015,12 @@ function runStage7Repair(
                     "function"
                 ) {
 
-                   result =
-    repairParallelGroupFailedTask(
-        task,
-        generatorData,
-        indexes
-    );
+                    result =
+                        repairParallelGroupFailedTask(
+                            task,
+                            generatorData,
+                            indexes
+                        );
 
                 }
                 else {
@@ -24534,24 +25061,11 @@ function runStage7Repair(
                     result.repaired
                 ) {
 
-                    // ------------------------------------------------
-                    // Mark this occurrence as SUCCESSFULLY REPAIRED.
-                    //
-                    // All duplicate members encountered later in this
-                    // same pass will now be skipped rather than placed
-                    // into nextFailed.
-                    // ------------------------------------------------
-
                     parallelGroupStatus.set(
                         occurrenceKey,
                         "repaired"
                     );
 
-
-                    // ------------------------------------------------
-                    // The group repair function returns the COMPLETE
-                    // synchronized occurrence.
-                    // ------------------------------------------------
 
                     const repairedGroupTasks =
                         Array.isArray(
@@ -24576,9 +25090,6 @@ function runStage7Repair(
                     // ------------------------------------------------
                     // Record every member of this occurrence that
                     // was actually in the failed queue.
-                    //
-                    // Already-placed members are NOT counted as
-                    // newly repaired.
                     // ------------------------------------------------
 
                     for (
@@ -24727,17 +25238,6 @@ function runStage7Repair(
                     );
 
 
-                    // ------------------------------------------------
-                    // VERY IMPORTANT:
-                    //
-                    // Do not add any members of this occurrence to
-                    // nextFailed.
-                    //
-                    // Duplicate members encountered later in this
-                    // same pass will see status = "repaired" and
-                    // simply continue.
-                    // ------------------------------------------------
-
                     continue;
 
                 }
@@ -24773,11 +25273,7 @@ function runStage7Repair(
 
 
                 // ------------------------------------------------
-                // The entire occurrence remains failed because
-                // parallel groups are atomic.
-                //
-                // Do this only once for the first failed attempt.
-                // Subsequent members will simply see status="failed".
+                // Entire occurrence remains failed.
                 // ------------------------------------------------
 
                 for (
@@ -24866,10 +25362,6 @@ function runStage7Repair(
                 }
 
 
-                // ------------------------------------------------
-                // Add newly repaired task to active placed list.
-                // ------------------------------------------------
-
                 const alreadyPlaced =
                     generatorData.placedTasks.some(
                         existing =>
@@ -24891,10 +25383,6 @@ function runStage7Repair(
                 }
 
 
-                // ------------------------------------------------
-                // Preserve generated entries.
-                // ------------------------------------------------
-
                 if (
                     Array.isArray(
                         result.entries
@@ -24907,10 +25395,6 @@ function runStage7Repair(
 
                 }
 
-
-                // ------------------------------------------------
-                // Preserve moved lessons.
-                // ------------------------------------------------
 
                 if (
                     Array.isArray(
@@ -24932,10 +25416,6 @@ function runStage7Repair(
 
             }
             else {
-
-                // ------------------------------------------------
-                // SINGLE TASK STILL FAILED
-                // ------------------------------------------------
 
                 nextFailed.push(
                     task
@@ -25111,6 +25591,7 @@ function runStage7Repair(
 }
 
 
+
 // ============================================================
 // STAGE 7 — REPAIR PARALLEL GROUP FAILED TASK
 // ============================================================
@@ -25171,6 +25652,7 @@ function repairParallelGroupFailedTask(
             repaired: false,
             entries: [],
             moved: [],
+            tasks: [],
             reason: "Invalid repair arguments."
         };
 
@@ -25248,6 +25730,181 @@ function repairParallelGroupFailedTask(
             task?.parallel_group
         );
 
+
+    // ========================================================
+    // TASK TYPE HELPERS
+    // ========================================================
+
+    const isDoubleTask = task => {
+
+        if (!task) {
+            return false;
+        }
+
+
+        if (
+            task.isDouble === true ||
+            task.is_double === true
+        ) {
+
+            return true;
+
+        }
+
+
+        const lessonType =
+            String(
+                task.lessonType ??
+                task.lesson_type ??
+                ""
+            )
+                .trim()
+                .toLowerCase();
+
+
+        if (
+            lessonType === "double"
+        ) {
+
+            return true;
+
+        }
+
+
+        const duration =
+            Number(
+                task.duration ??
+                task.periodCount ??
+                task.period_count
+            );
+
+
+        return duration === 2;
+
+    };
+
+
+    // ========================================================
+    // REQUIREMENT ROOM HELPER
+    // ========================================================
+
+    const getOriginalTaskDefinition =
+        taskId => {
+
+            const sources = [
+                generatorData.lessonTasks,
+                generatorData.tasks,
+                generatorData.allTasks
+            ];
+
+
+            for (
+                const source
+                of sources
+            ) {
+
+                if (
+                    !Array.isArray(source)
+                ) {
+
+                    continue;
+
+                }
+
+
+                const found =
+                    source.find(
+                        task =>
+                            getTaskId(task) ===
+                            taskId
+                    );
+
+
+                if (found) {
+
+                    return found;
+
+                }
+
+            }
+
+
+            return null;
+
+        };
+
+
+    const taskRequiresRoom =
+        task => {
+
+            if (!task) {
+                return false;
+            }
+
+
+            if (
+                task.requiresRoom !== undefined
+            ) {
+
+                return Boolean(
+                    task.requiresRoom
+                );
+
+            }
+
+
+            if (
+                task.requires_room !== undefined
+            ) {
+
+                return Boolean(
+                    task.requires_room
+                );
+
+            }
+
+
+            const definition =
+                getOriginalTaskDefinition(
+                    getTaskId(task)
+                );
+
+
+            if (!definition) {
+                return false;
+            }
+
+
+            if (
+                definition.requiresRoom !== undefined
+            ) {
+
+                return Boolean(
+                    definition.requiresRoom
+                );
+
+            }
+
+
+            if (
+                definition.requires_room !== undefined
+            ) {
+
+                return Boolean(
+                    definition.requires_room
+                );
+
+            }
+
+
+            return false;
+
+        };
+
+
+    // ========================================================
+    // STUDENT GROUPS
+    // ========================================================
 
     const getStudentGroups = task => {
 
@@ -25391,80 +26048,34 @@ function repairParallelGroupFailedTask(
         }
 
 
-        if (
-            Number.isFinite(
-                Number(task?.lessonIndex)
-            )
-        ) {
-
-            return Number(
-                task.lessonIndex
-            );
-
-        }
+        const directSequence =
+            task?.lessonIndex ??
+            task?.lesson_index ??
+            task?.occurrenceIndex ??
+            task?.occurrence_index ??
+            task?.sessionIndex ??
+            task?.session_index;
 
 
         if (
-            Number.isFinite(
-                Number(task?.lesson_index)
-            )
+            directSequence !== undefined &&
+            directSequence !== null &&
+            String(directSequence).trim() !== ""
         ) {
 
-            return Number(
-                task.lesson_index
-            );
-
-        }
-
-
-        if (
-            Number.isFinite(
-                Number(task?.occurrenceIndex)
-            )
-        ) {
-
-            return Number(
-                task.occurrenceIndex
-            );
-
-        }
+            const numeric =
+                Number(
+                    directSequence
+                );
 
 
-        if (
-            Number.isFinite(
-                Number(task?.occurrence_index)
-            )
-        ) {
+            if (
+                Number.isFinite(numeric)
+            ) {
 
-            return Number(
-                task.occurrence_index
-            );
+                return numeric;
 
-        }
-
-
-        if (
-            Number.isFinite(
-                Number(task?.sessionIndex)
-            )
-        ) {
-
-            return Number(
-                task.sessionIndex
-            );
-
-        }
-
-
-        if (
-            Number.isFinite(
-                Number(task?.session_index)
-            )
-        ) {
-
-            return Number(
-                task.session_index
-            );
+            }
 
         }
 
@@ -25497,6 +26108,7 @@ function repairParallelGroupFailedTask(
             repaired: false,
             entries: [],
             moved: [],
+            tasks: [],
             reason:
                 "Task has no parallel group."
         };
@@ -25572,6 +26184,7 @@ function repairParallelGroupFailedTask(
             const taskId =
                 getTaskId(task);
 
+
             if (!taskId) {
                 continue;
             }
@@ -25579,6 +26192,7 @@ function repairParallelGroupFailedTask(
 
             const taskGroup =
                 getParallelGroup(task);
+
 
             if (
                 taskGroup !==
@@ -25595,12 +26209,7 @@ function repairParallelGroupFailedTask(
 
 
             // ------------------------------------------------
-            // IMPORTANT:
-            //
-            // If we are repairing S5, ONLY S5 belongs here.
-            //
-            // A task with an unknown sequence is NOT allowed
-            // to silently enter the S5 occurrence.
+            // STRICT OCCURRENCE MATCHING
             // ------------------------------------------------
 
             if (
@@ -25613,17 +26222,11 @@ function repairParallelGroupFailedTask(
             }
 
 
-            /*
-             * Prefer an already-placed version because it contains
-             * the current period and room.
-             */
             const existing =
                 taskMap.get(taskId);
 
 
-            if (
-                !existing
-            ) {
+            if (!existing) {
 
                 taskMap.set(
                     taskId,
@@ -25658,7 +26261,7 @@ function repairParallelGroupFailedTask(
     }
 
 
-    // Always include the failed task.
+    // Always include failed task.
     taskMap.set(
         getTaskId(failedTask),
         failedTask
@@ -25711,6 +26314,7 @@ function repairParallelGroupFailedTask(
             repaired: false,
             entries: [],
             moved: [],
+            tasks: [],
             reason:
                 "No parallel group members found."
         };
@@ -25727,9 +26331,105 @@ function repairParallelGroupFailedTask(
 
 
     // ========================================================
-    // REQUIREMENT:
-    //
-    // WE MUST HAVE THE COMPLETE GROUP OCCURRENCE.
+    // DO NOT LET STAGE 7 MOVE / SPLIT DOUBLES
+    // ========================================================
+
+    const doubleMembers =
+        groupTasks.filter(
+            isDoubleTask
+        );
+
+
+    const placedDoubleMembers =
+        doubleMembers.filter(
+            task =>
+                Boolean(
+                    getPeriodId(task)
+                )
+        );
+
+
+    if (
+        doubleMembers.length > 0
+    ) {
+
+        console.warn(
+            "STAGE 7 GROUP: Parallel occurrence contains double lesson(s).",
+            doubleMembers.map(
+                task => ({
+                    taskId:
+                        getTaskId(task),
+                    periodId:
+                        getPeriodId(task),
+                    isPlaced:
+                        Boolean(
+                            getPeriodId(task)
+                        )
+                })
+            )
+        );
+
+    }
+
+
+    // Existing placed doubles must never be released
+    // because Stage 7 is not allowed to relocate them.
+    if (
+        placedDoubleMembers.length > 0 &&
+        STAGE7_CONFIG &&
+        STAGE7_CONFIG.allowMovingDoubleLessons === false
+    ) {
+
+        console.warn(
+            "STAGE 7 GROUP: Cannot repair occurrence because it contains an already-placed double lesson that Stage 7 is not allowed to move."
+        );
+
+        console.groupEnd();
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: [],
+            tasks: [],
+            reason:
+                "Parallel occurrence contains an already-placed double lesson which Stage 7 is not allowed to relocate.",
+            occurrence:
+                occurrenceKey,
+            parallelGroup
+        };
+
+    }
+
+
+    // This repair engine is intentionally single-lesson based.
+    // Do not silently treat an unplaced double as a single.
+    if (
+        doubleMembers.length > 0
+    ) {
+
+        console.warn(
+            "STAGE 7 GROUP: Single-lesson parallel repair cannot safely place double member(s)."
+        );
+
+        console.groupEnd();
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: [],
+            tasks: [],
+            reason:
+                "Parallel occurrence contains a double lesson that requires double-aware synchronized placement.",
+            occurrence:
+                occurrenceKey,
+            parallelGroup
+        };
+
+    }
+
+
+    // ========================================================
+    // GROUP INFORMATION
     // ========================================================
 
     const groupStreams =
@@ -25750,6 +26450,18 @@ function repairParallelGroupFailedTask(
                     .filter(Boolean)
             )
         ];
+
+
+    console.log(
+        "STAGE 7 GROUP STREAMS:",
+        groupStreams
+    );
+
+
+    console.log(
+        "STAGE 7 GROUP SUBJECTS:",
+        groupSubjects
+    );
 
 
     if (
@@ -25783,7 +26495,11 @@ function repairParallelGroupFailedTask(
             requirementId:
                 getRequirementId(task),
             lessonId:
-                getLessonId(task)
+                getLessonId(task),
+            placed:
+                Boolean(
+                    task.placed
+                )
         }));
 
 
@@ -25796,7 +26512,7 @@ function repairParallelGroupFailedTask(
 
 
     // ========================================================
-    // GENERIC SNAPSHOT OF PLACED TASK STATE
+    // SNAPSHOT placedTasks
     // ========================================================
 
     const placedTasksSnapshot =
@@ -25813,7 +26529,8 @@ function repairParallelGroupFailedTask(
     // RELEASE GROUP OCCURRENCE
     // ========================================================
 
-    let releasedCount = 0;
+    let releasedCount =
+        0;
 
 
     for (
@@ -25928,16 +26645,10 @@ function repairParallelGroupFailedTask(
 
         generatorData.placedTasks =
             generatorData.placedTasks.filter(
-                entry => {
-
-                    const entryTaskId =
-                        getTaskId(entry);
-
-                    return !groupTaskIds.has(
-                        entryTaskId
-                    );
-
-                }
+                entry =>
+                    !groupTaskIds.has(
+                        getTaskId(entry)
+                    )
             );
 
     }
@@ -25955,8 +26666,7 @@ function repairParallelGroupFailedTask(
 
 
         // ----------------------------------------------------
-        // FIRST: release anything currently reserved by the
-        // group or relocated blockers.
+        // Release currently committed group entries.
         // ----------------------------------------------------
 
         const currentPlaced =
@@ -25986,61 +26696,63 @@ function repairParallelGroupFailedTask(
                 );
 
 
-            if (isGroupTask) {
-
-                const periodId =
-                    getPeriodId(entry);
-
-                const roomId =
-                    getRoomId(entry);
-
-
-                if (
-                    periodId
-                ) {
-
-                    const period =
-                        (
-                            generatorData.periods ||
-                            []
-                        ).find(
-                            p =>
-                                normalizeId(p?.id) ===
-                                periodId
-                        );
-
-
-                    const room =
-                        (
-                            generatorData.rooms ||
-                            []
-                        ).find(
-                            r =>
-                                normalizeId(r?.id) ===
-                                roomId
-                        ) || null;
-
-
-                    if (period) {
-
-                        releaseReservedSlot(
-                            entry,
-                            period,
-                            room,
-                            indexes
-                        );
-
-                    }
-
-                }
-
+            if (!isGroupTask) {
+                continue;
             }
+
+
+            const periodId =
+                getPeriodId(entry);
+
+
+            if (!periodId) {
+                continue;
+            }
+
+
+            const period =
+                (
+                    generatorData.periods ||
+                    []
+                ).find(
+                    p =>
+                        normalizeId(p?.id) ===
+                        periodId
+                );
+
+
+            if (!period) {
+                continue;
+            }
+
+
+            const roomId =
+                getRoomId(entry);
+
+
+            const room =
+                (
+                    generatorData.rooms ||
+                    []
+                ).find(
+                    r =>
+                        normalizeId(r?.id) ===
+                        roomId
+                ) || null;
+
+
+            releaseReservedSlot(
+                entry,
+                period,
+                room,
+                indexes
+            );
 
         }
 
 
         // ----------------------------------------------------
-        // Restore placedTasks array exactly to the snapshot.
+        // Restore placedTasks exactly.
         // ----------------------------------------------------
 
         generatorData.placedTasks =
@@ -26050,7 +26762,7 @@ function repairParallelGroupFailedTask(
 
 
         // ----------------------------------------------------
-        // Restore group task object fields.
+        // Restore group task fields.
         // ----------------------------------------------------
 
         for (
@@ -26075,16 +26787,13 @@ function repairParallelGroupFailedTask(
                 original.roomId;
 
             task.placed =
-                Boolean(
-                    original.periodId
-                );
+                original.placed;
 
         }
 
 
         // ----------------------------------------------------
-        // Rebuild indexes from the restored generated state
-        // if the helper exists.
+        // Rebuild indexes.
         // ----------------------------------------------------
 
         if (
@@ -26156,8 +26865,15 @@ function repairParallelGroupFailedTask(
             const blockers =
                 [];
 
+
+            const requiresRoom =
+                taskRequiresRoom(
+                    task
+                );
+
+
             const compatibleRooms =
-                task.requiresRoom
+                requiresRoom
                     ? getCompatibleRooms(
                         task,
                         generatorData.rooms
@@ -26166,7 +26882,7 @@ function repairParallelGroupFailedTask(
 
 
             if (
-                task.requiresRoom &&
+                requiresRoom &&
                 compatibleRooms.length === 0
             ) {
 
@@ -26220,10 +26936,6 @@ function repairParallelGroupFailedTask(
 
                 }
 
-
-                // ------------------------------------------------
-                // Identify actual placed-task blockers.
-                // ------------------------------------------------
 
                 const periodId =
                     normalizeId(
@@ -26295,7 +27007,7 @@ function repairParallelGroupFailedTask(
 
 
                     // --------------------------------------------
-                    // Room blocker
+                    // ROOM BLOCKER
                     // --------------------------------------------
 
                     if (
@@ -26319,7 +27031,7 @@ function repairParallelGroupFailedTask(
 
 
                     // --------------------------------------------
-                    // Teacher blocker
+                    // TEACHER BLOCKER
                     // --------------------------------------------
 
                     if (
@@ -26354,7 +27066,7 @@ function repairParallelGroupFailedTask(
 
 
                     // --------------------------------------------
-                    // Student-group / stream blocker
+                    // STUDENT GROUP BLOCKER
                     // --------------------------------------------
 
                     const existingGroups =
@@ -26428,7 +27140,9 @@ function repairParallelGroupFailedTask(
             return {
                 valid: false,
                 reasons: [
-                    ...new Set(reasons)
+                    ...new Set(
+                        reasons
+                    )
                 ],
                 blockers: [
                     ...new Map(
@@ -26446,7 +27160,7 @@ function repairParallelGroupFailedTask(
 
 
     // ========================================================
-    // DIAGNOSE ALL MEMBERS / ALL PERIODS
+    // TEACHING PERIODS
     // ========================================================
 
     const teachingPeriods =
@@ -26454,6 +27168,10 @@ function repairParallelGroupFailedTask(
             generatorData.periods
         );
 
+
+    // ========================================================
+    // DIAGNOSE ALL MEMBERS / ALL PERIODS
+    // ========================================================
 
     const groupDiagnostics =
         [];
@@ -26486,7 +27204,9 @@ function repairParallelGroupFailedTask(
 
                 taskDiagnostics.push({
                     periodId:
-                        normalizeId(period?.id),
+                        normalizeId(
+                            period?.id
+                        ),
                     reasons:
                         diagnosis.reasons,
                     blockers:
@@ -26517,19 +27237,6 @@ function repairParallelGroupFailedTask(
     // ========================================================
     // BUILD COMMON PERIOD CANDIDATES
     // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // A member having ZERO candidates is NOT an immediate
-    // failure.
-    //
-    // It may simply mean an existing SINGLE lesson is blocking
-    // all currently available periods.
-    //
-    // We therefore keep the empty candidate set and allow the
-    // blocker-relocation engine below to run.
-    //
-    // ========================================================
 
     const candidateSets =
         [];
@@ -26539,69 +27246,79 @@ function repairParallelGroupFailedTask(
         false;
 
 
-    for (
-        const task
-        of groupTasks
-    ) {
+    const getCandidatePeriod =
+        candidate =>
+            candidate?.period ||
+            candidate?.firstPeriod ||
+            null;
 
-        const candidates =
-            getScoredSingleLessonCandidates(
-                task,
-                generatorData,
-                indexes
+
+    const getCandidatePeriodId =
+        candidate =>
+            normalizeId(
+                getCandidatePeriod(
+                    candidate
+                )?.id
             );
 
 
-        if (
-            !Array.isArray(candidates) ||
-            candidates.length === 0
-        ) {
+    const buildCandidateSets =
+        () => {
 
-            initialCandidateFailure =
-                true;
+            candidateSets.length =
+                0;
 
 
-            console.warn(
-                "STAGE 7 GROUP: Member currently has no candidates. Blocker relocation will be attempted:",
-                getTaskId(task)
-            );
+            for (
+                const task
+                of groupTasks
+            ) {
+
+                const candidates =
+                    getScoredSingleLessonCandidates(
+                        task,
+                        generatorData,
+                        indexes
+                    );
 
 
-            const diagnostics =
-                groupDiagnostics.find(
-                    item =>
-                        item.taskId ===
+                if (
+                    !Array.isArray(candidates) ||
+                    candidates.length === 0
+                ) {
+
+                    initialCandidateFailure =
+                        true;
+
+
+                    console.warn(
+                        "STAGE 7 GROUP: Member currently has no candidates. Blocker relocation will be attempted:",
                         getTaskId(task)
-                );
+                    );
 
 
-            if (diagnostics) {
+                    candidateSets.push({
+                        task,
+                        candidates: []
+                    });
 
-                console.warn(
-                    "STAGE 7 GROUP BLOCKERS:",
-                    diagnostics
-                );
+
+                    continue;
+
+                }
+
+
+                candidateSets.push({
+                    task,
+                    candidates
+                });
 
             }
 
-
-            candidateSets.push({
-                task,
-                candidates: []
-            });
+        };
 
 
-            continue;
-
-        }
-
-
-        candidateSets.push({
-            task,
-            candidates
-        });
-
-    }
+    buildCandidateSets();
 
 
     console.log(
@@ -26611,86 +27328,111 @@ function repairParallelGroupFailedTask(
 
 
     // ========================================================
-    // COMMON PERIOD INTERSECTION
+    // BUILD COMMON PERIOD MAPS
     // ========================================================
 
-    const periodMaps =
-        candidateSets.map(
-            item => {
+    const buildPeriodMaps =
+        () => {
 
-                const map =
-                    new Map();
+            const maps =
+                candidateSets.map(
+                    item => {
 
-
-                for (
-                    const candidate
-                    of item.candidates
-                ) {
-
-                    const periodId =
-                        normalizeId(
-                            candidate?.period?.id
-                        );
+                        const map =
+                            new Map();
 
 
-                    if (!periodId) {
-                        continue;
+                        for (
+                            const candidate
+                            of item.candidates
+                        ) {
+
+                            const periodId =
+                                getCandidatePeriodId(
+                                    candidate
+                                );
+
+
+                            if (!periodId) {
+                                continue;
+                            }
+
+
+                            if (
+                                !map.has(periodId)
+                            ) {
+
+                                map.set(
+                                    periodId,
+                                    []
+                                );
+
+                            }
+
+
+                            map.get(
+                                periodId
+                            ).push(candidate);
+
+                        }
+
+
+                        return map;
+
                     }
+                );
 
 
-                    if (
-                        !map.has(periodId)
-                    ) {
+            return maps;
 
-                        map.set(
-                            periodId,
-                            []
-                        );
-
-                    }
+        };
 
 
-                    map.get(
-                        periodId
-                    ).push(candidate);
-
-                }
+    let periodMaps =
+        buildPeriodMaps();
 
 
-                return map;
+    const calculateCommonPeriodIds =
+        maps => {
+
+            let common =
+                maps.length > 0
+                    ? [
+                        ...maps[0].keys()
+                    ]
+                    : [];
+
+
+            for (
+                let i = 1;
+                i < maps.length;
+                i++
+            ) {
+
+                common =
+                    common.filter(
+                        periodId =>
+                            maps[i].has(
+                                periodId
+                            )
+                    );
 
             }
-        );
+
+
+            return common;
+
+        };
 
 
     let commonPeriodIds =
-        periodMaps.length > 0
-            ? [
-                ...periodMaps[0].keys()
-            ]
-            : [];
-
-
-    for (
-        let i = 1;
-        i < periodMaps.length;
-        i++
-    ) {
-
-        commonPeriodIds =
-            commonPeriodIds.filter(
-                periodId =>
-                    periodMaps[i].has(
-                        periodId
-                    )
-            );
-
-    }
+        calculateCommonPeriodIds(
+            periodMaps
+        );
 
 
     // ========================================================
-    // IF NO COMMON PERIOD:
-    // TRY SAFE SINGLE-LESSON RELOCATION.
+    // BLOCKER RELOCATION
     // ========================================================
 
     const movedBlockers =
@@ -26732,57 +27474,8 @@ function repairParallelGroupFailedTask(
 
 
     // ========================================================
-    // FIND ORIGINAL TASK DEFINITION
-    //
-    // Used when relocating blockers so that properties such as
-    // requiresRoom, duration, parallelGroup, etc. are preserved.
+    // RELOCATE SINGLE BLOCKER
     // ========================================================
-
-    const getOriginalTaskDefinition =
-        taskId => {
-
-            const sources = [
-                generatorData.lessonTasks,
-                generatorData.tasks,
-                generatorData.allTasks
-            ];
-
-
-            for (
-                const source
-                of sources
-            ) {
-
-                if (
-                    !Array.isArray(source)
-                ) {
-
-                    continue;
-
-                }
-
-
-                const found =
-                    source.find(
-                        task =>
-                            getTaskId(task) ===
-                            taskId
-                    );
-
-
-                if (found) {
-
-                    return found;
-
-                }
-
-            }
-
-
-            return null;
-
-        };
-
 
     const relocateSingleBlocker =
         blockerTaskId => {
@@ -26830,32 +27523,27 @@ function repairParallelGroupFailedTask(
             }
 
 
-            // ------------------------------------------------
-            // Use the original task definition when available,
-            // but copy the CURRENT placement information from
-            // the placed entry.
-            // ------------------------------------------------
-
+            // Always clone so relocation cannot mutate
+            // the original source object accidentally.
             const blocker =
                 blockerDefinition
                     ? {
                         ...blockerDefinition,
-                        ...placedBlocker
+                        ...(placedBlocker || {})
                     }
-                    : placedBlocker;
+                    : {
+                        ...(placedBlocker || {})
+                    };
 
 
             if (!blocker) {
-
                 return false;
-
             }
 
 
-            // ----------------------------------------------
-            // NEVER move a parallel-group blocker here.
-            // Moving it partially would split its group.
-            // ----------------------------------------------
+            // ------------------------------------------------
+            // NEVER MOVE A PARALLEL-GROUP BLOCKER.
+            // ------------------------------------------------
 
             const blockerGroup =
                 getParallelGroup(
@@ -26876,17 +27564,14 @@ function repairParallelGroupFailedTask(
             }
 
 
-            // ----------------------------------------------
-            // Doubles are not moved.
-            // ----------------------------------------------
+            // ------------------------------------------------
+            // NEVER MOVE A DOUBLE.
+            // ------------------------------------------------
 
             if (
-                blocker.isDouble ||
-                blocker.is_double ||
-                blocker.lessonType === "double" ||
-                blocker.lesson_type === "double" ||
-                blocker.duration === 2 ||
-                blocker.periodCount === 2
+                isDoubleTask(
+                    blocker
+                )
             ) {
 
                 console.warn(
@@ -26912,9 +27597,7 @@ function repairParallelGroupFailedTask(
 
 
             if (!oldPeriodId) {
-
                 return false;
-
             }
 
 
@@ -26927,9 +27610,7 @@ function repairParallelGroupFailedTask(
 
 
             if (!oldPeriod) {
-
                 return false;
-
             }
 
 
@@ -26950,9 +27631,9 @@ function repairParallelGroupFailedTask(
             );
 
 
-            // ----------------------------------------------
-            // Release blocker.
-            // ----------------------------------------------
+            // ------------------------------------------------
+            // RELEASE BLOCKER
+            // ------------------------------------------------
 
             const released =
                 releaseReservedSlot(
@@ -26975,7 +27656,6 @@ function repairParallelGroupFailedTask(
             }
 
 
-            // Remove blocker from placedTasks.
             generatorData.placedTasks =
                 Array.isArray(
                     generatorData.placedTasks
@@ -27004,9 +27684,9 @@ function repairParallelGroupFailedTask(
                 false;
 
 
-            // ----------------------------------------------
-            // Generate candidates AFTER release.
-            // ----------------------------------------------
+            // ------------------------------------------------
+            // CANDIDATES AFTER RELEASE
+            // ------------------------------------------------
 
             const blockerCandidates =
                 getScoredSingleLessonCandidates(
@@ -27020,161 +27700,172 @@ function repairParallelGroupFailedTask(
                 false;
 
 
-            for (
-                const candidate
-                of blockerCandidates
+            if (
+                Array.isArray(
+                    blockerCandidates
+                )
             ) {
 
-                if (
-                    !candidate?.period
+                for (
+                    const candidate
+                    of blockerCandidates
                 ) {
 
-                    continue;
-
-                }
-
-
-                const newPeriod =
-                    candidate.period;
-
-                const newRoom =
-                    candidate.room ||
-                    null;
+                    const newPeriod =
+                        getCandidatePeriod(
+                            candidate
+                        );
 
 
-                const validation =
-                    checkSingleSlotConflict(
-                        blocker,
-                        newPeriod,
-                        newRoom,
-                        indexes
+                    if (!newPeriod) {
+                        continue;
+                    }
+
+
+                    const newRoom =
+                        candidate.room ||
+                        null;
+
+
+                    const validation =
+                        checkSingleSlotConflict(
+                            blocker,
+                            newPeriod,
+                            newRoom,
+                            indexes
+                        );
+
+
+                    if (
+                        !validation ||
+                        !validation.valid
+                    ) {
+
+                        continue;
+
+                    }
+
+
+                    const reserved =
+                        reserveSlot(
+                            blocker,
+                            newPeriod,
+                            newRoom,
+                            indexes
+                        );
+
+
+                    if (!reserved) {
+                        continue;
+                    }
+
+
+                    const newEntry =
+                        createGeneratedEntry(
+                            blocker,
+                            newPeriod,
+                            newRoom
+                        );
+
+
+                    if (!newEntry) {
+
+                        releaseReservedSlot(
+                            blocker,
+                            newPeriod,
+                            newRoom,
+                            indexes
+                        );
+
+                        continue;
+
+                    }
+
+
+                    generatorData.placedTasks.push(
+                        newEntry
                     );
 
 
-                if (
-                    !validation ||
-                    !validation.valid
-                ) {
-
-                    continue;
-
-                }
-
-
-                const reserved =
-                    reserveSlot(
-                        blocker,
-                        newPeriod,
-                        newRoom,
-                        indexes
-                    );
-
-
-                if (!reserved) {
-
-                    continue;
-
-                }
-
-
-                const newEntry =
-                    createGeneratedEntry(
-                        blocker,
-                        newPeriod,
-                        newRoom
-                    );
-
-
-                if (!newEntry) {
-
-                    releaseReservedSlot(
-                        blocker,
-                        newPeriod,
-                        newRoom,
-                        indexes
-                    );
-
-                    continue;
-
-                }
-
-
-                generatorData.placedTasks.push(
-                    newEntry
-                );
-
-
-                blocker.periodId =
-                    normalizeId(
-                        newPeriod.id
-                    );
-
-                blocker.period_id =
-                    normalizeId(
-                        newPeriod.id
-                    );
-
-                blocker.roomId =
-                    newRoom
-                        ? normalizeId(newRoom.id)
-                        : null;
-
-                blocker.room_id =
-                    newRoom
-                        ? normalizeId(newRoom.id)
-                        : null;
-
-                blocker.placed =
-                    true;
-
-
-                movedTaskIds.add(
-                    blockerTaskId
-                );
-
-
-                movedBlockers.push({
-                    taskId:
-                        blockerTaskId,
-                    fromPeriodId:
-                        oldPeriodId,
-                    fromRoomId:
-                        oldRoomId,
-                    toPeriodId:
+                    blocker.periodId =
                         normalizeId(
                             newPeriod.id
-                        ),
-                    toRoomId:
+                        );
+
+                    blocker.period_id =
+                        normalizeId(
+                            newPeriod.id
+                        );
+
+                    blocker.roomId =
                         newRoom
-                            ? normalizeId(newRoom.id)
-                            : null,
-                    entry:
-                        newEntry
-                });
+                            ? normalizeId(
+                                newRoom.id
+                            )
+                            : null;
+
+                    blocker.room_id =
+                        newRoom
+                            ? normalizeId(
+                                newRoom.id
+                            )
+                            : null;
+
+                    blocker.placed =
+                        true;
 
 
-                relocated =
-                    true;
+                    movedTaskIds.add(
+                        blockerTaskId
+                    );
 
 
-                console.log(
-                    "STAGE 7 GROUP: SINGLE BLOCKER MOVED:",
-                    movedBlockers[
-                        movedBlockers.length - 1
-                    ]
-                );
+                    movedBlockers.push({
+                        taskId:
+                            blockerTaskId,
+                        fromPeriodId:
+                            oldPeriodId,
+                        fromRoomId:
+                            oldRoomId,
+                        toPeriodId:
+                            normalizeId(
+                                newPeriod.id
+                            ),
+                        toRoomId:
+                            newRoom
+                                ? normalizeId(
+                                    newRoom.id
+                                )
+                                : null,
+                        entry:
+                            newEntry
+                    });
 
 
-                break;
+                    relocated =
+                        true;
+
+
+                    console.log(
+                        "STAGE 7 GROUP: SINGLE BLOCKER MOVED:",
+                        movedBlockers[
+                            movedBlockers.length - 1
+                        ]
+                    );
+
+
+                    break;
+
+                }
 
             }
 
 
-            if (!relocated) {
+            // ------------------------------------------------
+            // IF NOT RELOCATED, RESTORE BLOCKER IMMEDIATELY
+            // ------------------------------------------------
 
-                // ------------------------------------------
-                // Restore the blocker immediately.
-                // ------------------------------------------
+            if (!relocated) {
 
                 const restored =
                     reserveSlot(
@@ -27239,12 +27930,7 @@ function repairParallelGroupFailedTask(
 
 
     // ========================================================
-    // REPEATEDLY TRY:
-    //
-    // 1. Rebuild candidates.
-    // 2. Find common period.
-    // 3. If none, inspect blockers.
-    // 4. Move only a SINGLE blocker.
+    // REPEATED BLOCKER RELOCATION
     // ========================================================
 
     let relocationPass =
@@ -27272,10 +27958,6 @@ function repairParallelGroupFailedTask(
         let blockerMoved =
             false;
 
-
-        // ----------------------------------------------------
-        // Re-run diagnostics using the current state.
-        // ----------------------------------------------------
 
         for (
             const task
@@ -27362,14 +28044,12 @@ function repairParallelGroupFailedTask(
 
 
         if (!blockerMoved) {
-
             break;
-
         }
 
 
         // ----------------------------------------------------
-        // Rebuild indexes after relocation.
+        // Rebuild indexes.
         // ----------------------------------------------------
 
         if (
@@ -27424,116 +28104,24 @@ function repairParallelGroupFailedTask(
 
 
         // ----------------------------------------------------
-        // Rebuild candidate sets.
+        // Rebuild candidates.
         // ----------------------------------------------------
 
-        candidateSets.length =
-            0;
-
-
-        for (
-            const task
-            of groupTasks
-        ) {
-
-            const candidates =
-                getScoredSingleLessonCandidates(
-                    task,
-                    generatorData,
-                    indexes
-                );
-
-
-            candidateSets.push({
-                task,
-                candidates
-            });
-
-        }
+        buildCandidateSets();
 
 
         // ----------------------------------------------------
-        // Recalculate common periods.
+        // Rebuild period maps.
         // ----------------------------------------------------
 
-        periodMaps.length =
-            0;
-
-
-        for (
-            const item
-            of candidateSets
-        ) {
-
-            const map =
-                new Map();
-
-
-            for (
-                const candidate
-                of item.candidates
-            ) {
-
-                const periodId =
-                    normalizeId(
-                        candidate?.period?.id
-                    );
-
-
-                if (!periodId) {
-                    continue;
-                }
-
-
-                if (
-                    !map.has(periodId)
-                ) {
-
-                    map.set(
-                        periodId,
-                        []
-                    );
-
-                }
-
-
-                map.get(
-                    periodId
-                ).push(candidate);
-
-            }
-
-
-            periodMaps.push(
-                map
-            );
-
-        }
+        periodMaps =
+            buildPeriodMaps();
 
 
         commonPeriodIds =
-            periodMaps.length > 0
-                ? [
-                    ...periodMaps[0].keys()
-                ]
-                : [];
-
-
-        for (
-            let i = 1;
-            i < periodMaps.length;
-            i++
-        ) {
-
-            commonPeriodIds =
-                commonPeriodIds.filter(
-                    periodId =>
-                        periodMaps[i].has(
-                            periodId
-                        )
-                );
-
-        }
+            calculateCommonPeriodIds(
+                periodMaps
+            );
 
 
         console.log(
@@ -27565,6 +28153,7 @@ function repairParallelGroupFailedTask(
             repaired: false,
             entries: [],
             moved: [],
+            tasks: [],
             reason:
                 `No common synchronized period for parallel group ${parallelGroup}.`,
             occurrence:
@@ -27581,65 +28170,66 @@ function repairParallelGroupFailedTask(
     // ========================================================
 
     const commonCandidates =
-        commonPeriodIds.map(
-            periodId => {
+        commonPeriodIds
+            .map(
+                periodId => {
 
-                let totalScore =
-                    0;
-
-
-                const memberCandidates =
-                    [];
+                    let totalScore =
+                        0;
 
 
-                for (
-                    let i = 0;
-                    i < candidateSets.length;
-                    i++
-                ) {
-
-                    const candidate =
-                        (
-                            periodMaps[i]
-                                .get(periodId) ||
-                            []
-                        )[0];
+                    const memberCandidates =
+                        [];
 
 
-                    if (!candidate) {
+                    for (
+                        let i = 0;
+                        i < candidateSets.length;
+                        i++
+                    ) {
 
-                        return null;
+                        const candidate =
+                            (
+                                periodMaps[i]
+                                    .get(periodId) ||
+                                []
+                            )[0];
+
+
+                        if (!candidate) {
+
+                            return null;
+
+                        }
+
+
+                        totalScore +=
+                            Number(
+                                candidate.score
+                            ) || 0;
+
+
+                        memberCandidates.push(
+                            candidate
+                        );
 
                     }
 
 
-                    totalScore +=
-                        Number(
-                            candidate.score
-                        ) || 0;
-
-
-                    memberCandidates.push(
-                        candidate
-                    );
+                    return {
+                        periodId,
+                        totalScore,
+                        memberCandidates
+                    };
 
                 }
-
-
-                return {
-                    periodId,
-                    totalScore,
-                    memberCandidates
-                };
-
-            }
-        )
-        .filter(Boolean)
-        .sort(
-            (a, b) =>
-                b.totalScore -
-                a.totalScore
-        );
+            )
+            .filter(Boolean)
+            .sort(
+                (a, b) =>
+                    b.totalScore -
+                    a.totalScore
+            );
 
 
     // ========================================================
@@ -27692,8 +28282,14 @@ function repairParallelGroupFailedTask(
                 groupTasks[i];
 
 
+            const requiresRoom =
+                taskRequiresRoom(
+                    task
+                );
+
+
             const compatibleRooms =
-                task.requiresRoom
+                requiresRoom
                     ? getCompatibleRooms(
                         task,
                         generatorData.rooms
@@ -27702,7 +28298,7 @@ function repairParallelGroupFailedTask(
 
 
             if (
-                task.requiresRoom &&
+                requiresRoom &&
                 compatibleRooms.length === 0
             ) {
 
@@ -27734,7 +28330,7 @@ function repairParallelGroupFailedTask(
 
 
         // ----------------------------------------------------
-        // Generate room combinations recursively.
+        // RECURSIVE ROOM ASSIGNMENT
         // ----------------------------------------------------
 
         const tryRoomAssignment =
@@ -27767,10 +28363,14 @@ function repairParallelGroupFailedTask(
 
                     const roomId =
                         room
-                            ? normalizeId(room.id)
+                            ? normalizeId(
+                                room.id
+                            )
                             : null;
 
 
+                    // A parallel group cannot use the same
+                    // physical room for two members.
                     if (
                         roomId &&
                         usedRooms.has(
@@ -27782,11 +28382,6 @@ function repairParallelGroupFailedTask(
 
                     }
 
-
-                    // ----------------------------------------
-                    // Validate this member against CURRENT
-                    // occupancy.
-                    // ----------------------------------------
 
                     const validation =
                         checkSingleSlotConflict(
@@ -27918,6 +28513,7 @@ function repairParallelGroupFailedTask(
                 finalValid =
                     false;
 
+
                 console.warn(
                     "STAGE 7 GROUP: Final validation failed:",
                     {
@@ -27928,6 +28524,7 @@ function repairParallelGroupFailedTask(
                             validation?.reason
                     }
                 );
+
 
                 break;
 
@@ -27988,6 +28585,7 @@ function repairParallelGroupFailedTask(
                 commitFailed =
                     true;
 
+
                 console.error(
                     "STAGE 7 GROUP: Atomic commit failed:",
                     {
@@ -27996,6 +28594,7 @@ function repairParallelGroupFailedTask(
                         result
                     }
                 );
+
 
                 break;
 
@@ -28036,6 +28635,7 @@ function repairParallelGroupFailedTask(
                 repaired: false,
                 entries: [],
                 moved: [],
+                tasks: [],
                 reason:
                     "Parallel group atomic commit failed and was rolled back.",
                 occurrence:
@@ -28079,6 +28679,7 @@ function repairParallelGroupFailedTask(
                 repaired: false,
                 entries: [],
                 moved: [],
+                tasks: [],
                 reason:
                     "Parallel group verification failed: members are not synchronized.",
                 occurrence:
@@ -28089,7 +28690,15 @@ function repairParallelGroupFailedTask(
 
 
         // ====================================================
-        // UPDATE placedTasks
+        // UPDATE placedTasks USING ACTUAL COMMITTED ENTRIES
+        // ====================================================
+        //
+        // placeSelectedSingleTask() creates the generated entry
+        // but does not itself append it to generatorData.placedTasks.
+        //
+        // Therefore append the entries returned by the commit.
+        // Do NOT create another generated entry here.
+        //
         // ====================================================
 
         if (
@@ -28105,19 +28714,24 @@ function repairParallelGroupFailedTask(
 
 
         for (
-            const task
-            of groupTasks
+            const entry
+            of committedEntries
         ) {
 
-            const taskId =
-                getTaskId(task);
+            const entryTaskId =
+                getTaskId(entry);
+
+
+            if (!entryTaskId) {
+                continue;
+            }
 
 
             const alreadyExists =
                 generatorData.placedTasks.some(
-                    entry =>
-                        getTaskId(entry) ===
-                        taskId
+                    existing =>
+                        getTaskId(existing) ===
+                        entryTaskId
                 );
 
 
@@ -28125,27 +28739,9 @@ function repairParallelGroupFailedTask(
                 !alreadyExists
             ) {
 
-                const room =
-                    roomAssignment[
-                        taskId
-                    ] || null;
-
-
-                const entry =
-                    createGeneratedEntry(
-                        task,
-                        period,
-                        room
-                    );
-
-
-                if (entry) {
-
-                    generatorData.placedTasks.push(
-                        entry
-                    );
-
-                }
+                generatorData.placedTasks.push(
+                    entry
+                );
 
             }
 
@@ -28242,13 +28838,27 @@ function repairParallelGroupFailedTask(
 
         return {
             repaired: true,
+
             entries:
                 committedEntries,
+
             moved,
+
+            // IMPORTANT:
+            // runStage7Repair() needs all members here,
+            // not only failedTask.
+            tasks:
+                [
+                    ...groupTasks
+                ],
+
             periodId,
+
             parallelGroup,
+
             occurrence:
                 occurrenceKey,
+
             reason:
                 moved.length > 0
                     ? "Parallel group repaired after safe single-lesson blocker relocation."
@@ -28276,6 +28886,7 @@ function repairParallelGroupFailedTask(
         repaired: false,
         entries: [],
         moved: [],
+        tasks: [],
         reason:
             `All common synchronized periods failed atomic placement for ${parallelGroup}.`,
         occurrence:
@@ -28285,8 +28896,6 @@ function repairParallelGroupFailedTask(
     };
 
 }
-
-
 
 
 function buildStage7PeriodCandidates(
@@ -28813,6 +29422,36 @@ function placeStage7Task(
 //
 // ============================================================
 
+// ============================================================
+// STAGE 7 — RELOCATION
+// ============================================================
+//
+// Moves an existing SINGLE lesson out of the way so the
+// failed lesson can occupy the freed original slot.
+//
+// HELPER CONTRACTS:
+//
+//     moveStage7Task()
+//         → true / false
+//
+//     placeStage7Task()
+//         → {
+//               placed,
+//               entries,
+//               reason
+//           }
+//
+// IMPORTANT:
+//
+// Do NOT test the entire placeStage7Task() return object
+// directly as a boolean.
+//
+// Always use:
+//
+//     placement.placed === true
+//
+// ============================================================
+
 function attemptStage7Relocation(
     failedTask,
     candidatePeriods,
@@ -28882,7 +29521,7 @@ function attemptStage7Relocation(
     const failedTaskRoomCandidates =
         buildStage7RoomCandidates(
             failedTask,
-            rooms
+            generatorData.rooms || rooms
         );
 
 
@@ -28914,7 +29553,9 @@ function attemptStage7Relocation(
     // ========================================================
 
     for (
-        const existingTask of placedTasks
+        const existingTask of [
+            ...placedTasks
+        ]
     ) {
 
         // ----------------------------------------------------
@@ -28941,6 +29582,40 @@ function attemptStage7Relocation(
 
 
         // ====================================================
+        // TASK ID
+        // ====================================================
+
+        const existingTaskId =
+            existingTask.taskId ??
+            existingTask.task_id ??
+            existingTask.id ??
+            null;
+
+
+        // ====================================================
+        // NEVER MOVE THE FAILED TASK ITSELF
+        // ====================================================
+
+        const failedTaskId =
+            failedTask.taskId ??
+            failedTask.task_id ??
+            failedTask.id ??
+            null;
+
+
+        if (
+            existingTaskId &&
+            failedTaskId &&
+            String(existingTaskId) ===
+            String(failedTaskId)
+        ) {
+
+            continue;
+
+        }
+
+
+        // ====================================================
         // NORMALIZE EXISTING TASK TYPE
         // ====================================================
 
@@ -28956,9 +29631,37 @@ function attemptStage7Relocation(
         // ====================================================
 
         if (
-            existingTaskType === "double" ||
+            String(existingTaskType).toLowerCase() ===
+                "double" ||
             existingTask.isDouble === true ||
-            existingTask.is_double === true
+            existingTask.is_double === true ||
+            Number(
+                existingTask.periodCount ??
+                existingTask.period_count ??
+                existingTask.duration ??
+                0
+            ) === 2
+        ) {
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // NEVER MOVE PARALLEL-GROUP MEMBERS
+        // ====================================================
+
+        const existingParallelGroup =
+            normalizeTimetableId(
+                existingTask.parallelGroup ??
+                existingTask.parallel_group ??
+                null
+            );
+
+
+        if (
+            existingParallelGroup
         ) {
 
             continue;
@@ -28975,7 +29678,7 @@ function attemptStage7Relocation(
                 existingTask,
                 failedTask,
                 candidatePeriods,
-                rooms,
+                generatorData.rooms || rooms,
                 generatorData
             );
 
@@ -28990,6 +29693,58 @@ function attemptStage7Relocation(
 
 
         moveAttempts++;
+
+
+        // ====================================================
+        // SNAPSHOT EXISTING TASK STATE
+        // ====================================================
+        //
+        // moveStage7Task() already performs its own internal
+        // rollback when the move itself fails.
+        //
+        // This snapshot protects the higher-level relocation
+        // transaction if the failed task cannot use the freed
+        // slot.
+        //
+        // ====================================================
+
+        const taskStateSnapshot = {
+
+            placed:
+                existingTask.placed,
+
+            periodIds:
+                Array.isArray(
+                    existingTask.periodIds
+                )
+                    ? [
+                        ...existingTask.periodIds
+                    ]
+                    : existingTask.periodIds,
+
+            periodId:
+                existingTask.periodId,
+
+            period_id:
+                existingTask.period_id,
+
+            firstPeriodId:
+                existingTask.firstPeriodId,
+
+            secondPeriodId:
+                existingTask.secondPeriodId,
+
+            roomId:
+                existingTask.roomId,
+
+            room_id:
+                existingTask.room_id,
+
+            stage7MovedEntry:
+                existingTask.stage7MovedEntry ||
+                null
+
+        };
 
 
         // ====================================================
@@ -29018,7 +29773,7 @@ function attemptStage7Relocation(
 
         // ====================================================
         // CAPTURE MOVED ENTRY
-        // ========================================================
+        // ====================================================
 
         const movedEntry =
             existingTask.stage7MovedEntry ||
@@ -29033,11 +29788,15 @@ function attemptStage7Relocation(
 
 
         if (
-            alternative.failedRoom
+            Object.prototype.hasOwnProperty.call(
+                alternative,
+                "failedRoom"
+            )
         ) {
 
             orderedFailedTaskRooms.push(
-                alternative.failedRoom
+                alternative.failedRoom ||
+                null
             );
 
         }
@@ -29052,8 +29811,9 @@ function attemptStage7Relocation(
             ) {
 
                 if (
-                    !orderedFailedTaskRooms.includes(
-                        null
+                    !orderedFailedTaskRooms.some(
+                        room =>
+                            room === null
                     )
                 ) {
 
@@ -29180,6 +29940,81 @@ function attemptStage7Relocation(
 
 
             // ------------------------------------------------
+            // KEEP placedTasks SYNCHRONIZED
+            // ------------------------------------------------
+            //
+            // Replace the old generated entry/task reference
+            // with the moved entry when possible.
+            //
+            // Do not blindly push another copy.
+            //
+            // ------------------------------------------------
+
+            const movedTaskId =
+                existingTask.taskId ??
+                existingTask.task_id ??
+                existingTask.id ??
+                null;
+
+
+            if (
+                movedTaskId
+            ) {
+
+                const existingIndex =
+                    generatorData.placedTasks.findIndex(
+                        item => {
+
+                            const itemId =
+                                item?.taskId ??
+                                item?.task_id ??
+                                item?.id ??
+                                null;
+
+
+                            return (
+                                itemId &&
+                                String(itemId) ===
+                                String(movedTaskId)
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    existingIndex >= 0 &&
+                    movedEntry
+                ) {
+
+                    generatorData.placedTasks[
+                        existingIndex
+                    ] =
+                        movedEntry;
+
+                }
+                else if (
+                    movedEntry
+                ) {
+
+                    generatorData.placedTasks.push(
+                        movedEntry
+                    );
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
+            // CLEAN TEMPORARY MARKER
+            // ------------------------------------------------
+
+            existingTask.stage7MovedEntry =
+                null;
+
+
+            // ------------------------------------------------
             // RECORD MOVE
             // ------------------------------------------------
 
@@ -29213,14 +30048,6 @@ function attemptStage7Relocation(
             };
 
 
-            // ------------------------------------------------
-            // CLEAN TEMPORARY MARKER
-            // ------------------------------------------------
-
-            existingTask.stage7MovedEntry =
-                null;
-
-
             return {
 
                 repaired:
@@ -29243,7 +30070,8 @@ function attemptStage7Relocation(
         // FAILED TASK COULD NOT USE FREED SLOT
         // ====================================================
         //
-        // Restore the moved lesson exactly where it came from.
+        // Restore the moved lesson exactly to its original
+        // location.
         //
         // ====================================================
 
@@ -29267,19 +30095,19 @@ function attemptStage7Relocation(
                 {
 
                     taskId:
-                        existingTask?.taskId ||
-                        existingTask?.task_id ||
-                        existingTask?.id,
+                        existingTaskId,
 
                     originalPeriod:
-                        alternative.oldPeriod?.id,
+                        alternative.oldPeriod?.id ||
+                        null,
 
                     originalRoom:
                         alternative.oldRoom?.id ||
                         null,
 
                     attemptedPeriod:
-                        alternative.period?.id,
+                        alternative.period?.id ||
+                        null,
 
                     attemptedRoom:
                         alternative.room?.id ||
@@ -29304,6 +30132,45 @@ function attemptStage7Relocation(
 
         }
 
+
+        // ====================================================
+        // RESTORE TASK STATE SNAPSHOT
+        // ====================================================
+        //
+        // The reservation has already been restored by
+        // moveStage7Task(). Now restore the metadata exactly.
+        //
+        // ====================================================
+
+        existingTask.placed =
+            taskStateSnapshot.placed;
+
+        existingTask.periodIds =
+            Array.isArray(
+                taskStateSnapshot.periodIds
+            )
+                ? [
+                    ...taskStateSnapshot.periodIds
+                ]
+                : taskStateSnapshot.periodIds;
+
+        existingTask.periodId =
+            taskStateSnapshot.periodId;
+
+        existingTask.period_id =
+            taskStateSnapshot.period_id;
+
+        existingTask.firstPeriodId =
+            taskStateSnapshot.firstPeriodId;
+
+        existingTask.secondPeriodId =
+            taskStateSnapshot.secondPeriodId;
+
+        existingTask.roomId =
+            taskStateSnapshot.roomId;
+
+        existingTask.room_id =
+            taskStateSnapshot.room_id;
 
         existingTask.stage7MovedEntry =
             null;
@@ -29331,12 +30198,10 @@ function attemptStage7Relocation(
 }
 
 
+
 // ============================================================
 // FIND ALTERNATIVE SLOT FOR EXISTING TASK
 // ============================================================
-
-
-
 
 function findAlternativeSlotForExistingTask(
     existingTask,
@@ -29372,23 +30237,43 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
+    // TASK IDS
+    // ========================================================
+
+    const existingTaskId =
+        existingTask.taskId ??
+        existingTask.task_id ??
+        existingTask.id ??
+        null;
+
+
+    const failedTaskId =
+        failedTask.taskId ??
+        failedTask.task_id ??
+        failedTask.id ??
+        null;
+
+
+    if (
+        existingTaskId &&
+        failedTaskId &&
+        String(existingTaskId) ===
+        String(failedTaskId)
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
     // NORMALIZE PARALLEL GROUPS
     // ========================================================
     //
     // Stage 7 single-task relocation MUST NOT manipulate
     // individual members of a parallel group.
     //
-    // Parallel lessons are synchronized atomically by Stage 6F.
-    //
-    // Moving one member independently would split the group.
-    //
-    // Therefore:
-    //
-    //     grouped existing task -> NOT movable here
-    //     grouped failed task   -> NOT repairable here
-    //
-    // A dedicated atomic parallel-group repair must handle
-    // those cases.
+    // Parallel lessons are synchronized atomically.
     //
     // ========================================================
 
@@ -29417,8 +30302,7 @@ function findAlternativeSlotForExistingTask(
             {
 
                 taskId:
-                    existingTask?.taskId ||
-                    existingTask?.id,
+                    existingTaskId,
 
                 parallelGroup:
                     existingTaskParallelGroup
@@ -29441,8 +30325,7 @@ function findAlternativeSlotForExistingTask(
             {
 
                 taskId:
-                    failedTask?.taskId ||
-                    failedTask?.id,
+                    failedTaskId,
 
                 parallelGroup:
                     failedTaskParallelGroup
@@ -29450,6 +30333,39 @@ function findAlternativeSlotForExistingTask(
             }
         );
 
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // NORMALIZE TASK TYPE
+    // ========================================================
+
+    const existingTaskType =
+        existingTask.taskType ??
+        existingTask.task_type ??
+        existingTask.type ??
+        null;
+
+
+    // ========================================================
+    // NEVER RELOCATE DOUBLES
+    // ========================================================
+
+    if (
+        String(existingTaskType).toLowerCase() ===
+            "double" ||
+        existingTask.isDouble === true ||
+        existingTask.is_double === true ||
+        Number(
+            existingTask.periodCount ??
+            existingTask.period_count ??
+            existingTask.duration ??
+            0
+        ) === 2
+    ) {
 
         return null;
 
@@ -29490,7 +30406,7 @@ function findAlternativeSlotForExistingTask(
     const existingTaskRooms =
         buildStage7RoomCandidates(
             existingTask,
-            rooms
+            generatorData.rooms || rooms
         );
 
 
@@ -29513,7 +30429,7 @@ function findAlternativeSlotForExistingTask(
     const failedTaskRooms =
         buildStage7RoomCandidates(
             failedTask,
-            rooms
+            generatorData.rooms || rooms
         );
 
 
@@ -29530,14 +30446,52 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
-    // TEMPORARILY RELEASE EXISTING TASK
+    // SNAPSHOT CURRENT TASK STATE
     // ========================================================
     //
-    // The task is released only while searching.
+    // The search temporarily releases the existing lesson.
+    // Keep its metadata untouched and restore its reservation
+    // before returning.
     //
-    // The original reservation MUST be restored before this
-    // function returns.
-    //
+    // ========================================================
+
+    const originalTaskState = {
+
+        placed:
+            existingTask.placed,
+
+        periodIds:
+            Array.isArray(
+                existingTask.periodIds
+            )
+                ? [
+                    ...existingTask.periodIds
+                ]
+                : existingTask.periodIds,
+
+        periodId:
+            existingTask.periodId,
+
+        period_id:
+            existingTask.period_id,
+
+        firstPeriodId:
+            existingTask.firstPeriodId,
+
+        secondPeriodId:
+            existingTask.secondPeriodId,
+
+        roomId:
+            existingTask.roomId,
+
+        room_id:
+            existingTask.room_id
+
+    };
+
+
+    // ========================================================
+    // TEMPORARILY RELEASE EXISTING TASK
     // ========================================================
 
     const released =
@@ -29558,11 +30512,11 @@ function findAlternativeSlotForExistingTask(
             {
 
                 taskId:
-                    existingTask?.taskId ||
-                    existingTask?.id,
+                    existingTaskId,
 
                 oldPeriod:
-                    oldPeriod?.id,
+                    oldPeriod?.id ||
+                    null,
 
                 oldRoom:
                     oldRoom?.id ||
@@ -29570,6 +30524,7 @@ function findAlternativeSlotForExistingTask(
 
             }
         );
+
 
         return null;
 
@@ -29581,33 +30536,37 @@ function findAlternativeSlotForExistingTask(
 
 
     // ========================================================
-    // SEARCH FOR A VALID RELOCATION
-    // ========================================================
-    //
-    // Both conditions must be valid:
-    //
-    // 1. Existing task can move to the new period/room.
-    //
-    // 2. Failed task can use the existing task's original
-    //    period after it has moved.
-    //
+    // SEARCH FOR VALID RELOCATION
     // ========================================================
 
     for (
         const period of candidatePeriods
     ) {
 
+        if (
+            !period
+        ) {
+
+            continue;
+
+        }
+
+
+        const periodId =
+            period.id ??
+            period.period_id ??
+            null;
+
+
         // ----------------------------------------------------
-        // DO NOT RETURN TO THE SAME PERIOD
+        // DO NOT RETURN TO SAME PERIOD
         // ----------------------------------------------------
 
         if (
-            String(
-                period.id
-            ) ===
-            String(
-                oldPeriod.id
-            )
+            periodId &&
+            oldPeriod.id &&
+            String(periodId) ===
+            String(oldPeriod.id)
         ) {
 
             continue;
@@ -29646,10 +30605,6 @@ function findAlternativeSlotForExistingTask(
             // CHECK FAILED TASK IN FREED ORIGINAL SLOT
             // ------------------------------------------------
 
-            let failedTaskCanUseFreedSlot =
-                false;
-
-
             for (
                 const failedRoom of failedTaskRooms
             ) {
@@ -29664,38 +30619,37 @@ function findAlternativeSlotForExistingTask(
 
 
                 if (
-                    failedTaskConflict &&
-                    failedTaskConflict.valid === true
+                    !failedTaskConflict ||
+                    failedTaskConflict.valid !== true
                 ) {
 
-                    failedTaskCanUseFreedSlot =
-                        true;
-
-
-                    alternative = {
-
-                        period,
-
-                        room,
-
-                        oldPeriod,
-
-                        oldRoom,
-
-                        failedRoom
-
-                    };
-
-
-                    break;
+                    continue;
 
                 }
+
+
+                alternative = {
+
+                    period,
+
+                    room,
+
+                    oldPeriod,
+
+                    oldRoom,
+
+                    failedRoom
+
+                };
+
+
+                break;
 
             }
 
 
             if (
-                failedTaskCanUseFreedSlot
+                alternative
             ) {
 
                 break;
@@ -29720,12 +30674,14 @@ function findAlternativeSlotForExistingTask(
     // RESTORE ORIGINAL RESERVATION
     // ========================================================
     //
+    // IMPORTANT:
+    //
     // This function only searches.
     //
     // It does NOT perform the move.
     //
-    // Therefore the existing task must always be restored
-    // before returning the alternative.
+    // Therefore the original reservation must always be
+    // restored before returning.
     //
     // ========================================================
 
@@ -29748,11 +30704,11 @@ function findAlternativeSlotForExistingTask(
             {
 
                 taskId:
-                    existingTask?.taskId ||
-                    existingTask?.id,
+                    existingTaskId,
 
                 oldPeriod:
-                    oldPeriod?.id,
+                    oldPeriod?.id ||
+                    null,
 
                 oldRoom:
                     oldRoom?.id ||
@@ -29772,6 +30728,39 @@ function findAlternativeSlotForExistingTask(
 
             }
         );
+
+
+        // Rebuild indexes from placedTasks if possible.
+        //
+        // Do not claim the alternative is safe when the
+        // original reservation could not be restored.
+
+        if (
+            typeof createOccupancyIndexes ===
+            "function"
+        ) {
+
+            try {
+
+                generatorData.indexes =
+                    createOccupancyIndexes(
+                        generatorData.placedTasks || [],
+                        generatorData
+                    );
+
+            }
+            catch (
+                rebuildError
+            ) {
+
+                console.error(
+                    "STAGE 7: Failed to rebuild occupancy indexes after relocation-search failure.",
+                    rebuildError
+                );
+
+            }
+
+        }
 
 
         return null;
@@ -29797,11 +30786,11 @@ function findAlternativeSlotForExistingTask(
             {
 
                 taskId:
-                    existingTask?.taskId ||
-                    existingTask?.id,
+                    existingTaskId,
 
                 oldPeriod:
-                    oldPeriod?.id,
+                    oldPeriod?.id ||
+                    null,
 
                 oldRoom:
                     oldRoom?.id ||
@@ -29816,10 +30805,53 @@ function findAlternativeSlotForExistingTask(
     }
 
 
+    // ========================================================
+    // RESTORE TASK METADATA
+    // ========================================================
+    //
+    // releaseReservedSlot()/reserveSlot() are occupancy
+    // operations. Explicitly restore the task metadata here.
+    //
+    // ========================================================
+
+    existingTask.placed =
+        originalTaskState.placed;
+
+    existingTask.periodIds =
+        Array.isArray(
+            originalTaskState.periodIds
+        )
+            ? [
+                ...originalTaskState.periodIds
+            ]
+            : originalTaskState.periodIds;
+
+    existingTask.periodId =
+        originalTaskState.periodId;
+
+    existingTask.period_id =
+        originalTaskState.period_id;
+
+    existingTask.firstPeriodId =
+        originalTaskState.firstPeriodId;
+
+    existingTask.secondPeriodId =
+        originalTaskState.secondPeriodId;
+
+    existingTask.roomId =
+        originalTaskState.roomId;
+
+    existingTask.room_id =
+        originalTaskState.room_id;
+
+
+    // ========================================================
+    // RETURN ALTERNATIVE
+    // ========================================================
+
     return alternative;
 
 }
-
 
 // ============================================================
 // FIND CURRENT PERIOD OF TASK
@@ -29969,7 +31001,7 @@ function findTaskRoom(
 
 
 
-
+// ============================================================
 // ============================================================
 // STAGE 7 — MOVE TASK
 // ============================================================
@@ -29979,13 +31011,8 @@ function findTaskRoom(
 //     newPeriod
 //     newRoom
 //
-// This implementation does NOT depend on:
-//
-//     moveTaskToSlot()
-//     removeTaskFromSlot()
-//     placeTaskInSlot()
-//
-// It directly uses the existing Stage 6 occupancy engine:
+// This implementation uses the existing Stage 6 occupancy
+// engine:
 //
 //     releaseReservedSlot()
 //     checkSingleSlotConflict()
@@ -29994,12 +31021,13 @@ function findTaskRoom(
 //
 // IMPORTANT:
 //
-// This function is intended for SINGLE lessons only.
-// Double lessons are not moved by the current Stage 7
-// configuration.
+// - SINGLE LESSONS ONLY
+// - DOUBLE LESSONS ARE NEVER MOVED
+// - PARALLEL-GROUP MEMBERS ARE NEVER MOVED
+// - Failed moves restore the original reservation
+// - Task metadata is explicitly restored/updated
 //
 // ============================================================
-
 
 function moveStage7Task(
     task,
@@ -30027,13 +31055,18 @@ function moveStage7Task(
 
 
     // ========================================================
-    // CLEAR ANY STALE STAGE 7 ENTRY
+    // TASK ID
     // ========================================================
-    //
-    // A task may have been involved in an earlier relocation
-    // attempt. Never allow a previous temporary entry to be
-    // reused by a later failed move.
-    //
+
+    const taskId =
+        task.taskId ??
+        task.task_id ??
+        task.id ??
+        null;
+
+
+    // ========================================================
+    // CLEAR STALE STAGE 7 ENTRY
     // ========================================================
 
     task.stage7MovedEntry =
@@ -30041,12 +31074,46 @@ function moveStage7Task(
 
 
     // ========================================================
+    // NEVER MOVE PARALLEL-GROUP MEMBERS
+    // ========================================================
+
+    const parallelGroup =
+        normalizeTimetableId(
+            task.parallelGroup ??
+            task.parallel_group ??
+            null
+        );
+
+
+    if (
+        parallelGroup
+    ) {
+
+        console.warn(
+            "STAGE 7: Refusing to move parallel-group member:",
+            {
+
+                taskId,
+
+                parallelGroup
+
+            }
+        );
+
+
+        return false;
+
+    }
+
+
+    // ========================================================
     // NORMALIZE TASK TYPE
     // ========================================================
 
     const taskType =
-        task.taskType ||
-        task.type ||
+        task.taskType ??
+        task.task_type ??
+        task.type ??
         null;
 
 
@@ -30055,15 +31122,23 @@ function moveStage7Task(
     // ========================================================
 
     if (
-        taskType === "double" ||
-        task.isDouble === true
+        String(taskType).toLowerCase() ===
+            "double" ||
+        task.isDouble === true ||
+        task.is_double === true ||
+        Number(
+            task.periodCount ??
+            task.period_count ??
+            task.duration ??
+            0
+        ) === 2
     ) {
 
         console.warn(
             "STAGE 7: Double lesson movement is disabled:",
-            task?.taskId ||
-            task?.id
+            taskId
         );
+
 
         return false;
 
@@ -30074,11 +31149,10 @@ function moveStage7Task(
     // FIND CURRENT SLOT
     // ========================================================
     //
-    // When rollbackPeriod is supplied, the caller is telling us
-    // that the task is currently at that location and must be
-    // moved back from there.
+    // When rollbackPeriod is supplied, the caller explicitly
+    // identifies the task's current location.
     //
-    // Otherwise find the task's current normal location.
+    // Otherwise find its normal current location.
     //
     // ========================================================
 
@@ -30092,10 +31166,15 @@ function moveStage7Task(
 
     const oldRoom =
         rollbackPeriod
-            ? rollbackRoom
-            : findTaskRoom(
-                task,
-                generatorData
+            ? (
+                rollbackRoom ||
+                null
+            )
+            : (
+                findTaskRoom(
+                    task,
+                    generatorData
+                )
             );
 
 
@@ -30107,12 +31186,11 @@ function moveStage7Task(
             "STAGE 7: Cannot move task because its current period was not found.",
             {
 
-                taskId:
-                    task?.taskId ||
-                    task?.id
+                taskId
 
             }
         );
+
 
         return false;
 
@@ -30120,24 +31198,83 @@ function moveStage7Task(
 
 
     // ========================================================
+    // SNAPSHOT TASK STATE
+    // ========================================================
+
+    const originalTaskState = {
+
+        placed:
+            task.placed,
+
+        periodIds:
+            Array.isArray(
+                task.periodIds
+            )
+                ? [
+                    ...task.periodIds
+                ]
+                : task.periodIds,
+
+        periodId:
+            task.periodId,
+
+        period_id:
+            task.period_id,
+
+        firstPeriodId:
+            task.firstPeriodId,
+
+        secondPeriodId:
+            task.secondPeriodId,
+
+        roomId:
+            task.roomId,
+
+        room_id:
+            task.room_id,
+
+        stage7MovedEntry:
+            task.stage7MovedEntry ||
+            null
+
+    };
+
+
+    // ========================================================
     // DO NOT MOVE TO THE SAME SLOT
     // ========================================================
 
+    const oldPeriodId =
+        oldPeriod.id ??
+        oldPeriod.period_id ??
+        null;
+
+
+    const newPeriodId =
+        newPeriod.id ??
+        newPeriod.period_id ??
+        null;
+
+
+    const oldRoomId =
+        oldRoom?.id ??
+        oldRoom?.room_id ??
+        null;
+
+
+    const newRoomId =
+        newRoom?.id ??
+        newRoom?.room_id ??
+        null;
+
+
     if (
-        String(
-            oldPeriod.id
-        ) ===
-        String(
-            newPeriod.id
-        ) &&
-        String(
-            oldRoom?.id ||
-            ""
-        ) ===
-        String(
-            newRoom?.id ||
-            ""
-        )
+        oldPeriodId &&
+        newPeriodId &&
+        String(oldPeriodId) ===
+        String(newPeriodId) &&
+        String(oldRoomId || "") ===
+        String(newRoomId || "")
     ) {
 
         return false;
@@ -30147,11 +31284,6 @@ function moveStage7Task(
 
     // ========================================================
     // RELEASE CURRENT SLOT
-    // ========================================================
-    //
-    // The task must be removed from the occupancy indexes
-    // before its new location is tested.
-    //
     // ========================================================
 
     const released =
@@ -30171,19 +31303,17 @@ function moveStage7Task(
             "STAGE 7: Failed to release existing task slot.",
             {
 
-                taskId:
-                    task?.taskId ||
-                    task?.id,
+                taskId,
 
                 oldPeriod:
-                    oldPeriod?.id,
+                    oldPeriodId,
 
                 oldRoom:
-                    oldRoom?.id ||
-                    null
+                    oldRoomId
 
             }
         );
+
 
         return false;
 
@@ -30209,8 +31339,7 @@ function moveStage7Task(
     ) {
 
         // ----------------------------------------------------
-        // New slot is invalid.
-        // Restore original reservation.
+        // RESTORE ORIGINAL SLOT
         // ----------------------------------------------------
 
         const restored =
@@ -30244,16 +31373,13 @@ function moveStage7Task(
                     "STAGE 7: CRITICAL — original slot reservation failed during rollback.",
                     {
 
-                        taskId:
-                            task?.taskId ||
-                            task?.id,
+                        taskId,
 
                         oldPeriod:
-                            oldPeriod?.id,
+                            oldPeriodId,
 
                         oldRoom:
-                            oldRoom?.id ||
-                            null
+                            oldRoomId
 
                     }
                 );
@@ -30267,23 +31393,19 @@ function moveStage7Task(
                 "STAGE 7: CRITICAL — original task slot could not be restored.",
                 {
 
-                    taskId:
-                        task?.taskId ||
-                        task?.id,
+                    taskId,
 
                     oldPeriod:
-                        oldPeriod?.id,
+                        oldPeriodId,
 
                     oldRoom:
-                        oldRoom?.id ||
-                        null,
+                        oldRoomId,
 
                     newPeriod:
-                        newPeriod?.id,
+                        newPeriodId,
 
                     newRoom:
-                        newRoom?.id ||
-                        null,
+                        newRoomId,
 
                     reason:
                         conflict?.reason ||
@@ -30293,6 +31415,41 @@ function moveStage7Task(
             );
 
         }
+
+
+        // Restore task metadata.
+        task.placed =
+            originalTaskState.placed;
+
+        task.periodIds =
+            Array.isArray(
+                originalTaskState.periodIds
+            )
+                ? [
+                    ...originalTaskState.periodIds
+                ]
+                : originalTaskState.periodIds;
+
+        task.periodId =
+            originalTaskState.periodId;
+
+        task.period_id =
+            originalTaskState.period_id;
+
+        task.firstPeriodId =
+            originalTaskState.firstPeriodId;
+
+        task.secondPeriodId =
+            originalTaskState.secondPeriodId;
+
+        task.roomId =
+            originalTaskState.roomId;
+
+        task.room_id =
+            originalTaskState.room_id;
+
+        task.stage7MovedEntry =
+            null;
 
 
         return false;
@@ -30352,9 +31509,7 @@ function moveStage7Task(
                     "STAGE 7: CRITICAL — original slot reservation failed after new-slot reservation failure.",
                     {
 
-                        taskId:
-                            task?.taskId ||
-                            task?.id
+                        taskId
 
                     }
                 );
@@ -30368,21 +31523,53 @@ function moveStage7Task(
                 "STAGE 7: CRITICAL — failed to reserve new slot and original slot is no longer valid.",
                 {
 
-                    taskId:
-                        task?.taskId ||
-                        task?.id,
+                    taskId,
 
                     oldPeriod:
-                        oldPeriod?.id,
+                        oldPeriodId,
 
                     oldRoom:
-                        oldRoom?.id ||
-                        null
+                        oldRoomId
 
                 }
             );
 
         }
+
+
+        // Restore task metadata.
+        task.placed =
+            originalTaskState.placed;
+
+        task.periodIds =
+            Array.isArray(
+                originalTaskState.periodIds
+            )
+                ? [
+                    ...originalTaskState.periodIds
+                ]
+                : originalTaskState.periodIds;
+
+        task.periodId =
+            originalTaskState.periodId;
+
+        task.period_id =
+            originalTaskState.period_id;
+
+        task.firstPeriodId =
+            originalTaskState.firstPeriodId;
+
+        task.secondPeriodId =
+            originalTaskState.secondPeriodId;
+
+        task.roomId =
+            originalTaskState.roomId;
+
+        task.room_id =
+            originalTaskState.room_id;
+
+        task.stage7MovedEntry =
+            null;
 
 
         return false;
@@ -30411,7 +31598,7 @@ function moveStage7Task(
     ) {
 
         // ----------------------------------------------------
-        // Remove the new reservation.
+        // Remove new reservation.
         // ----------------------------------------------------
 
         const releasedNewSlot =
@@ -30431,16 +31618,13 @@ function moveStage7Task(
                 "STAGE 7: CRITICAL — failed to release new slot after entry creation failure.",
                 {
 
-                    taskId:
-                        task?.taskId ||
-                        task?.id,
+                    taskId,
 
                     newPeriod:
-                        newPeriod?.id,
+                        newPeriodId,
 
                     newRoom:
-                        newRoom?.id ||
-                        null
+                        newRoomId
 
                 }
             );
@@ -30449,7 +31633,7 @@ function moveStage7Task(
 
 
         // ----------------------------------------------------
-        // Restore original reservation.
+        // Restore original slot.
         // ----------------------------------------------------
 
         const restored =
@@ -30483,9 +31667,7 @@ function moveStage7Task(
                     "STAGE 7: CRITICAL — original slot could not be re-reserved after entry creation failure.",
                     {
 
-                        taskId:
-                            task?.taskId ||
-                            task?.id
+                        taskId
 
                     }
                 );
@@ -30499,21 +31681,53 @@ function moveStage7Task(
                 "STAGE 7: CRITICAL — original slot could not be restored after entry creation failure.",
                 {
 
-                    taskId:
-                        task?.taskId ||
-                        task?.id,
+                    taskId,
 
                     oldPeriod:
-                        oldPeriod?.id,
+                        oldPeriodId,
 
                     oldRoom:
-                        oldRoom?.id ||
-                        null
+                        oldRoomId
 
                 }
             );
 
         }
+
+
+        // Restore task metadata.
+        task.placed =
+            originalTaskState.placed;
+
+        task.periodIds =
+            Array.isArray(
+                originalTaskState.periodIds
+            )
+                ? [
+                    ...originalTaskState.periodIds
+                ]
+                : originalTaskState.periodIds;
+
+        task.periodId =
+            originalTaskState.periodId;
+
+        task.period_id =
+            originalTaskState.period_id;
+
+        task.firstPeriodId =
+            originalTaskState.firstPeriodId;
+
+        task.secondPeriodId =
+            originalTaskState.secondPeriodId;
+
+        task.roomId =
+            originalTaskState.roomId;
+
+        task.room_id =
+            originalTaskState.room_id;
+
+        task.stage7MovedEntry =
+            null;
 
 
         return false;
@@ -30531,16 +31745,16 @@ function moveStage7Task(
 
     task.periodIds =
         [
-            newPeriod.id
+            newPeriodId
         ];
 
 
     task.periodId =
-        newPeriod.id;
+        newPeriodId;
 
 
     task.period_id =
-        newPeriod.id;
+        newPeriodId;
 
 
     task.firstPeriodId =
@@ -30552,26 +31766,75 @@ function moveStage7Task(
 
 
     task.roomId =
-        newRoom?.id ||
+        newRoomId ||
         null;
 
 
     task.room_id =
-        newRoom?.id ||
+        newRoomId ||
         null;
 
 
     // ========================================================
-    // STORE MOVED ENTRY FOR STAGE 7
-    // ========================================================
-    //
-    // attemptStage7Relocation() reads this entry and returns
-    // it together with the repaired failed-task entry.
-    //
+    // STORE MOVED ENTRY
     // ========================================================
 
     task.stage7MovedEntry =
         newEntry;
+
+
+    // ========================================================
+    // SYNCHRONIZE generatorData.placedTasks
+    // ========================================================
+    //
+    // If placedTasks contains the generated entry for this
+    // task, replace it with the new entry.
+    //
+    // If it does not contain the task, do not blindly add a
+    // duplicate here. The caller can add it as appropriate.
+    //
+    // ========================================================
+
+    if (
+        Array.isArray(
+            generatorData.placedTasks
+        ) &&
+        taskId
+    ) {
+
+        const placedIndex =
+            generatorData.placedTasks.findIndex(
+                item => {
+
+                    const itemId =
+                        item?.taskId ??
+                        item?.task_id ??
+                        item?.id ??
+                        null;
+
+
+                    return (
+                        itemId &&
+                        String(itemId) ===
+                        String(taskId)
+                    );
+
+                }
+            );
+
+
+        if (
+            placedIndex >= 0
+        ) {
+
+            generatorData.placedTasks[
+                placedIndex
+            ] =
+                newEntry;
+
+        }
+
+    }
 
 
     // ========================================================
@@ -30582,25 +31845,19 @@ function moveStage7Task(
         "STAGE 7 TASK MOVED:",
         {
 
-            taskId:
-                task?.taskId ||
-                task?.id,
+            taskId,
 
             fromPeriod:
-                oldPeriod?.id ||
-                null,
+                oldPeriodId,
 
             fromRoom:
-                oldRoom?.id ||
-                null,
+                oldRoomId,
 
             toPeriod:
-                newPeriod?.id ||
-                null,
+                newPeriodId,
 
             toRoom:
-                newRoom?.id ||
-                null
+                newRoomId
 
         }
     );
@@ -30609,7 +31866,6 @@ function moveStage7Task(
     return true;
 
 }
-
 
 
 
