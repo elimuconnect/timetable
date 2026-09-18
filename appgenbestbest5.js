@@ -24488,11 +24488,12 @@ function runStage7Repair(
                     "function"
                 ) {
 
-                    result =
-                        repairParallelGroupFailedTask(
-                            task,
-                            generatorData
-                        );
+                   result =
+    repairParallelGroupFailedTask(
+        task,
+        generatorData,
+        indexes
+    );
 
                 }
                 else {
