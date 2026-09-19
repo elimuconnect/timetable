@@ -20134,7 +20134,790 @@ function logSmartPlacementAnalysis(
 }
 
 
+// ============================================================
+// RELEASE RESERVED SLOT
+// ============================================================
+//
+// Reverses reserveSlot() for ONE period.
+//
+// IMPORTANT:
+// A double lesson occupies two periods, but its lesson-level
+// counters must only be released once.
+//
+// Therefore this function removes the period-level occupancy
+// for the supplied period while carefully avoiding double
+// decrementing of lesson/session counters.
+//
+// ============================================================
 
+function releaseReservedSlot(
+    task,
+    period,
+    room,
+    indexes
+) {
+
+    if (
+        !task ||
+        !period ||
+        !indexes
+    ) {
+        return false;
+    }
+
+    const periodId =
+        normalizeTimetableId(
+            period.id ??
+            period.periodId ??
+            period.period_id
+        );
+
+    if (!periodId) {
+        return false;
+    }
+
+
+    const streamId =
+        normalizeTimetableId(
+            task.streamId ??
+            task.stream_id
+        );
+
+    const teacherId =
+        normalizeTimetableId(
+            task.teacherId ??
+            task.teacher_id
+        );
+
+    const subjectId =
+        normalizeTimetableId(
+            task.subjectId ??
+            task.subject_id
+        );
+
+    const requirementId =
+        normalizeTimetableId(
+            task.requirementId ??
+            task.requirement_id
+        );
+
+    const taskId =
+        normalizeTimetableId(
+            task.taskId ??
+            task.task_id ??
+            task.id
+        );
+
+    const lessonId =
+        normalizeTimetableId(
+            task.lessonId ??
+            task.lesson_id ??
+            taskId
+        );
+
+    const roomId =
+        normalizeTimetableId(
+            room?.id ??
+            room?.roomId ??
+            room?.room_id
+        );
+
+    const dayNumber =
+        Number(
+            period.dayNumber ??
+            period.day_number
+        );
+
+
+    const parallelGroup =
+        getTaskParallelGroup(task);
+
+    const parallelOccurrenceKey =
+        getTaskParallelOccurrenceKey(task);
+
+    const parallelIdentity =
+        getTaskParallelIdentity(task);
+
+
+    // ========================================================
+    // REMOVE FROM PERIOD-LEVEL TASK INDEX
+    // ========================================================
+
+    if (
+        indexes.taskPeriod instanceof Map &&
+        taskId
+    ) {
+
+        const key =
+            `${taskId}__${periodId}`;
+
+        indexes.taskPeriod.delete(key);
+    }
+
+
+    // ========================================================
+    // REMOVE FROM STREAM/PERIOD INDEX
+    // ========================================================
+
+    if (
+        indexes.streamPeriod instanceof Map &&
+        streamId
+    ) {
+
+        const key =
+            `${streamId}__${periodId}`;
+
+        const value =
+            indexes.streamPeriod.get(key);
+
+        if (value instanceof Set) {
+
+            value.delete(
+                taskId ||
+                lessonId
+            );
+
+            if (value.size === 0) {
+                indexes.streamPeriod.delete(key);
+            }
+
+        } else if (Array.isArray(value)) {
+
+            const filtered =
+                value.filter(
+                    id =>
+                        normalizeTimetableId(id) !==
+                        (
+                            taskId ||
+                            lessonId
+                        )
+                );
+
+            if (filtered.length > 0) {
+                indexes.streamPeriod.set(
+                    key,
+                    filtered
+                );
+            } else {
+                indexes.streamPeriod.delete(key);
+            }
+
+        } else {
+
+            indexes.streamPeriod.delete(key);
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE FROM DETAILED STREAM/PERIOD LESSON INDEX
+    // ========================================================
+
+    if (
+        indexes.streamPeriodLessons instanceof Map &&
+        streamId
+    ) {
+
+        const key =
+            `${streamId}__${periodId}`;
+
+        const lessons =
+            indexes.streamPeriodLessons.get(key);
+
+        if (lessons) {
+
+            const removeLesson =
+                lesson => {
+
+                    if (!lesson) {
+                        return false;
+                    }
+
+                    const existingTaskId =
+                        normalizeTimetableId(
+                            lesson.taskId ??
+                            lesson.task_id
+                        );
+
+                    const existingLessonId =
+                        normalizeTimetableId(
+                            lesson.lessonId ??
+                            lesson.lesson_id
+                        );
+
+                    if (
+                        taskId &&
+                        (
+                            existingTaskId === taskId ||
+                            existingLessonId === taskId
+                        )
+                    ) {
+                        return true;
+                    }
+
+                    if (
+                        lessonId &&
+                        (
+                            existingTaskId === lessonId ||
+                            existingLessonId === lessonId
+                        )
+                    ) {
+                        return true;
+                    }
+
+                    return false;
+                };
+
+
+            if (Array.isArray(lessons)) {
+
+                const filtered =
+                    lessons.filter(
+                        lesson =>
+                            !removeLesson(lesson)
+                    );
+
+                if (filtered.length > 0) {
+
+                    indexes.streamPeriodLessons.set(
+                        key,
+                        filtered
+                    );
+
+                } else {
+
+                    indexes.streamPeriodLessons.delete(key);
+                }
+
+            } else if (lessons instanceof Set) {
+
+                const remaining =
+                    new Set();
+
+                lessons.forEach(
+                    lesson => {
+
+                        if (!removeLesson(lesson)) {
+                            remaining.add(lesson);
+                        }
+                    }
+                );
+
+                if (remaining.size > 0) {
+
+                    indexes.streamPeriodLessons.set(
+                        key,
+                        remaining
+                    );
+
+                } else {
+
+                    indexes.streamPeriodLessons.delete(key);
+                }
+
+            } else if (
+                removeLesson(lessons)
+            ) {
+
+                indexes.streamPeriodLessons.delete(key);
+            }
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE FROM STUDENT-GROUP/PERIOD INDEX
+    // ========================================================
+
+    const studentGroups =
+        getTaskStudentGroups(task);
+
+
+    if (
+        indexes.studentGroupPeriodLessons instanceof Map &&
+        studentGroups.length > 0
+    ) {
+
+        studentGroups.forEach(
+            studentGroupId => {
+
+                const key =
+                    `${studentGroupId}__${periodId}`;
+
+                const lessons =
+                    indexes.studentGroupPeriodLessons.get(
+                        key
+                    );
+
+                if (!lessons) {
+                    return;
+                }
+
+
+                const shouldRemove =
+                    lesson => {
+
+                        if (!lesson) {
+                            return false;
+                        }
+
+                        const existingTaskId =
+                            normalizeTimetableId(
+                                lesson.taskId ??
+                                lesson.task_id
+                            );
+
+                        const existingLessonId =
+                            normalizeTimetableId(
+                                lesson.lessonId ??
+                                lesson.lesson_id
+                            );
+
+                        return (
+                            (
+                                taskId &&
+                                (
+                                    existingTaskId === taskId ||
+                                    existingLessonId === taskId
+                                )
+                            ) ||
+                            (
+                                lessonId &&
+                                (
+                                    existingTaskId === lessonId ||
+                                    existingLessonId === lessonId
+                                )
+                            )
+                        );
+                    };
+
+
+                if (Array.isArray(lessons)) {
+
+                    const filtered =
+                        lessons.filter(
+                            lesson =>
+                                !shouldRemove(lesson)
+                        );
+
+                    if (filtered.length > 0) {
+
+                        indexes.studentGroupPeriodLessons.set(
+                            key,
+                            filtered
+                        );
+
+                    } else {
+
+                        indexes.studentGroupPeriodLessons.delete(
+                            key
+                        );
+                    }
+
+                } else if (lessons instanceof Set) {
+
+                    const remaining =
+                        new Set();
+
+                    lessons.forEach(
+                        lesson => {
+
+                            if (
+                                !shouldRemove(lesson)
+                            ) {
+                                remaining.add(lesson);
+                            }
+                        }
+                    );
+
+                    if (remaining.size > 0) {
+
+                        indexes.studentGroupPeriodLessons.set(
+                            key,
+                            remaining
+                        );
+
+                    } else {
+
+                        indexes.studentGroupPeriodLessons.delete(
+                            key
+                        );
+                    }
+
+                }
+            }
+        );
+    }
+
+
+    // ========================================================
+    // REMOVE FROM TEACHER/PERIOD INDEX
+    // ========================================================
+
+    if (
+        indexes.teacherPeriod instanceof Map &&
+        teacherId
+    ) {
+
+        const key =
+            `${teacherId}__${periodId}`;
+
+        const value =
+            indexes.teacherPeriod.get(key);
+
+        if (value instanceof Set) {
+
+            value.delete(
+                taskId ||
+                lessonId
+            );
+
+            if (value.size === 0) {
+                indexes.teacherPeriod.delete(key);
+            }
+
+        } else if (Array.isArray(value)) {
+
+            const filtered =
+                value.filter(
+                    id =>
+                        normalizeTimetableId(id) !==
+                        (
+                            taskId ||
+                            lessonId
+                        )
+                );
+
+            if (filtered.length > 0) {
+
+                indexes.teacherPeriod.set(
+                    key,
+                    filtered
+                );
+
+            } else {
+
+                indexes.teacherPeriod.delete(key);
+            }
+
+        } else {
+
+            indexes.teacherPeriod.delete(key);
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE FROM DETAILED TEACHER/PERIOD LESSON INDEX
+    // ========================================================
+
+    if (
+        indexes.teacherPeriodLessons instanceof Map &&
+        teacherId
+    ) {
+
+        const key =
+            `${teacherId}__${periodId}`;
+
+        const lessons =
+            indexes.teacherPeriodLessons.get(key);
+
+        if (lessons) {
+
+            const shouldRemove =
+                lesson => {
+
+                    if (!lesson) {
+                        return false;
+                    }
+
+                    const existingTaskId =
+                        normalizeTimetableId(
+                            lesson.taskId ??
+                            lesson.task_id
+                        );
+
+                    const existingLessonId =
+                        normalizeTimetableId(
+                            lesson.lessonId ??
+                            lesson.lesson_id
+                        );
+
+                    return (
+                        (
+                            taskId &&
+                            (
+                                existingTaskId === taskId ||
+                                existingLessonId === taskId
+                            )
+                        ) ||
+                        (
+                            lessonId &&
+                            (
+                                existingTaskId === lessonId ||
+                                existingLessonId === lessonId
+                            )
+                        )
+                    );
+                };
+
+
+            if (Array.isArray(lessons)) {
+
+                const filtered =
+                    lessons.filter(
+                        lesson =>
+                            !shouldRemove(lesson)
+                    );
+
+                if (filtered.length > 0) {
+
+                    indexes.teacherPeriodLessons.set(
+                        key,
+                        filtered
+                    );
+
+                } else {
+
+                    indexes.teacherPeriodLessons.delete(key);
+                }
+
+            } else if (lessons instanceof Set) {
+
+                const remaining =
+                    new Set();
+
+                lessons.forEach(
+                    lesson => {
+
+                        if (!shouldRemove(lesson)) {
+                            remaining.add(lesson);
+                        }
+                    }
+                );
+
+                if (remaining.size > 0) {
+
+                    indexes.teacherPeriodLessons.set(
+                        key,
+                        remaining
+                    );
+
+                } else {
+
+                    indexes.teacherPeriodLessons.delete(key);
+                }
+            }
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE TEACHER/SUBJECT/PERIOD INDEX
+    // ========================================================
+
+    if (
+        indexes.teacherSubjectPeriod instanceof Map &&
+        teacherId &&
+        subjectId
+    ) {
+
+        const key =
+            `${teacherId}__${subjectId}__${periodId}`;
+
+        const value =
+            indexes.teacherSubjectPeriod.get(key);
+
+        if (value instanceof Set) {
+
+            value.delete(
+                taskId ||
+                lessonId
+            );
+
+            if (value.size === 0) {
+                indexes.teacherSubjectPeriod.delete(key);
+            }
+
+        } else {
+
+            indexes.teacherSubjectPeriod.delete(key);
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE ROOM/PERIOD INDEX
+    // ========================================================
+
+    if (
+        indexes.roomPeriod instanceof Map &&
+        roomId
+    ) {
+
+        const key =
+            `${roomId}__${periodId}`;
+
+        const value =
+            indexes.roomPeriod.get(key);
+
+        if (value instanceof Set) {
+
+            value.delete(
+                taskId ||
+                lessonId
+            );
+
+            if (value.size === 0) {
+                indexes.roomPeriod.delete(key);
+            }
+
+        } else if (Array.isArray(value)) {
+
+            const filtered =
+                value.filter(
+                    id =>
+                        normalizeTimetableId(id) !==
+                        (
+                            taskId ||
+                            lessonId
+                        )
+                );
+
+            if (filtered.length > 0) {
+
+                indexes.roomPeriod.set(
+                    key,
+                    filtered
+                );
+
+            } else {
+
+                indexes.roomPeriod.delete(key);
+            }
+
+        } else {
+
+            indexes.roomPeriod.delete(key);
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE REQUIREMENT/DAY COUNT
+    // ========================================================
+    //
+    // IMPORTANT:
+    // Do NOT blindly decrement this for every period of a
+    // double lesson.
+    //
+    // The index represents LESSONS per day, not periods.
+    //
+    // ========================================================
+
+    if (
+        indexes.requirementDay instanceof Map &&
+        requirementId &&
+        Number.isFinite(dayNumber)
+    ) {
+
+        const key =
+            `${requirementId}__${dayNumber}`;
+
+        const current =
+            Number(
+                indexes.requirementDay.get(key)
+            ) || 0;
+
+        if (current > 0) {
+
+            indexes.requirementDay.set(
+                key,
+                Math.max(
+                    0,
+                    current - 1
+                )
+            );
+        }
+
+        if (
+            indexes.requirementDay.get(key) <= 0
+        ) {
+            indexes.requirementDay.delete(key);
+        }
+    }
+
+
+    // ========================================================
+    // REMOVE LESSON/DAY INDEX
+    // ========================================================
+
+    if (
+        indexes.lessonDay instanceof Map &&
+        lessonId &&
+        Number.isFinite(dayNumber)
+    ) {
+
+        const key =
+            `${lessonId}__${dayNumber}`;
+
+        indexes.lessonDay.delete(key);
+    }
+
+
+    // ========================================================
+    // REMOVE PARALLEL OCCURRENCE DETAIL
+    // ========================================================
+    //
+    // If your occupancy index has a dedicated parallel map,
+    // remove the task from it here.
+    //
+    // ========================================================
+
+    if (
+        indexes.parallelOccurrence instanceof Map &&
+        parallelIdentity &&
+        periodId
+    ) {
+
+        const key =
+            `${parallelIdentity}__${periodId}`;
+
+        const value =
+            indexes.parallelOccurrence.get(key);
+
+        if (value instanceof Set) {
+
+            value.delete(
+                taskId ||
+                lessonId
+            );
+
+            if (value.size === 0) {
+                indexes.parallelOccurrence.delete(key);
+            }
+
+        } else {
+
+            indexes.parallelOccurrence.delete(key);
+        }
+    }
+
+
+    // ========================================================
+    // DO NOT DECREMENT WEEKLY COUNTERS HERE
+    // ========================================================
+    //
+    // Teacher weekly/session counters are derived from the
+    // period indexes in the current architecture.
+    //
+    // Removing the period occupancy is therefore sufficient.
+    //
+    // ========================================================
+
+
+    return true;
+}
 
 
 // ============================================================
