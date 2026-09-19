@@ -1012,21 +1012,20 @@ function normalizeParallelGroupKey(
 }
 
 
+
 // ============================================================
 // BUILD SCHOOL-WIDE PARALLEL GROUP INDEX
 // ============================================================
 //
-// IMPORTANT:
+// PURPOSE:
 //
-// A parallel group is NOT a property of one stream only.
-//
-// It is a school-wide synchronization group.
+// A parallel group is SCHOOL-WIDE.
 //
 // Example:
 //
 //     RE/GE/BS
 //
-// may exist in:
+// If the group exists in:
 //
 //     10A
 //     10B
@@ -1034,11 +1033,11 @@ function normalizeParallelGroupKey(
 //     10D
 //     10E
 //
-// This function records all participating streams and
-// requirements.
+// then ALL participating requirements must ultimately use the
+// SAME parallel occurrence period.
 //
-// Later placement code can therefore require ONE common
-// period for the complete participating set.
+// The index created here is the authoritative description of
+// which streams and requirements belong to each group.
 //
 // ============================================================
 
@@ -1060,6 +1059,10 @@ function buildParallelGroupIndex(
     }
 
 
+    // ========================================================
+    // BUILD STREAM LOOKUP
+    // ========================================================
+
     const streamMap =
         new Map();
 
@@ -1072,21 +1075,29 @@ function buildParallelGroupIndex(
             stream => {
 
                 if (
-                    stream?.id
+                    !stream ||
+                    !stream.id
                 ) {
 
-                    streamMap.set(
-                        stream.id,
-                        stream
-                    );
+                    return;
 
                 }
+
+
+                streamMap.set(
+                    String(stream.id),
+                    stream
+                );
 
             }
         );
 
     }
 
+
+    // ========================================================
+    // PROCESS REQUIREMENTS
+    // ========================================================
 
     requirements.forEach(
         requirement => {
@@ -1102,9 +1113,14 @@ function buildParallelGroupIndex(
 
             const groupKey =
                 normalizeParallelGroupKey(
-                    requirement.parallelGroup
+                    requirement.parallelGroup ??
+                    requirement.parallel_group
                 );
 
+
+            // ------------------------------------------------
+            // REQUIREMENT IS NOT PARALLEL
+            // ------------------------------------------------
 
             if (
                 !groupKey
@@ -1114,6 +1130,10 @@ function buildParallelGroupIndex(
 
             }
 
+
+            // ------------------------------------------------
+            // CREATE GROUP
+            // ------------------------------------------------
 
             if (
                 !parallelGroups.has(
@@ -1127,12 +1147,28 @@ function buildParallelGroupIndex(
 
                         groupKey,
 
+                        // Map:
+                        //
+                        // streamId -> {
+                        //     streamId,
+                        //     stream,
+                        //     requirements: []
+                        // }
+                        //
                         streams:
                             new Map(),
 
+                        // ALL requirements participating
+                        // in this parallel group.
                         requirements:
                             [],
 
+                        // subjectId -> requirement list
+                        //
+                        // IMPORTANT:
+                        // The same subject may exist in several
+                        // streams, so do NOT store only one
+                        // requirement per subject.
                         subjects:
                             new Map(),
 
@@ -1143,6 +1179,7 @@ function buildParallelGroupIndex(
                             new Set()
 
                     }
+
                 );
 
             }
@@ -1154,41 +1191,64 @@ function buildParallelGroupIndex(
                 );
 
 
+            // =================================================
+            // NORMALIZED IDS
+            // =================================================
+
             const streamId =
-                requirement.streamId ||
+                requirement.streamId ??
+                requirement.stream_id ??
                 null;
 
 
-            // ------------------------------------------------
+            const requirementId =
+                requirement.requirementId ??
+                requirement.id ??
+                null;
+
+
+            const subjectId =
+                requirement.subjectId ??
+                requirement.subject_id ??
+                null;
+
+
+            // =================================================
             // REGISTER STREAM
-            // ------------------------------------------------
+            // =================================================
 
             if (
                 streamId
             ) {
 
+                const normalizedStreamId =
+                    String(streamId);
+
+
                 group.streamIds.add(
-                    streamId
+                    normalizedStreamId
                 );
 
 
                 const stream =
                     streamMap.get(
-                        streamId
-                    ) || null;
+                        normalizedStreamId
+                    ) ||
+                    null;
 
 
                 if (
                     !group.streams.has(
-                        streamId
+                        normalizedStreamId
                     )
                 ) {
 
                     group.streams.set(
-                        streamId,
+                        normalizedStreamId,
                         {
 
-                            streamId,
+                            streamId:
+                                normalizedStreamId,
 
                             stream,
 
@@ -1203,7 +1263,9 @@ function buildParallelGroupIndex(
 
 
                 group.streams
-                    .get(streamId)
+                    .get(
+                        normalizedStreamId
+                    )
                     .requirements
                     .push(
                         requirement
@@ -1212,40 +1274,117 @@ function buildParallelGroupIndex(
             }
 
 
-            // ------------------------------------------------
+            // =================================================
             // REGISTER REQUIREMENT
-            // ------------------------------------------------
+            // =================================================
+
+            if (
+                requirementId
+            ) {
+
+                group.requirementIds.add(
+                    String(requirementId)
+                );
+
+            }
+
 
             group.requirements.push(
                 requirement
             );
 
 
-            if (
-                requirement.requirementId
-            ) {
-
-                group.requirementIds.add(
-                    requirement.requirementId
-                );
-
-            }
-
-
-            // ------------------------------------------------
+            // =================================================
             // REGISTER SUBJECT
-            // ------------------------------------------------
+            // =================================================
+            //
+            // A subject can occur in multiple streams.
+            //
+            // Therefore:
+            //
+            // subjects Map
+            //
+            // stores:
+            //
+            // subjectId -> Array of requirements
+            //
+            // rather than:
+            //
+            // subjectId -> one requirement
+            //
+            // =================================================
 
             if (
-                requirement.subjectId
+                subjectId
             ) {
 
-                group.subjects.set(
-                    requirement.subjectId,
-                    requirement
-                );
+                const normalizedSubjectId =
+                    String(subjectId);
+
+
+                if (
+                    !group.subjects.has(
+                        normalizedSubjectId
+                    )
+                ) {
+
+                    group.subjects.set(
+                        normalizedSubjectId,
+                        []
+                    );
+
+                }
+
+
+                group.subjects
+                    .get(
+                        normalizedSubjectId
+                    )
+                    .push(
+                        requirement
+                    );
 
             }
+
+        }
+    );
+
+
+    // ========================================================
+    // CONVERT IMPORTANT SETS TO DETERMINISTIC ARRAYS
+    // ========================================================
+    //
+    // We keep the Sets above because they are useful for fast
+    // membership checking.
+    //
+    // These arrays make later processing predictable.
+    //
+    // ========================================================
+
+    parallelGroups.forEach(
+        group => {
+
+            group.streamIdList =
+                [...group.streamIds];
+
+
+            group.requirementIdList =
+                [...group.requirementIds];
+
+
+            group.streamList =
+                group.streamIdList
+                    .map(
+                        streamId =>
+                            group.streams.get(
+                                streamId
+                            )
+                    )
+                    .filter(Boolean);
+
+
+            group.requirementList =
+                [...group.requirements];
 
         }
     );
@@ -1275,20 +1414,59 @@ function buildParallelGroupIndex(
                 "Parallel group:",
                 group.groupKey,
                 {
+
                     streams:
                         group.streamIds.size,
+
+                    streamIds:
+                        group.streamIdList,
 
                     requirements:
                         group.requirements.length,
 
-                    subjects:
-                        group.subjects.size,
-
-                    streamIds:
-                        [...group.streamIds],
-
                     requirementIds:
-                        [...group.requirementIds]
+                        group.requirementIdList,
+
+                    subjects:
+                        group.subjects.size
+
+                }
+            );
+
+
+            group.streamList.forEach(
+                streamInfo => {
+
+                    console.log(
+                        "  Parallel stream:",
+                        streamInfo.streamId,
+                        {
+                            stream:
+                                streamInfo.stream,
+
+                            requirements:
+                                streamInfo.requirements.map(
+                                    requirement => ({
+                                        requirementId:
+                                            requirement.requirementId,
+
+                                        subjectId:
+                                            requirement.subjectId,
+
+                                        teacherId:
+                                            requirement.teacherId,
+
+                                        lessonsPerWeek:
+                                            requirement.lessonsPerWeek,
+
+                                        doubleLessonsPerWeek:
+                                            requirement.doubleLessonsPerWeek
+
+                                    })
+                                )
+
+                        }
+                    );
 
                 }
             );
@@ -1308,6 +1486,11 @@ function buildParallelGroupIndex(
 }
 
 
+
+
+// ============================================================
+// NORMALIZE GENERATOR DATA
+// ============================================================
 
 
 // ============================================================
@@ -1423,8 +1606,8 @@ function normalizeGeneratorData(
 
                 const periodType =
                     String(
-                        period?.period_type ||
-                        period?.periodType ||
+                        period?.period_type ??
+                        period?.periodType ??
                         "lesson"
                     )
                         .trim()
@@ -1513,40 +1696,40 @@ function normalizeGeneratorData(
                 return {
 
                     // ------------------------------------------------
-                    // KEEP ORIGINAL DATABASE FIELDS
+                    // PRESERVE ORIGINAL DATABASE FIELDS
                     // ------------------------------------------------
 
                     ...requirement,
 
 
                     // ------------------------------------------------
-                    // IDENTITY
+                    // NORMALIZED IDENTITY
                     // ------------------------------------------------
 
                     requirementId:
-                        requirement?.id ||
-                        requirement?.requirementId ||
+                        requirement?.id ??
+                        requirement?.requirementId ??
                         null,
 
                     schoolId:
-                        requirement?.school_id ||
-                        requirement?.schoolId ||
-                        normalized.schoolId ||
+                        requirement?.school_id ??
+                        requirement?.schoolId ??
+                        normalized.schoolId ??
                         null,
 
                     streamId:
-                        requirement?.stream_id ||
-                        requirement?.streamId ||
+                        requirement?.stream_id ??
+                        requirement?.streamId ??
                         null,
 
                     subjectId:
-                        requirement?.subject_id ||
-                        requirement?.subjectId ||
+                        requirement?.subject_id ??
+                        requirement?.subjectId ??
                         null,
 
                     teacherId:
-                        requirement?.teacher_id ||
-                        requirement?.teacherId ||
+                        requirement?.teacher_id ??
+                        requirement?.teacherId ??
                         null,
 
 
@@ -1585,8 +1768,8 @@ function normalizeGeneratorData(
 
 
                     roomTypeId:
-                        requirement?.room_type_id ||
-                        requirement?.roomTypeId ||
+                        requirement?.room_type_id ??
+                        requirement?.roomTypeId ??
                         null,
 
 
@@ -1640,41 +1823,53 @@ function normalizeGeneratorData(
         normalized.teachers.map(
             teacher => {
 
+                const maxLessonsPerDay =
+                    Number(
+                        teacher?.max_lessons_per_day ??
+                        teacher?.maxLessonsPerDay
+                    );
+
+
+                const maxLessonsPerWeek =
+                    Number(
+                        teacher?.max_lessons_per_week ??
+                        teacher?.maxLessonsPerWeek
+                    );
+
+
+                const maxConsecutiveLessons =
+                    Number(
+                        teacher?.max_consecutive_lessons ??
+                        teacher?.maxConsecutiveLessons
+                    );
+
+
                 return {
 
                     ...teacher,
 
                     maxLessonsPerDay:
-                        Number(
-                            teacher?.max_lessons_per_day ??
-                            teacher?.maxLessonsPerDay
-                        ) > 0
-                            ? Number(
-                                teacher?.max_lessons_per_day ??
-                                teacher?.maxLessonsPerDay
-                            )
+                        Number.isFinite(
+                            maxLessonsPerDay
+                        ) &&
+                        maxLessonsPerDay > 0
+                            ? maxLessonsPerDay
                             : 6,
 
                     maxLessonsPerWeek:
-                        Number(
-                            teacher?.max_lessons_per_week ??
-                            teacher?.maxLessonsPerWeek
-                        ) > 0
-                            ? Number(
-                                teacher?.max_lessons_per_week ??
-                                teacher?.maxLessonsPerWeek
-                            )
+                        Number.isFinite(
+                            maxLessonsPerWeek
+                        ) &&
+                        maxLessonsPerWeek > 0
+                            ? maxLessonsPerWeek
                             : 30,
 
                     maxConsecutiveLessons:
-                        Number(
-                            teacher?.max_consecutive_lessons ??
-                            teacher?.maxConsecutiveLessons
-                        ) > 0
-                            ? Number(
-                                teacher?.max_consecutive_lessons ??
-                                teacher?.maxConsecutiveLessons
-                            )
+                        Number.isFinite(
+                            maxConsecutiveLessons
+                        ) &&
+                        maxConsecutiveLessons > 0
+                            ? maxConsecutiveLessons
                             : 3
 
                 };
@@ -1700,13 +1895,13 @@ function normalizeGeneratorData(
                     // ------------------------------------------------
 
                     roomTypeId:
-                        room?.room_type_id ||
-                        room?.roomTypeId ||
+                        room?.room_type_id ??
+                        room?.roomTypeId ??
                         null,
 
 
                     // ------------------------------------------------
-                    // LEGACY ROOM TYPE TEXT
+                    // NORMALIZED ROOM TYPE
                     // ------------------------------------------------
 
                     roomType:
@@ -1733,18 +1928,20 @@ function normalizeGeneratorData(
     // BUILD SCHOOL-WIDE PARALLEL GROUP INDEX
     // ========================================================
     //
-    // THIS IS THE IMPORTANT NEW PART.
+    // IMPORTANT:
     //
-    // Every requirement belonging to the same parallel_group
-    // is collected across ALL streams.
+    // This MUST happen AFTER requirements have been
+    // normalized.
     //
-    // Later placement logic can therefore synchronize:
+    // Therefore buildParallelGroupIndex() receives:
     //
-    //     stream A
-    //     stream B
-    //     stream C
+    //     requirement.requirementId
+    //     requirement.streamId
+    //     requirement.subjectId
+    //     requirement.teacherId
+    //     requirement.parallelGroup
     //
-    // at exactly the same day + period.
+    // in their normalized form.
     //
     // ========================================================
 
@@ -1756,12 +1953,10 @@ function normalizeGeneratorData(
 
 
     // ========================================================
-    // REBUILD LOOKUPS
+    // REBUILD LOOKUP MAPS
     // ========================================================
     //
-    // IMPORTANT:
-    //
-    // Rooms are now normalized BEFORE lookup maps are built.
+    // Rooms are already normalized before this point.
     //
     // ========================================================
 
@@ -1776,21 +1971,51 @@ function normalizeGeneratorData(
     // ========================================================
 
     console.log(
-        "Generator data normalized successfully."
+        "======================================"
     );
 
+    console.log(
+        "GENERATOR DATA NORMALIZED"
+    );
+
+    console.log(
+        "======================================"
+    );
 
     console.log(
         "Normalized requirements:",
-        normalized.requirements
+        normalized.requirements.length
     );
 
+    console.log(
+        "Normalized periods:",
+        normalized.periods.length
+    );
+
+    console.log(
+        "Normalized streams:",
+        normalized.streams.length
+    );
+
+    console.log(
+        "Normalized subjects:",
+        normalized.subjects.length
+    );
+
+    console.log(
+        "Normalized teachers:",
+        normalized.teachers.length
+    );
+
+    console.log(
+        "Normalized rooms:",
+        normalized.rooms.length
+    );
 
     console.log(
         "School-wide parallel groups:",
         normalized.parallelGroups
     );
-
 
     console.log(
         "Parallel group count:",
@@ -1805,18 +2030,47 @@ function normalizeGeneratorData(
 
 
 
-
-
 // ============================================================
 // VALIDATE GENERATOR RELATIONSHIPS
 // ============================================================
+//
+// PURPOSE:
+//
+// Validates that the normalized generator data has valid
+// relationships between:
+//
+//     school
+//     streams
+//     subjects
+//     teachers
+//     rooms
+//     requirements
+//     parallel groups
+//
+// IMPORTANT:
+//
+// Parallel groups are SCHOOL-WIDE.
+//
+// Therefore this function validates the complete group
+// structure before lesson tasks are created.
+//
+// It does NOT decide the occurrence numbering.
+// That responsibility belongs to createLessonTasks().
+//
+// ============================================================
 
-function validateGeneratorRelationships(data) {
+function validateGeneratorRelationships(
+    data
+) {
 
     const errors = [];
 
     const warnings = [];
 
+
+    // ========================================================
+    // BASIC DATA VALIDATION
+    // ========================================================
 
     if (
         !data ||
@@ -1893,9 +2147,33 @@ function validateGeneratorRelationships(data) {
         data.requirements.forEach(
             requirement => {
 
+                if (
+                    !requirement ||
+                    typeof requirement !== "object"
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "INVALID_REQUIREMENT",
+
+                        message:
+                            "An invalid timetable requirement was supplied."
+
+                    });
+
+                    return;
+
+                }
+
+
+                // =================================================
+                // REQUIREMENT ID
+                // =================================================
+
                 const requirementId =
-                    requirement.requirementId ||
-                    requirement.id ||
+                    requirement.requirementId ??
+                    requirement.id ??
                     null;
 
 
@@ -1916,14 +2194,21 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // SCHOOL
-                // ------------------------------------------------
+                // =================================================
+
+                const requirementSchoolId =
+                    requirement.schoolId ??
+                    requirement.school_id ??
+                    null;
+
 
                 if (
-                    requirement.schoolId &&
+                    requirementSchoolId &&
                     schoolId &&
-                    requirement.schoolId !== schoolId
+                    String(requirementSchoolId) !==
+                    String(schoolId)
                 ) {
 
                     errors.push({
@@ -1941,13 +2226,17 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // STREAM
-                // ------------------------------------------------
+                // =================================================
 
-                if (
-                    !requirement.streamId
-                ) {
+                const streamId =
+                    requirement.streamId ??
+                    requirement.stream_id ??
+                    null;
+
+
+                if (!streamId) {
 
                     errors.push({
 
@@ -1962,10 +2251,9 @@ function validateGeneratorRelationships(data) {
                     });
 
                 }
-
                 else if (
                     !data.lookup?.streams?.has(
-                        requirement.streamId
+                        streamId
                     )
                 ) {
 
@@ -1976,8 +2264,7 @@ function validateGeneratorRelationships(data) {
 
                         requirementId,
 
-                        streamId:
-                            requirement.streamId,
+                        streamId,
 
                         message:
                             "Requirement references a stream that does not exist."
@@ -1987,13 +2274,17 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // SUBJECT
-                // ------------------------------------------------
+                // =================================================
 
-                if (
-                    !requirement.subjectId
-                ) {
+                const subjectId =
+                    requirement.subjectId ??
+                    requirement.subject_id ??
+                    null;
+
+
+                if (!subjectId) {
 
                     errors.push({
 
@@ -2008,10 +2299,9 @@ function validateGeneratorRelationships(data) {
                     });
 
                 }
-
                 else if (
                     !data.lookup?.subjects?.has(
-                        requirement.subjectId
+                        subjectId
                     )
                 ) {
 
@@ -2022,8 +2312,7 @@ function validateGeneratorRelationships(data) {
 
                         requirementId,
 
-                        subjectId:
-                            requirement.subjectId,
+                        subjectId,
 
                         message:
                             "Requirement references a subject that does not exist."
@@ -2033,13 +2322,17 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // TEACHER
-                // ------------------------------------------------
+                // =================================================
 
-                if (
-                    !requirement.teacherId
-                ) {
+                const teacherId =
+                    requirement.teacherId ??
+                    requirement.teacher_id ??
+                    null;
+
+
+                if (!teacherId) {
 
                     warnings.push({
 
@@ -2054,10 +2347,9 @@ function validateGeneratorRelationships(data) {
                     });
 
                 }
-
                 else if (
                     !data.lookup?.teachers?.has(
-                        requirement.teacherId
+                        teacherId
                     )
                 ) {
 
@@ -2068,8 +2360,7 @@ function validateGeneratorRelationships(data) {
 
                         requirementId,
 
-                        teacherId:
-                            requirement.teacherId,
+                        teacherId,
 
                         message:
                             "Requirement references a teacher that does not exist."
@@ -2079,9 +2370,9 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // LESSON COUNT
-                // ------------------------------------------------
+                // =================================================
 
                 if (
                     !Number.isFinite(
@@ -2105,9 +2396,9 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // DOUBLE LESSON COUNT
-                // ------------------------------------------------
+                // =================================================
 
                 if (
                     !Number.isFinite(
@@ -2159,9 +2450,9 @@ function validateGeneratorRelationships(data) {
                 }
 
 
-                // ------------------------------------------------
+                // =================================================
                 // MAX LESSONS PER DAY
-                // ------------------------------------------------
+                // =================================================
 
                 if (
                     !Number.isFinite(
@@ -2208,7 +2499,9 @@ function validateGeneratorRelationships(data) {
 
 
                     const matchingRooms =
-                        Array.isArray(data.rooms)
+                        Array.isArray(
+                            data.rooms
+                        )
                             ? data.rooms.filter(
                                 room => {
 
@@ -2222,17 +2515,17 @@ function validateGeneratorRelationships(data) {
                                     }
 
 
-                                    // ------------------------------------------------
+                                    // --------------------------------
                                     // AUTHORITATIVE ROOM TYPE ID
-                                    // ------------------------------------------------
+                                    // --------------------------------
 
                                     if (
                                         expectedRoomTypeId
                                     ) {
 
                                         const actualRoomTypeId =
-                                            room.roomTypeId ||
-                                            room.room_type_id ||
+                                            room.roomTypeId ??
+                                            room.room_type_id ??
                                             null;
 
 
@@ -2246,17 +2539,19 @@ function validateGeneratorRelationships(data) {
                                     }
 
 
-                                    // ------------------------------------------------
-                                    // LEGACY TEXT FALLBACK
-                                    // ------------------------------------------------
+                                    // --------------------------------
+                                    // TEXT FALLBACK
+                                    // --------------------------------
 
                                     if (
                                         expectedRoomType
                                     ) {
 
                                         return (
-                                            getTimetableRoomType(
-                                                room
+                                            normalizeRoomType(
+                                                getTimetableRoomType(
+                                                    room
+                                                )
                                             ) ===
                                             expectedRoomType
                                         );
@@ -2264,9 +2559,9 @@ function validateGeneratorRelationships(data) {
                                     }
 
 
-                                    // ------------------------------------------------
-                                    // ROOM REQUIRED BUT NO TYPE
-                                    // ------------------------------------------------
+                                    // --------------------------------
+                                    // ROOM REQUIRED WITHOUT TYPE
+                                    // --------------------------------
 
                                     return true;
 
@@ -2315,15 +2610,15 @@ function validateGeneratorRelationships(data) {
     // SCHOOL-WIDE PARALLEL GROUP VALIDATION
     // ========================================================
     //
-    // Every requirement belonging to the same parallel group
-    // must participate in the same school-wide synchronization
-    // pool.
+    // IMPORTANT:
     //
-    // We do NOT reject different lesson counts here.
+    // The parallel group index was already built during
+    // normalizeGeneratorData().
     //
-    // Instead we report them as warnings because the actual
-    // scheduling engine may still be able to handle the
-    // difference depending on the configured requirements.
+    // Here we verify that the index agrees with the actual
+    // requirements.
+    //
+    // We do NOT create occurrence numbers here.
     //
     // ========================================================
 
@@ -2344,6 +2639,12 @@ function validateGeneratorRelationships(data) {
                 }
 
 
+                const groupKey =
+                    normalizeParallelGroupKey(
+                        group.groupKey
+                    );
+
+
                 const requirements =
                     Array.isArray(
                         group.requirements
@@ -2355,8 +2656,16 @@ function validateGeneratorRelationships(data) {
                 const streamIds =
                     group.streamIds instanceof Set
                         ? [...group.streamIds]
-                        : [];
+                        : Array.isArray(
+                            group.streamIdList
+                        )
+                            ? [...group.streamIdList]
+                            : [];
 
+
+                // =================================================
+                // EMPTY GROUP
+                // =================================================
 
                 if (
                     requirements.length === 0
@@ -2368,7 +2677,7 @@ function validateGeneratorRelationships(data) {
                             "EMPTY_PARALLEL_GROUP",
 
                         parallelGroup:
-                            group.groupKey,
+                            groupKey,
 
                         message:
                             "Parallel group exists but contains no requirements."
@@ -2380,6 +2689,10 @@ function validateGeneratorRelationships(data) {
                 }
 
 
+                // =================================================
+                // SINGLE STREAM GROUP
+                // =================================================
+
                 if (
                     streamIds.length < 2
                 ) {
@@ -2390,38 +2703,190 @@ function validateGeneratorRelationships(data) {
                             "SINGLE_STREAM_PARALLEL_GROUP",
 
                         parallelGroup:
-                            group.groupKey,
+                            groupKey,
 
                         streamCount:
                             streamIds.length,
 
                         message:
-                            "Parallel group currently contains fewer than two streams."
+                            "Parallel group currently contains fewer than two participating streams."
 
                     });
 
                 }
 
 
-                // ------------------------------------------------
-                // Check lesson totals
-                // ------------------------------------------------
+                // =================================================
+                // VERIFY REQUIREMENTS BELONG TO GROUP
+                // =================================================
+
+                requirements.forEach(
+                    requirement => {
+
+                        const requirementGroup =
+                            normalizeParallelGroupKey(
+                                requirement?.parallelGroup ??
+                                requirement?.parallel_group
+                            );
+
+
+                        if (
+                            requirementGroup !==
+                            groupKey
+                        ) {
+
+                            errors.push({
+
+                                type:
+                                    "PARALLEL_GROUP_INDEX_MISMATCH",
+
+                                parallelGroup:
+                                    groupKey,
+
+                                requirementId:
+                                    requirement?.requirementId ??
+                                    requirement?.id ??
+                                    null,
+
+                                message:
+                                    "A requirement in the parallel-group index does not contain the same normalized parallel-group key."
+
+                            });
+
+                        }
+
+                    }
+                );
+
+
+                // =================================================
+                // VERIFY STREAM MEMBERSHIP
+                // =================================================
+
+                const requirementsByStream =
+                    new Map();
+
+
+                requirements.forEach(
+                    requirement => {
+
+                        const streamId =
+                            requirement?.streamId ??
+                            requirement?.stream_id ??
+                            null;
+
+
+                        if (!streamId) {
+
+                            return;
+
+                        }
+
+
+                        const normalizedStreamId =
+                            String(streamId);
+
+
+                        if (
+                            !requirementsByStream.has(
+                                normalizedStreamId
+                            )
+                        ) {
+
+                            requirementsByStream.set(
+                                normalizedStreamId,
+                                []
+                            );
+
+                        }
+
+
+                        requirementsByStream
+                            .get(
+                                normalizedStreamId
+                            )
+                            .push(
+                                requirement
+                            );
+
+                    }
+                );
+
+
+                requirementsByStream.forEach(
+                    (
+                        streamRequirements,
+                        streamId
+                    ) => {
+
+                        if (
+                            !streamIds.includes(
+                                streamId
+                            )
+                        ) {
+
+                            errors.push({
+
+                                type:
+                                    "PARALLEL_STREAM_INDEX_MISMATCH",
+
+                                parallelGroup:
+                                    groupKey,
+
+                                streamId,
+
+                                message:
+                                    "A stream contains a parallel-group requirement but is missing from the parallel-group stream index."
+
+                            });
+
+                        }
+
+                    }
+                );
+
+
+                // =================================================
+                // LESSON COUNT ANALYSIS
+                // =================================================
+                //
+                // We do NOT silently synchronize only the
+                // matching portion.
+                //
+                // We simply identify unequal requirements here.
+                //
+                // createLessonTasks() will determine the actual
+                // school-wide occurrence structure.
+                //
+                // =================================================
 
                 const lessonCounts =
                     requirements.map(
                         requirement => ({
 
                             requirementId:
-                                requirement.requirementId ||
-                                requirement.id ||
+                                requirement?.requirementId ??
+                                requirement?.id ??
                                 null,
 
                             streamId:
-                                requirement.streamId,
+                                requirement?.streamId ??
+                                requirement?.stream_id ??
+                                null,
+
+                            subjectId:
+                                requirement?.subjectId ??
+                                requirement?.subject_id ??
+                                null,
 
                             lessonsPerWeek:
                                 Number(
-                                    requirement.lessonsPerWeek
+                                    requirement?.lessonsPerWeek
+                                ) || 0,
+
+                            doubleLessonsPerWeek:
+                                Number(
+                                    requirement?.doubleLessonsPerWeek
                                 ) || 0
 
                         })
@@ -2447,16 +2912,77 @@ function validateGeneratorRelationships(data) {
                             "PARALLEL_GROUP_LESSON_COUNT_MISMATCH",
 
                         parallelGroup:
-                            group.groupKey,
+                            groupKey,
 
                         lessonCounts,
 
                         message:
-                            "Requirements in this parallel group have different lessons-per-week totals. Matching occurrences will be synchronized, while unmatched occurrences may remain unsynchronized."
+                            "Requirements in this parallel group have different lessons-per-week totals. The task-generation stage must establish a school-wide occurrence structure rather than independently numbering occurrences per stream."
 
                     });
 
                 }
+
+
+                // =================================================
+                // DOUBLE LESSON ANALYSIS
+                // =================================================
+
+                const doubleLessonCounts =
+                    new Set(
+                        lessonCounts.map(
+                            item =>
+                                item.doubleLessonsPerWeek
+                        )
+                    );
+
+
+                if (
+                    doubleLessonCounts.size > 1
+                ) {
+
+                    warnings.push({
+
+                        type:
+                            "PARALLEL_GROUP_DOUBLE_COUNT_MISMATCH",
+
+                        parallelGroup:
+                            groupKey,
+
+                        lessonCounts,
+
+                        message:
+                            "Requirements in this parallel group have different double-lesson counts. The task-generation stage must preserve a consistent school-wide occurrence identity."
+
+                    });
+
+                }
+
+
+                // =================================================
+                // STREAM SUMMARY
+                // =================================================
+
+                console.log(
+                    "Parallel group validation:",
+                    {
+
+                        parallelGroup:
+                            groupKey,
+
+                        streamCount:
+                            streamIds.length,
+
+                        streams:
+                            streamIds,
+
+                        requirementCount:
+                            requirements.length,
+
+                        lessonCounts
+
+                    }
+                );
 
             }
         );
@@ -2480,9 +3006,14 @@ function validateGeneratorRelationships(data) {
     };
 
 
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
     console.log(
         "Generator relationship validation:",
         {
+
             valid:
                 result.valid,
 
@@ -2491,6 +3022,7 @@ function validateGeneratorRelationships(data) {
 
             warnings:
                 warnings.length
+
         }
     );
 
@@ -2522,7 +3054,6 @@ function validateGeneratorRelationships(data) {
     return result;
 
 }
-
 
 
 // ============================================================
@@ -3285,7 +3816,7 @@ function validateTimetableGeneratorData(
 // STAGE 2 → STAGE 3 HANDOFF
 // ============================================================
 //
-// Pipeline:
+// PIPELINE:
 //
 // LOAD
 //   ↓
@@ -3302,6 +3833,14 @@ function validateTimetableGeneratorData(
 // VALIDATE LESSON TASKS
 //   ↓
 // STORE READY GENERATOR DATA
+//
+// IMPORTANT:
+//
+// parallelGroups is passed directly into createLessonTasks().
+//
+// This means lesson-task generation has access to the COMPLETE
+// SCHOOL-WIDE parallel-group membership before occurrence
+// numbers are created.
 //
 // ============================================================
 
@@ -3410,7 +3949,9 @@ async function prepareTimetableGeneratorData() {
             relationshipValidation.errors
                 .map(
                     error =>
-                        error.message
+                        typeof error === "string"
+                            ? error
+                            : error.message
                 );
 
 
@@ -3433,22 +3974,19 @@ async function prepareTimetableGeneratorData() {
     //
     // IMPORTANT:
     //
-    // createLessonTasks() now assigns every task belonging
-    // to a parallel group a school-wide occurrence identity.
+    // createLessonTasks() receives:
     //
-    // Example:
+    //     1. ALL normalized requirements
+    //     2. ALL lookup maps
+    //     3. The COMPLETE school-wide parallelGroups Map
     //
-    // RE/GE/BS
+    // This is critical.
     //
-    // occurrence 1
-    // occurrence 2
-    // occurrence 3
-    // occurrence 4
-    // occurrence 5
+    // The task creator must NOT independently reset parallel
+    // occurrence numbering for every requirement.
     //
-    // These occurrence identities are later used by the
-    // placement engine to force the same day + period across
-    // all participating streams.
+    // Instead, the parallel group itself will determine the
+    // school-wide occurrence identity.
     //
     // ========================================================
 
@@ -3458,6 +3996,23 @@ async function prepareTimetableGeneratorData() {
             normalizedData.lookup,
             normalizedData.parallelGroups
         );
+
+
+    // ========================================================
+    // SAFETY CHECK
+    // ========================================================
+
+    if (
+        !Array.isArray(
+            lessonTasks
+        )
+    ) {
+
+        throw new Error(
+            "createLessonTasks() did not return a valid task array."
+        );
+
+    }
 
 
     // ========================================================
@@ -3471,7 +4026,7 @@ async function prepareTimetableGeneratorData() {
 
 
     // ========================================================
-    // STEP 8 — ATTACH TASKS TO NORMALIZED DATA
+    // STEP 8 — ATTACH TASKS
     // ========================================================
 
     normalizedData.lessonTasks =
@@ -3519,12 +4074,18 @@ async function prepareTimetableGeneratorData() {
     // ========================================================
     // RESET PLACEMENT STATE
     // ========================================================
+    //
+    // A new generation must never inherit placed tasks from
+    // an earlier generation.
+    //
+    // ========================================================
 
-    generatorData.placedTasks = [];
+    generatorData.placedTasks =
+        [];
 
 
     // ========================================================
-    // STEP 10 — SUMMARY
+    // SUMMARY
     // ========================================================
 
     logTimetableGeneratorSummary(
@@ -3538,6 +4099,10 @@ async function prepareTimetableGeneratorData() {
 
     console.log(
         "TIMETABLE GENERATOR DATA READY"
+    );
+
+    console.log(
+        "======================================"
     );
 
     console.log(
@@ -3573,6 +4138,7 @@ async function prepareTimetableGeneratorData() {
 
 }
 
+                    
 
    
 function createLessonTasks(
