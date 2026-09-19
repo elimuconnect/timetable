@@ -5816,7 +5816,10 @@ async function prepareTimetableGeneratorData() {
 
 }
 
-  function validateLessonTasks(
+
+
+
+function validateLessonTasks(
     data,
     tasks
 ) {
@@ -5890,19 +5893,6 @@ async function prepareTimetableGeneratorData() {
     // ========================================================
     // TRACK PARALLEL OCCURRENCES
     // ========================================================
-    //
-    // Structure:
-    //
-    // parallelGroup
-    //      |
-    //      +-- occurrenceKey
-    //              |
-    //              +-- requirementId
-    //
-    // This lets us verify that the same school-wide occurrence
-    // exists across all participating requirements.
-    //
-    // ========================================================
 
     const parallelGroups =
         new Map();
@@ -5935,9 +5925,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Duplicate lesson task ID: ${task.taskId}`
-
                 );
 
             }
@@ -5959,9 +5947,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Task ${task.taskId || "[unknown]"} has no requirement ID.`
-
                 );
 
             }
@@ -5976,9 +5962,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Task ${task.taskId || "[unknown]"} has no stream ID.`
-
                 );
 
             }
@@ -5993,9 +5977,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Task ${task.taskId || "[unknown]"} has no subject ID.`
-
                 );
 
             }
@@ -6011,9 +5993,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Task ${task.taskId || "[unknown]"} has invalid duration ${task.duration}.`
-
                 );
 
             }
@@ -6029,9 +6009,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Task ${task.taskId || "[unknown]"} has invalid task type.`
-
                 );
 
             }
@@ -6047,9 +6025,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Double task ${task.taskId} must have duration 2.`
-
                 );
 
             }
@@ -6065,9 +6041,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Single task ${task.taskId} must have duration 1.`
-
                 );
 
             }
@@ -6084,9 +6058,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Task ${task.taskId || "[unknown]"} must have a periodIds array.`
-
                 );
 
             }
@@ -6142,17 +6114,12 @@ async function prepareTimetableGeneratorData() {
                 !parallelGroup
             ) {
 
-                // A non-parallel task should not carry a
-                // parallel occurrence identity.
-
                 if (
                     task.parallelOccurrenceKey
                 ) {
 
                     errors.push(
-
                         `Non-parallel task ${task.taskId} has a parallel occurrence key.`
-
                     );
 
                 }
@@ -6164,9 +6131,7 @@ async function prepareTimetableGeneratorData() {
                 ) {
 
                     errors.push(
-
                         `Non-parallel task ${task.taskId} has a parallel occurrence start.`
-
                     );
 
                 }
@@ -6178,9 +6143,7 @@ async function prepareTimetableGeneratorData() {
                 ) {
 
                     errors.push(
-
                         `Non-parallel task ${task.taskId} has a parallel occurrence end.`
-
                     );
 
                 }
@@ -6192,7 +6155,7 @@ async function prepareTimetableGeneratorData() {
 
 
             // ------------------------------------------------
-            // PARALLEL GROUP MUST HAVE OCCURRENCE KEY
+            // PARALLEL OCCURRENCE KEY
             // ------------------------------------------------
 
             const occurrenceKey =
@@ -6208,9 +6171,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel task ${task.taskId} has no parallel occurrence key.`
-
                 );
 
                 return;
@@ -6219,7 +6180,7 @@ async function prepareTimetableGeneratorData() {
 
 
             // ------------------------------------------------
-            // PARALLEL GROUP MUST HAVE STREAM MEMBERS
+            // PARALLEL GROUP STREAM MEMBERS
             // ------------------------------------------------
 
             if (
@@ -6230,16 +6191,14 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel task ${task.taskId} has no parallel group stream IDs.`
-
                 );
 
             }
 
 
             // ------------------------------------------------
-            // PARALLEL OCCURRENCE START
+            // OCCURRENCE START
             // ------------------------------------------------
 
             const occurrenceStart =
@@ -6256,16 +6215,14 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel task ${task.taskId} has an invalid parallel occurrence start.`
-
                 );
 
             }
 
 
             // ------------------------------------------------
-            // PARALLEL OCCURRENCE END
+            // OCCURRENCE END
             // ------------------------------------------------
 
             const occurrenceEnd =
@@ -6282,16 +6239,14 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel task ${task.taskId} has an invalid parallel occurrence end.`
-
                 );
 
             }
 
 
             // ------------------------------------------------
-            // DURATION / OCCURRENCE RANGE CONSISTENCY
+            // OCCURRENCE RANGE VALIDATION
             // ------------------------------------------------
 
             if (
@@ -6302,6 +6257,18 @@ async function prepareTimetableGeneratorData() {
                     occurrenceEnd
                 )
             ) {
+
+                if (
+                    occurrenceEnd <
+                    occurrenceStart
+                ) {
+
+                    errors.push(
+                        `Parallel task ${task.taskId}: occurrence end O${occurrenceEnd} cannot be before occurrence start O${occurrenceStart}.`
+                    );
+
+                }
+
 
                 const occurrenceSpan =
                     occurrenceEnd -
@@ -6315,13 +6282,9 @@ async function prepareTimetableGeneratorData() {
                 ) {
 
                     errors.push(
-
                         `Parallel task ${task.taskId}: ` +
-
                         `occurrence range O${occurrenceStart}-O${occurrenceEnd} ` +
-
                         `does not match duration ${task.duration}.`
-
                     );
 
                 }
@@ -6340,9 +6303,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel task ${task.taskId} has no parallel occurrence indexes.`
-
                 );
 
             }
@@ -6354,15 +6315,10 @@ async function prepareTimetableGeneratorData() {
                 ) {
 
                     errors.push(
-
                         `Parallel task ${task.taskId}: ` +
-
                         `parallel occurrence index count ` +
-
                         `${task.parallelOccurrenceIndexes.length} ` +
-
                         `does not match duration ${task.duration}.`
-
                     );
 
                 }
@@ -6392,13 +6348,9 @@ async function prepareTimetableGeneratorData() {
                     ) {
 
                         errors.push(
-
                             `Parallel task ${task.taskId}: ` +
-
                             `occurrence index ${actualOccurrence} ` +
-
                             `does not match expected O${expectedOccurrence}.`
-
                         );
 
                     }
@@ -6411,13 +6363,6 @@ async function prepareTimetableGeneratorData() {
             // ------------------------------------------------
             // OCCURRENCE KEY FORMAT
             // ------------------------------------------------
-            //
-            // Expected:
-            //
-            // GROUP-O1
-            // GROUP-O2
-            //
-            // ------------------------------------------------
 
             const expectedOccurrenceKey =
                 `${parallelGroup}-O${occurrenceStart}`;
@@ -6429,13 +6374,9 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel task ${task.taskId}: ` +
-
                     `occurrence key ${occurrenceKey} ` +
-
                     `does not match expected ${expectedOccurrenceKey}.`
-
                 );
 
             }
@@ -6461,6 +6402,9 @@ async function prepareTimetableGeneratorData() {
                             new Set(),
 
                         occurrences:
+                            new Map(),
+
+                        coveredOccurrences:
                             new Map()
                     }
                 );
@@ -6545,6 +6489,85 @@ async function prepareTimetableGeneratorData() {
                 groupInfo.occurrences.get(
                     occurrenceKey
                 );
+
+
+            // ------------------------------------------------
+            // CHECK SAME OCCURRENCE RANGE
+            // ------------------------------------------------
+
+            if (
+                occurrenceInfo.occurrenceStart !==
+                occurrenceStart ||
+                occurrenceInfo.occurrenceEnd !==
+                occurrenceEnd
+            ) {
+
+                errors.push(
+                    `Parallel group ${parallelGroup}: ` +
+                    `occurrence key ${occurrenceKey} has inconsistent occurrence ranges.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // RECORD COVERED OCCURRENCES
+            // ------------------------------------------------
+            //
+            // IMPORTANT:
+            //
+            // A double lesson O1-O2 covers BOTH O1 and O2.
+            //
+            // Therefore continuity must be checked against the
+            // complete covered range, not merely the start values.
+            //
+            // ------------------------------------------------
+
+            if (
+                Number.isInteger(
+                    occurrenceStart
+                ) &&
+                Number.isInteger(
+                    occurrenceEnd
+                ) &&
+                occurrenceEnd >= occurrenceStart
+            ) {
+
+                for (
+                    let occurrence =
+                        occurrenceStart;
+
+                    occurrence <=
+                    occurrenceEnd;
+
+                    occurrence++
+                ) {
+
+                    if (
+                        !groupInfo.coveredOccurrences.has(
+                            occurrence
+                        )
+                    ) {
+
+                        groupInfo.coveredOccurrences.set(
+                            occurrence,
+                            []
+                        );
+
+                    }
+
+
+                    groupInfo.coveredOccurrences
+                        .get(
+                            occurrence
+                        )
+                        .push(
+                            task
+                        );
+
+                }
+
+            }
 
 
             // ------------------------------------------------
@@ -6668,13 +6691,9 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Requirement ${requirementId}: ` +
-
                     `expected ${expected} teaching periods ` +
-
                     `but generated ${actual}.`
-
                 );
 
             }
@@ -6685,30 +6704,6 @@ async function prepareTimetableGeneratorData() {
 
     // ========================================================
     // VALIDATE SCHOOL-WIDE PARALLEL GROUPS
-    // ========================================================
-    //
-    // This is the important new validation layer.
-    //
-    // Every occurrence in a parallel group must represent the
-    // same occurrence across all participating requirements.
-    //
-    // Example:
-    //
-    // RE 10A O1
-    // GE 10B O1
-    // BS 10C O1
-    //
-    // All belong to:
-    //
-    //     RE/GE/BS-O1
-    //
-    // --------------------------------------------------------
-    //
-    // We do NOT require every requirement to have identical
-    // subject names or task types.
-    //
-    // We require the occurrence identity to be shared.
-    //
     // ========================================================
 
     parallelGroups.forEach(
@@ -6730,7 +6725,7 @@ async function prepareTimetableGeneratorData() {
 
 
             // ------------------------------------------------
-            // Get authoritative group definition
+            // GET AUTHORITATIVE GROUP DEFINITION
             // ------------------------------------------------
 
             let authoritativeGroup =
@@ -6825,7 +6820,7 @@ async function prepareTimetableGeneratorData() {
 
 
             // ------------------------------------------------
-            // Fall back to generated membership
+            // FALL BACK TO GENERATED MEMBERSHIP
             // ------------------------------------------------
 
             if (
@@ -6867,7 +6862,7 @@ async function prepareTimetableGeneratorData() {
 
 
             // ------------------------------------------------
-            // Validate every occurrence
+            // VALIDATE EVERY OCCURRENCE ENTRY
             // ------------------------------------------------
 
             groupInfo.occurrences.forEach(
@@ -6875,10 +6870,6 @@ async function prepareTimetableGeneratorData() {
                     occurrenceInfo,
                     occurrenceKey
                 ) => {
-
-                    // ----------------------------------------
-                    // EXPECTED OCCURRENCE KEY
-                    // ----------------------------------------
 
                     const expectedKey =
                         `${groupKey}-O${occurrenceInfo.occurrenceStart}`;
@@ -6890,13 +6881,9 @@ async function prepareTimetableGeneratorData() {
                     ) {
 
                         errors.push(
-
                             `Parallel group ${groupKey}: ` +
-
                             `invalid occurrence key ${occurrenceKey}; ` +
-
                             `expected ${expectedKey}.`
-
                         );
 
                     }
@@ -6916,15 +6903,10 @@ async function prepareTimetableGeneratorData() {
                             ) {
 
                                 errors.push(
-
                                     `Parallel group ${groupKey}, ` +
-
                                     `${occurrenceKey}: ` +
-
                                     `stream ${streamId} is missing ` +
-
                                     `from the school-wide occurrence.`
-
                                 );
 
                             }
@@ -6947,15 +6929,10 @@ async function prepareTimetableGeneratorData() {
                             ) {
 
                                 errors.push(
-
                                     `Parallel group ${groupKey}, ` +
-
                                     `${occurrenceKey}: ` +
-
                                     `requirement ${requirementId} is missing ` +
-
                                     `from the school-wide occurrence.`
-
                                 );
 
                             }
@@ -6981,15 +6958,10 @@ async function prepareTimetableGeneratorData() {
                             ) {
 
                                 errors.push(
-
                                     `Parallel group ${groupKey}, ` +
-
                                     `${occurrenceKey}: ` +
-
                                     `unexpected stream ${streamId} ` +
-
                                     `was assigned to the occurrence.`
-
                                 );
 
                             }
@@ -7002,22 +6974,38 @@ async function prepareTimetableGeneratorData() {
 
 
             // =================================================
-            // CHECK OCCURRENCE NUMBER CONTINUITY
+            // CHECK FULL OCCURRENCE CONTINUITY
             // =================================================
             //
-            // If the group contains O1, O2, O3, O5, O5 is
-            // suspicious because O4 has disappeared.
+            // DO NOT check only occurrenceStart values.
+            //
+            // Example:
+            //
+            //     O1-O2  double
+            //     O3     single
+            //
+            // Start values:
+            //
+            //     1, 3
+            //
+            // That is VALID.
+            //
+            // Covered occurrences:
+            //
+            //     1, 2, 3
+            //
+            // That is CONTINUOUS.
             //
             // =================================================
 
-            const occurrenceNumbers =
+            const coveredOccurrenceNumbers =
                 [
-                    ...groupInfo.occurrences.values()
+                    ...groupInfo.coveredOccurrences.keys()
                 ]
                     .map(
-                        occurrenceInfo =>
+                        value =>
                             Number(
-                                occurrenceInfo.occurrenceStart
+                                value
                             )
                     )
                     .filter(
@@ -7036,9 +7024,18 @@ async function prepareTimetableGeneratorData() {
                     );
 
 
+            const uniqueCoveredOccurrenceNumbers =
+                [
+                    ...new Set(
+                        coveredOccurrenceNumbers
+                    )
+                ];
+
+
             for (
                 let index = 0;
-                index < occurrenceNumbers.length;
+                index <
+                uniqueCoveredOccurrenceNumbers.length;
                 index++
             ) {
 
@@ -7047,7 +7044,7 @@ async function prepareTimetableGeneratorData() {
 
 
                 const actual =
-                    occurrenceNumbers[index];
+                    uniqueCoveredOccurrenceNumbers[index];
 
 
                 if (
@@ -7056,13 +7053,9 @@ async function prepareTimetableGeneratorData() {
                 ) {
 
                     errors.push(
-
                         `Parallel group ${groupKey}: ` +
-
                         `occurrence sequence is not continuous. ` +
-
                         `Expected O${expected} but found O${actual}.`
-
                     );
 
                     break;
@@ -7070,6 +7063,128 @@ async function prepareTimetableGeneratorData() {
                 }
 
             }
+
+
+            // ------------------------------------------------
+            // CHECK FOR OVERLAPPING OCCURRENCE RANGES
+            // ------------------------------------------------
+            //
+            // Two separate tasks belonging to the same
+            // requirement should not claim the same occurrence
+            // unless they are deliberately part of the same
+            // occurrence representation.
+            //
+            // Multiple streams/requirements may legitimately
+            // share the same school-wide occurrence.
+            //
+            // ------------------------------------------------
+
+            groupInfo.occurrences.forEach(
+                (
+                    occurrenceInfo,
+                    occurrenceKey
+                ) => {
+
+                    const tasksByRequirement =
+                        new Map();
+
+
+                    occurrenceInfo.tasks.forEach(
+                        task => {
+
+                            const requirementId =
+                                String(
+                                    task.requirementId
+                                );
+
+
+                            if (
+                                !tasksByRequirement.has(
+                                    requirementId
+                                )
+                            ) {
+
+                                tasksByRequirement.set(
+                                    requirementId,
+                                    []
+                                );
+
+                            }
+
+
+                            tasksByRequirement
+                                .get(
+                                    requirementId
+                                )
+                                .push(
+                                    task
+                                );
+
+                        }
+                    );
+
+
+                    tasksByRequirement.forEach(
+                        (
+                            requirementTasks,
+                            requirementId
+                        ) => {
+
+                            if (
+                                requirementTasks.length <= 1
+                            ) {
+
+                                return;
+
+                            }
+
+
+                            // Same requirement may legitimately have
+                            // multiple task records only if they are
+                            // representing distinct stream members.
+                            //
+                            // Detect duplicate stream representation.
+
+                            const seenStreams =
+                                new Set();
+
+
+                            requirementTasks.forEach(
+                                task => {
+
+                                    const streamId =
+                                        String(
+                                            task.streamId
+                                        );
+
+
+                                    if (
+                                        seenStreams.has(
+                                            streamId
+                                        )
+                                    ) {
+
+                                        errors.push(
+                                            `Parallel group ${groupKey}, ` +
+                                            `${occurrenceKey}: requirement ${requirementId} ` +
+                                            `contains duplicate task representation for stream ${streamId}.`
+                                        );
+
+                                    }
+
+
+                                    seenStreams.add(
+                                        streamId
+                                    );
+
+                                }
+                            );
+
+                        }
+                    );
+
+                }
+            );
 
         }
     );
@@ -7124,11 +7239,8 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel requirement ${requirementId} belongs to ` +
-
                     `${groupKey}, but no generated parallel tasks were found.`
-
                 );
 
                 return;
@@ -7145,11 +7257,8 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 errors.push(
-
                     `Parallel requirement ${requirementId} was not represented ` +
-
                     `in its generated parallel group ${groupKey}.`
-
                 );
 
             }
@@ -7199,6 +7308,12 @@ async function prepareTimetableGeneratorData() {
                         console.log(
                             occurrenceKey,
                             {
+                                occurrenceStart:
+                                    occurrenceInfo.occurrenceStart,
+
+                                occurrenceEnd:
+                                    occurrenceInfo.occurrenceEnd,
+
                                 streams:
                                     [
                                         ...occurrenceInfo.streams
@@ -7225,7 +7340,16 @@ async function prepareTimetableGeneratorData() {
                                                 task.taskType,
 
                                             duration:
-                                                task.duration
+                                                task.duration,
+
+                                            parallelOccurrenceStart:
+                                                task.parallelOccurrenceStart,
+
+                                            parallelOccurrenceEnd:
+                                                task.parallelOccurrenceEnd,
+
+                                            parallelOccurrenceIndexes:
+                                                task.parallelOccurrenceIndexes
                                         })
                                     )
 
@@ -7233,6 +7357,21 @@ async function prepareTimetableGeneratorData() {
                         );
 
                     }
+                );
+
+
+                console.log(
+                    "Covered occurrences:",
+                    [
+                        ...groupInfo.coveredOccurrences.keys()
+                    ].sort(
+                        (
+                            a,
+                            b
+                        ) =>
+                            Number(a) -
+                            Number(b)
+                    )
                 );
 
             }
@@ -7273,13 +7412,10 @@ async function prepareTimetableGeneratorData() {
 
 
         throw new Error(
-
             "Lesson task validation failed:\n\n" +
-
             errors.join(
                 "\n"
             )
-
         );
 
     }
@@ -7305,6 +7441,7 @@ async function prepareTimetableGeneratorData() {
     return true;
 
 }
+
 
 
 
