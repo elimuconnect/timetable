@@ -14287,6 +14287,49 @@ function getTaskRequirement(
 }
 
 
+
+
+// ============================================================
+// GET TASK PARALLEL IDENTITY
+// ============================================================
+//
+// A parallel identity uniquely identifies:
+//
+//     parallel group + parallel occurrence
+//
+// Example:
+//
+//     BIO/PHY__O1
+//
+// This prevents lessons from the same parallel group but
+// DIFFERENT occurrences from being treated as concurrent.
+//
+// ============================================================
+
+function getTaskParallelIdentity(task) {
+
+    if (!task) {
+        return "";
+    }
+
+    const parallelGroup =
+        getTaskParallelGroup(task);
+
+    const parallelOccurrenceKey =
+        getTaskParallelOccurrenceKey(task);
+
+    if (
+        !parallelGroup ||
+        !parallelOccurrenceKey
+    ) {
+        return "";
+    }
+
+    return (
+        `${parallelGroup}__${parallelOccurrenceKey}`
+    );
+}
+
 // ============================================================
 // COUNT COMPATIBLE ROOMS
 // ============================================================
