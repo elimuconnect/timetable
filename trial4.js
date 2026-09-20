@@ -28024,22 +28024,12 @@ function auditDuplicateGeneratedEntries(
 //
 // ============================================================
 
+
+
 function auditStreamPeriodConflicts(
     entries,
     audit
 ) {
-
-    if (
-        !Array.isArray(entries) ||
-        !audit
-    ) {
-        return;
-    }
-
-
-    // ========================================================
-    // GROUP ENTRIES BY STREAM + PERIOD
-    // ========================================================
 
     const occupied =
         new Map();
@@ -28072,6 +28062,10 @@ function auditStreamPeriodConflicts(
                 `${normalized.streamId}__${normalized.periodId}`;
 
 
+            // ====================================================
+            // FIRST LESSON FOR THIS STREAM + PERIOD
+            // ====================================================
+
             if (
                 !occupied.has(
                     key
@@ -28080,262 +28074,244 @@ function auditStreamPeriodConflicts(
 
                 occupied.set(
                     key,
-                    []
-                );
-
-            }
-
-
-            occupied
-                .get(key)
-                .push({
-                    index,
-                    entry,
-                    normalized
-                });
-
-        }
-    );
-
-
-    // ========================================================
-    // CHECK EACH STREAM + PERIOD
-    // ========================================================
-
-    occupied.forEach(
-        lessons => {
-
-            if (
-                !Array.isArray(lessons) ||
-                lessons.length < 2
-            ) {
-                return;
-            }
-
-
-            // ==================================================
-            // CHECK EVERY UNIQUE PAIR
-            // ==================================================
-            //
-            // i < j guarantees that each pair is checked once.
-            //
-            // ==================================================
-
-            for (
-                let i = 0;
-                i < lessons.length;
-                i++
-            ) {
-
-                const first =
-                    lessons[i];
-
-
-                if (!first) {
-                    continue;
-                }
-
-
-                for (
-                    let j = i + 1;
-                    j < lessons.length;
-                    j++
-                ) {
-
-                    const second =
-                        lessons[j];
-
-
-                    if (!second) {
-                        continue;
-                    }
-
-
-                    const firstEntry =
-                        first.normalized;
-
-
-                    const secondEntry =
-                        second.normalized;
-
-
-                    // ==================================================
-                    // SAME ENTRY
-                    // ==================================================
-
-                    if (
-                        first.index ===
-                        second.index
-                    ) {
-                        continue;
-                    }
-
-
-                    // ==================================================
-                    // SAME SUBJECT
-                    // ==================================================
-
-                    const sameSubject =
-                        Boolean(
-                            firstEntry.subjectId &&
-                            secondEntry.subjectId &&
-                            firstEntry.subjectId ===
-                            secondEntry.subjectId
-                        );
-
-
-                    // ==================================================
-                    // SAME TEACHER
-                    // ==================================================
-
-                    const sameTeacher =
-                        Boolean(
-                            firstEntry.teacherId &&
-                            secondEntry.teacherId &&
-                            firstEntry.teacherId ===
-                            secondEntry.teacherId
-                        );
-
-
-                    // ==================================================
-                    // SAME PARALLEL GROUP
-                    // ==================================================
-
-                    const sameParallelGroup =
-                        Boolean(
-                            firstEntry.parallelGroup &&
-                            secondEntry.parallelGroup &&
-                            firstEntry.parallelGroup ===
-                            secondEntry.parallelGroup
-                        );
-
-
-                    // ==================================================
-                    // SAME PARALLEL OCCURRENCE
-                    // ==================================================
-
-                    const sameParallelOccurrenceKey =
-                        Boolean(
-                            firstEntry.parallelOccurrenceKey &&
-                            secondEntry.parallelOccurrenceKey &&
-                            firstEntry.parallelOccurrenceKey ===
-                            secondEntry.parallelOccurrenceKey
-                        );
-
-
-                    // ==================================================
-                    // SAME COMPLETE PARALLEL IDENTITY
-                    // ==================================================
-
-                    const sameParallelIdentity =
-                        Boolean(
-                            firstEntry.parallelIdentity &&
-                            secondEntry.parallelIdentity &&
-                            firstEntry.parallelIdentity ===
-                            secondEntry.parallelIdentity
-                        );
-
-
-                    // ==================================================
-                    // VALID EXPLICIT PARALLEL
-                    // ==================================================
-
-                    const validExplicitParallel =
-                        !sameSubject &&
-                        !sameTeacher &&
-                        sameParallelGroup &&
-                        sameParallelOccurrenceKey &&
-                        sameParallelIdentity;
-
-
-                    // ==================================================
-                    // VALID PARALLEL -> NO CONFLICT
-                    // ==================================================
-
-                    if (
-                        validExplicitParallel
-                    ) {
-
-                        continue;
-
-                    }
-
-
-                    // ==================================================
-                    // TRUE STREAM CONFLICT
-                    // ==================================================
-
-                    addTimetableAuditError(
-                        audit,
-                        "streamConflicts",
-                        "Stream has more than one conflicting lesson in the same period.",
+                    [
                         {
+                            index,
 
-                            streamId:
-                                firstEntry.streamId,
+                            entry,
 
-                            periodId:
-                                firstEntry.periodId,
-
-                            firstEntryIndex:
-                                first.index,
-
-                            secondEntryIndex:
-                                second.index,
-
-                            firstEntry:
-                                first.entry,
-
-                            secondEntry:
-                                second.entry,
-
-                            firstSubjectId:
-                                firstEntry.subjectId,
-
-                            secondSubjectId:
-                                secondEntry.subjectId,
-
-                            firstTeacherId:
-                                firstEntry.teacherId,
-
-                            secondTeacherId:
-                                secondEntry.teacherId,
-
-                            firstParallelGroup:
-                                firstEntry.parallelGroup ||
-                                null,
-
-                            secondParallelGroup:
-                                secondEntry.parallelGroup ||
-                                null,
-
-                            firstParallelOccurrenceKey:
-                                firstEntry.parallelOccurrenceKey ||
-                                null,
-
-                            secondParallelOccurrenceKey:
-                                secondEntry.parallelOccurrenceKey ||
-                                null,
-
-                            firstParallelIdentity:
-                                firstEntry.parallelIdentity ||
-                                null,
-
-                            secondParallelIdentity:
-                                secondEntry.parallelIdentity ||
-                                null
+                            normalized
 
                         }
+                    ]
+                );
+
+                return;
+
+            }
+
+
+            // ====================================================
+            // EXISTING LESSONS
+            // ====================================================
+
+            const existingLessons =
+                occupied.get(
+                    key
+                );
+
+
+            // ====================================================
+            // CHECK EACH EXISTING LESSON
+            // ====================================================
+
+            let parallelAllowed =
+                true;
+
+
+            for (
+                const existingLesson
+                of existingLessons
+            ) {
+
+                const existing =
+                    existingLesson.normalized;
+
+
+                // ------------------------------------------------
+                // SAME SUBJECT
+                // ------------------------------------------------
+                //
+                // Same subject in the same stream and period is
+                // not parallel teaching.
+                //
+                // ------------------------------------------------
+
+                const sameSubject =
+                    Boolean(
+                        normalized.subjectId &&
+                        existing.subjectId &&
+                        normalized.subjectId ===
+                        existing.subjectId
                     );
+
+
+                // ------------------------------------------------
+                // SAME TEACHER
+                // ------------------------------------------------
+
+                const sameTeacher =
+                    Boolean(
+                        normalized.teacherId &&
+                        existing.teacherId &&
+                        normalized.teacherId ===
+                        existing.teacherId
+                    );
+
+
+                // ------------------------------------------------
+                // PARALLEL GROUP
+                // ------------------------------------------------
+
+                const sameParallelGroup =
+                    Boolean(
+                        normalized.parallelGroup &&
+                        existing.parallelGroup &&
+                        normalized.parallelGroup ===
+                        existing.parallelGroup
+                    );
+
+
+                // ------------------------------------------------
+                // PARALLEL OCCURRENCE KEY
+                // ------------------------------------------------
+                //
+                // This is the critical correction.
+                //
+                // Same parallel group alone is NOT enough.
+                //
+                // Example:
+                //
+                //     BIO / GROUP-A / O1
+                //     PHY / GROUP-A / O2
+                //
+                // These must NOT be accepted as parallel.
+                //
+                // ------------------------------------------------
+
+                const sameParallelOccurrenceKey =
+                    Boolean(
+                        normalized.parallelOccurrenceKey &&
+                        existing.parallelOccurrenceKey &&
+                        normalized.parallelOccurrenceKey ===
+                        existing.parallelOccurrenceKey
+                    );
+
+
+                // ------------------------------------------------
+                // COMPLETE PARALLEL IDENTITY
+                // ------------------------------------------------
+
+                const sameParallelIdentity =
+                    Boolean(
+                        normalized.parallelIdentity &&
+                        existing.parallelIdentity &&
+                        normalized.parallelIdentity ===
+                        existing.parallelIdentity
+                    );
+
+
+                // ------------------------------------------------
+                // VALID EXPLICIT PARALLEL LESSON
+                // ------------------------------------------------
+                //
+                // Every condition must be satisfied.
+                //
+                // ------------------------------------------------
+
+                const validExplicitParallel =
+                    !sameSubject &&
+                    !sameTeacher &&
+                    sameParallelGroup &&
+                    sameParallelOccurrenceKey &&
+                    sameParallelIdentity;
+
+
+                if (
+                    !validExplicitParallel
+                ) {
+
+                    parallelAllowed =
+                        false;
+
+                    break;
 
                 }
 
             }
+
+
+            // ====================================================
+            // VALID PARALLEL LESSON
+            // ====================================================
+
+            if (
+                parallelAllowed
+            ) {
+
+                existingLessons.push({
+
+                    index,
+
+                    entry,
+
+                    normalized
+
+                });
+
+                return;
+
+            }
+
+
+            // ====================================================
+            // TRUE STREAM CONFLICT
+            // ====================================================
+
+            const firstLesson =
+                existingLessons[0];
+
+
+            addTimetableAuditError(
+                audit,
+                "streamConflicts",
+                "Stream has more than one conflicting lesson in the same period.",
+                {
+
+                    streamId:
+                        normalized.streamId,
+
+                    periodId:
+                        normalized.periodId,
+
+                    firstEntryIndex:
+                        firstLesson.index,
+
+                    secondEntryIndex:
+                        index,
+
+                    firstEntry:
+                        firstLesson.entry,
+
+                    secondEntry:
+                        entry
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // Keep the lesson in occupancy so that additional
+            // conflicts involving this lesson are also found.
+            // ------------------------------------------------
+
+            existingLessons.push({
+
+                index,
+
+                entry,
+
+                normalized
+
+            });
 
         }
     );
 
 }
+
+
+
 // ============================================================
 // AUDIT TEACHER / PERIOD CONFLICTS
 // ============================================================
