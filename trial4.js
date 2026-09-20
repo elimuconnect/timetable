@@ -4138,9 +4138,7 @@ async function prepareTimetableGeneratorData() {
 
 }
 
-                    
-
-   function createLessonTasks(
+function createLessonTasks(
     requirements,
     lookup,
     parallelGroups = null
@@ -4175,32 +4173,49 @@ async function prepareTimetableGeneratorData() {
 
 
     // ========================================================
-    // BUILD SCHOOL-WIDE PARALLEL GROUP MAP
+    // BUILD ACTUAL SCHOOL-WIDE PARALLEL GROUP MAP
     // ========================================================
     //
     // IMPORTANT:
     //
-    // A parallel occurrence belongs to the GROUP, not to an
-    // individual requirement.
+    // A parallel group contains ONLY the requirements that
+    // actually exist in that group.
     //
-    // Example:
+    // We NEVER create missing requirements for other streams.
     //
-    // RE/GE/BS
+    // There are two valid structures:
     //
-    // O1
-    // O2
-    // O3
-    // O4
-    // O5
+    // 1. MULTI-STREAM PARALLEL GROUP
     //
-    // Every participating stream/requirement uses these same
-    // occurrence numbers.
+    //    Example:
+    //        RE/GE/BS
     //
-    // This is what allows Stage 6 / Stage 7 to enforce:
+    //    10L -> 5 actual requirements
+    //    10M -> 5 actual requirements
+    //    10T -> 5 actual requirements
     //
-    //     RE O3 = GE O3 = BS O3
+    //    Each stream may have only ONE group requirement at a
+    //    given occurrence.
     //
-    // at the same day + period.
+    //    Therefore:
+    //
+    //        O1-O5   -> requirement 1 in each stream
+    //        O6-O10  -> requirement 2 in each stream
+    //        ...
+    //        O21-O25 -> requirement 5 in each stream
+    //
+    // 2. SINGLE-STREAM PARALLEL GROUP
+    //
+    //    Example:
+    //        BIO/PHY -> 10E
+    //
+    //    Both actual requirements may share O1-O5.
+    //
+    //    This allows:
+    //
+    //        Biology O1 + Physics O1
+    //
+    //    in the same stream and same period.
     //
     // ========================================================
 
@@ -4264,6 +4279,7 @@ async function prepareTimetableGeneratorData() {
 
                 const streamIds =
                     group.streamIds instanceof Set
+
                         ? new Set(
                             [
                                 ...group.streamIds
@@ -4272,6 +4288,7 @@ async function prepareTimetableGeneratorData() {
                                     String(id)
                             )
                         )
+
                         : new Set();
 
 
@@ -4279,10 +4296,14 @@ async function prepareTimetableGeneratorData() {
                     group.groupKey,
                     {
                         group,
+
                         requirements:
                             groupRequirements,
+
                         requirementIds,
+
                         streamIds
+
                     }
                 );
 
@@ -4296,29 +4317,46 @@ async function prepareTimetableGeneratorData() {
     // BUILD PARALLEL OCCURRENCE PLANS
     // ========================================================
     //
-    // The occurrence plan is created BEFORE tasks are created.
+    // CRITICAL FIX:
     //
-    // This is important.
+    // We no longer assume that every requirement in a
+    // multi-stream group can use O1-O5.
     //
-    // We first determine how many weekly teaching-period
-    // occurrences each parallel group needs.
+    // For MULTI-STREAM groups:
+    //
+    //     each stream receives its requirements sequentially.
     //
     // Example:
     //
-    // RE  = 5 lessons
-    // GE  = 5 lessons
-    // BS  = 5 lessons
+    //     10L:
+    //         Req1 -> O1-O5
+    //         Req2 -> O6-O10
+    //         Req3 -> O11-O15
+    //         Req4 -> O16-O20
+    //         Req5 -> O21-O25
     //
-    // Group plan:
+    //     10M:
+    //         Req1 -> O1-O5
+    //         Req2 -> O6-O10
+    //         ...
     //
-    // O1
-    // O2
-    // O3
-    // O4
-    // O5
+    //     10T:
+    //         Req1 -> O1-O5
+    //         Req2 -> O6-O10
+    //         ...
     //
-    // The individual tasks then reference those group-wide
-    // occurrence numbers.
+    // Thus each occurrence contains at most ONE group lesson
+    // for each participating stream.
+    //
+    // For SINGLE-STREAM groups:
+    //
+    //     all actual requirements share the same occurrence
+    //     sequence.
+    //
+    // Example BIO/PHY:
+    //
+    //     Biology  -> O1-O5
+    //     Physics  -> O1-O5
     //
     // ========================================================
 
@@ -4333,13 +4371,14 @@ async function prepareTimetableGeneratorData() {
         ) => {
 
             const groupRequirements =
-                groupInfo.requirements;
+                Array.isArray(
+                    groupInfo.requirements
+                )
+                    ? groupInfo.requirements
+                    : [];
 
 
             if (
-                !Array.isArray(
-                    groupRequirements
-                ) ||
                 groupRequirements.length === 0
             ) {
 
@@ -4348,87 +4387,413 @@ async function prepareTimetableGeneratorData() {
             }
 
 
-            let maxOccurrences =
+            // ------------------------------------------------
+            // Determine actual participating streams.
+            // ------------------------------------------------
+
+            const actualStreamIds =
+                groupInfo.streamIds instanceof Set
+                    ? [
+                        ...groupInfo.streamIds
+                    ].map(
+                        id =>
+                            String(id)
+                    )
+                    : [];
+
+
+            const isSingleStreamGroup =
+                actualStreamIds.length <= 1;
+
+
+            // ------------------------------------------------
+            // Map requirement -> occurrence indexes.
+            //
+            // Each requirement receives an explicit array:
+            //
+            //     [1,2,3,4,5]
+            //
+            // or:
+            //
+            //     [6,7,8,9,10]
+            //
+            // etc.
+            // ------------------------------------------------
+
+            const requirementOccurrenceAssignments =
+                new Map();
+
+
+            let occurrenceCount =
                 0;
 
 
-            const requirementOccurrenceTotals =
-                [];
+            // =================================================
+            // SINGLE-STREAM GROUP
+            // =================================================
+            //
+            // All actual requirements share the same occurrence
+            // sequence.
+            //
+            // BIO/PHY:
+            //
+            //     Biology O1-O5
+            //     Physics O1-O5
+            //
+            // AG/GE/BS:
+            //
+            //     Agriculture O1-O5
+            //     Geography O1-O5
+            //     Business Studies O1-O5
+            //
+            // =================================================
 
-
-            groupRequirements.forEach(
-                requirement => {
-
-                    const lessons =
-                        Math.max(
-                            0,
-                            Number(
-                                requirement?.lessonsPerWeek
-                            ) || 0
-                        );
-
-
-                    maxOccurrences =
-                        Math.max(
-                            maxOccurrences,
-                            lessons
-                        );
-
-
-                    requirementOccurrenceTotals.push(
-                        {
-                            requirementId:
-                                requirement?.requirementId ??
-                                requirement?.id ??
-                                null,
-
-                            streamId:
-                                requirement?.streamId ??
-                                requirement?.stream_id ??
-                                null,
-
-                            subjectId:
-                                requirement?.subjectId ??
-                                requirement?.subject_id ??
-                                null,
-
-                            lessonsPerWeek:
-                                lessons
-                        }
-                    );
-
-                }
-            );
-
-
-            const occurrences = [];
-
-
-            for (
-                let occurrence = 1;
-                occurrence <= maxOccurrences;
-                occurrence++
+            if (
+                isSingleStreamGroup
             ) {
 
-                occurrences.push(
-                    {
-                        occurrence,
-                        key:
-                            `${groupKey}-O${occurrence}`
+                groupRequirements.forEach(
+                    requirement => {
+
+                        const requirementId =
+                            String(
+                                requirement?.requirementId ??
+                                requirement?.id ??
+                                ""
+                            );
+
+
+                        if (
+                            !requirementId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const lessons =
+                            Math.max(
+                                0,
+                                Number(
+                                    requirement?.lessonsPerWeek
+                                ) || 0
+                            );
+
+
+                        const occurrenceIndexes =
+                            [];
+
+
+                        for (
+                            let index = 1;
+                            index <= lessons;
+                            index++
+                        ) {
+
+                            occurrenceIndexes.push(
+                                index
+                            );
+
+                        }
+
+
+                        requirementOccurrenceAssignments.set(
+                            requirementId,
+                            occurrenceIndexes
+                        );
+
+
+                        occurrenceCount =
+                            Math.max(
+                                occurrenceCount,
+                                lessons
+                            );
+
+                    }
+                );
+
+            }
+
+            // =================================================
+            // MULTI-STREAM GROUP
+            // =================================================
+            //
+            // Each stream gets its own sequential occurrence
+            // lane.
+            //
+            // This prevents:
+            //
+            //     10L Req1 O1
+            //     10L Req2 O1
+            //
+            // from becoming two simultaneous lessons for 10L.
+            //
+            // Instead:
+            //
+            //     Req1 -> O1-O5
+            //     Req2 -> O6-O10
+            //
+            // while another participating stream follows the
+            // same occurrence positions.
+            //
+            // =================================================
+
+            else {
+
+                const requirementsByStream =
+                    new Map();
+
+
+                groupRequirements.forEach(
+                    requirement => {
+
+                        const streamId =
+                            String(
+                                requirement?.streamId ??
+                                requirement?.stream_id ??
+                                ""
+                            );
+
+
+                        if (
+                            !streamId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !requirementsByStream.has(
+                                streamId
+                            )
+                        ) {
+
+                            requirementsByStream.set(
+                                streamId,
+                                []
+                            );
+
+                        }
+
+
+                        requirementsByStream
+                            .get(
+                                streamId
+                            )
+                            .push(
+                                requirement
+                            );
+
+                    }
+                );
+
+
+                // ------------------------------------------------
+                // Process each ACTUAL participating stream only.
+                // ------------------------------------------------
+
+                requirementsByStream.forEach(
+                    streamRequirements => {
+
+                        // ----------------------------------------
+                        // Deterministic requirement order.
+                        //
+                        // Preserve the supplied group order as
+                        // the primary order, with requirementId
+                        // only as a deterministic fallback.
+                        // ----------------------------------------
+
+                        streamRequirements.sort(
+                            (
+                                a,
+                                b
+                            ) => {
+
+                                const aId =
+                                    String(
+                                        a?.requirementId ??
+                                        a?.id ??
+                                        ""
+                                    );
+
+
+                                const bId =
+                                    String(
+                                        b?.requirementId ??
+                                        b?.id ??
+                                        ""
+                                    );
+
+
+                                return aId.localeCompare(
+                                    bId
+                                );
+
+                            }
+                        );
+
+
+                        let streamOccurrence =
+                            1;
+
+
+                        streamRequirements.forEach(
+                            requirement => {
+
+                                const requirementId =
+                                    String(
+                                        requirement?.requirementId ??
+                                        requirement?.id ??
+                                        ""
+                                    );
+
+
+                                if (
+                                    !requirementId
+                                ) {
+
+                                    return;
+
+                                }
+
+
+                                const lessons =
+                                    Math.max(
+                                        0,
+                                        Number(
+                                            requirement?.lessonsPerWeek
+                                        ) || 0
+                                    );
+
+
+                                const occurrenceIndexes =
+                                    [];
+
+
+                                for (
+                                    let index = 0;
+                                    index < lessons;
+                                    index++
+                                ) {
+
+                                    occurrenceIndexes.push(
+                                        streamOccurrence
+                                    );
+
+
+                                    streamOccurrence++;
+
+                                }
+
+
+                                requirementOccurrenceAssignments.set(
+                                    requirementId,
+                                    occurrenceIndexes
+                                );
+
+
+                                occurrenceCount =
+                                    Math.max(
+                                        occurrenceCount,
+                                        streamOccurrence - 1
+                                    );
+
+                            }
+                        );
+
                     }
                 );
 
             }
 
 
+            // ------------------------------------------------
+            // Build occurrence objects.
+            // ------------------------------------------------
+
+            const occurrences =
+                [];
+
+
+            for (
+                let occurrence = 1;
+                occurrence <= occurrenceCount;
+                occurrence++
+            ) {
+
+                occurrences.push(
+                    {
+                        occurrence,
+
+                        key:
+                            `${groupKey}-O${occurrence}`
+
+                    }
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // Requirement totals.
+            // ------------------------------------------------
+
+            const requirementOccurrenceTotals =
+                groupRequirements.map(
+                    requirement => ({
+
+                        requirementId:
+                            requirement?.requirementId ??
+                            requirement?.id ??
+                            null,
+
+                        streamId:
+                            requirement?.streamId ??
+                            requirement?.stream_id ??
+                            null,
+
+                        subjectId:
+                            requirement?.subjectId ??
+                            requirement?.subject_id ??
+                            null,
+
+                        lessonsPerWeek:
+                            Math.max(
+                                0,
+                                Number(
+                                    requirement?.lessonsPerWeek
+                                ) || 0
+                            ),
+
+                        occurrenceIndexes:
+                            [
+                                ...(
+                                    requirementOccurrenceAssignments.get(
+                                        String(
+                                            requirement?.requirementId ??
+                                            requirement?.id ??
+                                            ""
+                                        )
+                                    ) || []
+                                )
+                            ]
+
+                    })
+                );
+
+
             parallelOccurrencePlans.set(
                 groupKey,
                 {
+
                     groupKey,
 
                     streamIds:
                         new Set(
-                            groupInfo.streamIds
+                            actualStreamIds
                         ),
 
                     requirementIds:
@@ -4436,12 +4801,15 @@ async function prepareTimetableGeneratorData() {
                             groupInfo.requirementIds
                         ),
 
-                    occurrenceCount:
-                        maxOccurrences,
+                    occurrenceCount,
 
                     occurrences,
 
-                    requirementOccurrenceTotals
+                    requirementOccurrenceTotals,
+
+                    requirementOccurrenceAssignments,
+
+                    isSingleStreamGroup
 
                 }
             );
@@ -4486,6 +4854,11 @@ async function prepareTimetableGeneratorData() {
                             [
                                 ...plan.requirementIds
                             ],
+
+                        mode:
+                            plan.isSingleStreamGroup
+                                ? "SINGLE-STREAM SHARED OCCURRENCES"
+                                : "MULTI-STREAM OCCURRENCE LANES",
 
                         occurrenceCount:
                             plan.occurrenceCount,
@@ -4577,11 +4950,8 @@ async function prepareTimetableGeneratorData() {
                 throw new Error(
 
                     `Cannot create lesson tasks: ` +
-
                     `stream ${requirement.streamId} ` +
-
                     `does not exist for requirement ` +
-
                     `${requirement.requirementId}.`
 
                 );
@@ -4594,11 +4964,8 @@ async function prepareTimetableGeneratorData() {
                 throw new Error(
 
                     `Cannot create lesson tasks: ` +
-
                     `subject ${requirement.subjectId} ` +
-
                     `does not exist for requirement ` +
-
                     `${requirement.requirementId}.`
 
                 );
@@ -4782,31 +5149,61 @@ async function prepareTimetableGeneratorData() {
 
 
             // =================================================
-            // SCHOOL-WIDE OCCURRENCE CURSOR
+            // GET THIS REQUIREMENT'S GROUP OCCURRENCES
             // =================================================
             //
-            // IMPORTANT:
+            // This is the key correction.
             //
-            // The number represents a TEACHING PERIOD occurrence
-            // inside the parallel group.
-            //
-            // A double therefore consumes:
-            //
-            //     O1 + O2
-            //
-            // while another requirement may represent the same
-            // two periods as:
-            //
-            //     O1
-            //     O2
-            //
-            // This allows different double/single structures to
-            // remain synchronized.
+            // The occurrence indexes are assigned by the GROUP
+            // PLAN, not independently starting from O1 for every
+            // requirement.
             //
             // =================================================
 
-            let parallelOccurrence =
-                1;
+            const requirementOccurrenceIndexes =
+                isParallel
+
+                    ? [
+                        ...(
+                            parallelOccurrencePlan
+                                .requirementOccurrenceAssignments
+                                .get(
+                                    String(
+                                        requirement.requirementId
+                                    )
+                                )
+                            || []
+                        )
+                    ]
+
+                    : [];
+
+
+            if (
+                isParallel &&
+                requirementOccurrenceIndexes.length !==
+                lessonsPerWeek
+            ) {
+
+                throw new Error(
+
+                    `Parallel occurrence assignment mismatch for ` +
+
+                    `${parallelGroup}. ` +
+
+                    `Requirement ` +
+
+                    `${requirement.requirementId}: ` +
+
+                    `expected ${lessonsPerWeek} occurrence indexes ` +
+
+                    `but received ` +
+
+                    `${requirementOccurrenceIndexes.length}.`
+
+                );
+
+            }
 
 
             // =================================================
@@ -4819,26 +5216,48 @@ async function prepareTimetableGeneratorData() {
                 index++
             ) {
 
+                const occurrenceArrayIndex =
+                    index * 2;
+
+
                 const occurrenceStart =
-                    parallelOccurrence;
+                    isParallel
+
+                        ? requirementOccurrenceIndexes[
+                            occurrenceArrayIndex
+                        ]
+
+                        : null;
 
 
                 const occurrenceEnd =
-                    parallelOccurrence + 1;
+                    isParallel
+
+                        ? requirementOccurrenceIndexes[
+                            occurrenceArrayIndex + 1
+                        ]
+
+                        : null;
 
 
                 // ------------------------------------------------
-                // SAFETY: OCCURRENCE MUST EXIST IN GROUP PLAN
+                // SAFETY
                 // ------------------------------------------------
 
                 if (
                     isParallel &&
                     (
-                        occurrenceStart >
-                        parallelOccurrencePlan.occurrenceCount ||
+                        !Number.isFinite(
+                            Number(
+                                occurrenceStart
+                            )
+                        ) ||
 
-                        occurrenceEnd >
-                        parallelOccurrencePlan.occurrenceCount
+                        !Number.isFinite(
+                            Number(
+                                occurrenceEnd
+                            )
+                        )
                     )
                 ) {
 
@@ -4850,17 +5269,40 @@ async function prepareTimetableGeneratorData() {
 
                         `Requirement ` +
 
-                        `${requirement.requirementId} ` +
+                        `${requirement.requirementId}: ` +
 
-                        `attempted to create ` +
+                        `double task ${index + 1} ` +
 
-                        `O${occurrenceStart}/O${occurrenceEnd}, ` +
+                        `could not obtain two consecutive ` +
 
-                        `but the group plan contains only ` +
+                        `occurrence indexes.`
 
-                        `${parallelOccurrencePlan.occurrenceCount} ` +
+                    );
 
-                        `occurrences.`
+                }
+
+
+                if (
+                    isParallel &&
+                    Number(
+                        occurrenceEnd
+                    ) !==
+                    Number(
+                        occurrenceStart
+                    ) + 1
+                ) {
+
+                    throw new Error(
+
+                        `Parallel double occurrence is not consecutive for ` +
+
+                        `${parallelGroup}. ` +
+
+                        `Requirement ` +
+
+                        `${requirement.requirementId}: ` +
+
+                        `O${occurrenceStart} -> O${occurrenceEnd}.`
 
                     );
 
@@ -4914,17 +5356,6 @@ async function prepareTimetableGeneratorData() {
                     parallelOccurrenceKey:
                         occurrenceKey,
 
-                    // ------------------------------------------------
-                    // Task sequence
-                    // ------------------------------------------------
-                    //
-                    // This describes the local task type.
-                    //
-                    // Synchronization MUST use
-                    // parallelOccurrenceKey, not this value.
-                    //
-                    // ------------------------------------------------
-
                     parallelTaskSequence:
                         isParallel
                             ? `D${index + 1}`
@@ -4951,13 +5382,6 @@ async function prepareTimetableGeneratorData() {
                     task
                 );
 
-
-                // ------------------------------------------------
-                // A double consumes TWO school-wide occurrences.
-                // ------------------------------------------------
-
-                parallelOccurrence += 2;
-
             }
 
 
@@ -4971,18 +5395,28 @@ async function prepareTimetableGeneratorData() {
                 index++
             ) {
 
+                const occurrenceArrayIndex =
+                    periodsUsedByDoubles +
+                    index;
+
+
                 const occurrence =
-                    parallelOccurrence;
+                    isParallel
 
+                        ? requirementOccurrenceIndexes[
+                            occurrenceArrayIndex
+                        ]
 
-                // ------------------------------------------------
-                // SAFETY: OCCURRENCE MUST EXIST IN GROUP PLAN
-                // ------------------------------------------------
+                        : null;
+
 
                 if (
                     isParallel &&
-                    occurrence >
-                    parallelOccurrencePlan.occurrenceCount
+                    !Number.isFinite(
+                        Number(
+                            occurrence
+                        )
+                    )
                 ) {
 
                     throw new Error(
@@ -4993,17 +5427,11 @@ async function prepareTimetableGeneratorData() {
 
                         `Requirement ` +
 
-                        `${requirement.requirementId} ` +
+                        `${requirement.requirementId}: ` +
 
-                        `attempted to create ` +
+                        `single task ${index + 1} ` +
 
-                        `O${occurrence}, ` +
-
-                        `but the group plan contains only ` +
-
-                        `${parallelOccurrencePlan.occurrenceCount} ` +
-
-                        `occurrences.`
+                        `could not obtain its occurrence index.`
 
                     );
 
@@ -5082,22 +5510,11 @@ async function prepareTimetableGeneratorData() {
                     task
                 );
 
-
-                parallelOccurrence++;
-
             }
 
 
             // =================================================
             // REQUIREMENT COVERAGE CHECK
-            // =================================================
-            //
-            // The total occurrence consumption must equal the
-            // weekly lesson requirement.
-            //
-            // This is also a useful protection against future
-            // changes to double/single generation.
-            //
             // =================================================
 
             if (
@@ -5105,7 +5522,7 @@ async function prepareTimetableGeneratorData() {
             ) {
 
                 const generatedOccurrences =
-                    parallelOccurrence - 1;
+                    requirementOccurrenceIndexes.length;
 
 
                 if (
@@ -5117,16 +5534,25 @@ async function prepareTimetableGeneratorData() {
                         "Parallel occurrence coverage mismatch:",
                         {
                             parallelGroup,
+
                             requirementId:
                                 requirement.requirementId,
+
                             streamId:
                                 requirement.streamId,
+
                             subjectId:
                                 requirement.subjectId,
+
                             expected:
                                 lessonsPerWeek,
+
                             generated:
-                                generatedOccurrences
+                                generatedOccurrences,
+
+                            occurrenceIndexes:
+                                requirementOccurrenceIndexes
+
                         }
                     );
 
@@ -5139,23 +5565,7 @@ async function prepareTimetableGeneratorData() {
 
 
     // ========================================================
-    // VERIFY SCHOOL-WIDE PARALLEL OCCURRENCE COVERAGE
-    // ========================================================
-    //
-    // This diagnostic is intentionally done AFTER all tasks
-    // have been generated.
-    //
-    // For every parallel group we can now see which stream /
-    // requirement has which occurrence.
-    //
-    // Example:
-    //
-    // RE  10A -> O1 O2 O3 O4 O5
-    // GE  10B -> O1 O2 O3 O4 O5
-    // BS  10C -> O1 O2 O3 O4 O5
-    //
-    // The occurrence keys must be identical.
-    //
+    // VERIFY PARALLEL OCCURRENCE COVERAGE
     // ========================================================
 
     const parallelOccurrenceCoverage =
@@ -5209,6 +5619,7 @@ async function prepareTimetableGeneratorData() {
                     groupCoverage.set(
                         requirementKey,
                         {
+
                             requirementId:
                                 task.requirementId,
 
@@ -5249,6 +5660,7 @@ async function prepareTimetableGeneratorData() {
 
                 coverage.tasks.push(
                     task
+
                 );
 
             }
@@ -5292,6 +5704,7 @@ async function prepareTimetableGeneratorData() {
 
                         console.log(
                             {
+
                                 requirementId:
                                     coverage.requirementId,
 
@@ -5317,12 +5730,14 @@ async function prepareTimetableGeneratorData() {
                                                         .pop()
                                                 ) || 0;
 
+
                                             const bNumber =
                                                 Number(
                                                     String(b)
                                                         .split("-O")
                                                         .pop()
                                                 ) || 0;
+
 
                                             return (
                                                 aNumber -
@@ -5353,24 +5768,15 @@ async function prepareTimetableGeneratorData() {
     // HARD TASKS FIRST
     // ========================================================
     //
-    // IMPORTANT CHANGE:
+    // Parallel tasks are ordered by:
     //
-    // Parallel tasks are primarily ordered by their
-    // SCHOOL-WIDE occurrence.
+    //     1. parallel group
+    //     2. occurrence
+    //     3. duration
+    //     4. room requirement
     //
-    // We do NOT simply put every double in the entire timetable
-    // ahead of every single.
-    //
-    // That old ordering could cause:
-    //
-    //     Group O1 double
-    //     Group O2 double
-    //     Group O1 single
-    //
-    // which makes the generator work on different occurrences
-    // in a fragmented order.
-    //
-    // The new order keeps each parallel occurrence together.
+    // This ensures that members of the same occurrence are
+    // encountered together by the smart scheduler.
     //
     // ========================================================
 
@@ -5405,7 +5811,7 @@ async function prepareTimetableGeneratorData() {
 
 
             // ------------------------------------------------
-            // SAME PARALLEL GROUP
+            // Same parallel group
             // ------------------------------------------------
 
             if (
@@ -5427,10 +5833,6 @@ async function prepareTimetableGeneratorData() {
                     ) || 0;
 
 
-                // --------------------------------------------
-                // Same school-wide occurrence together
-                // --------------------------------------------
-
                 if (
                     occurrenceA !==
                     occurrenceB
@@ -5444,14 +5846,7 @@ async function prepareTimetableGeneratorData() {
                 }
 
 
-                // --------------------------------------------
-                // For the SAME occurrence:
-                //
-                // doubles first, then singles.
-                //
-                // This helps establish the common period/block
-                // before the single members are placed.
-                // --------------------------------------------
+                // Doubles first.
 
                 if (
                     a.duration !==
@@ -5466,9 +5861,7 @@ async function prepareTimetableGeneratorData() {
                 }
 
 
-                // --------------------------------------------
-                // Room-required before non-room-required
-                // --------------------------------------------
+                // Room-required first.
 
                 if (
                     a.requiresRoom !==
@@ -5482,16 +5875,22 @@ async function prepareTimetableGeneratorData() {
                 }
 
 
-                return 0;
+                // Deterministic final ordering.
+
+                return String(
+                    a.taskId
+                ).localeCompare(
+                    String(
+                        b.taskId
+                    )
+                );
 
             }
 
 
             // ------------------------------------------------
-            // NORMAL NON-PARALLEL TASKS
+            // Normal non-parallel tasks
             // ------------------------------------------------
-
-            // Double before single
 
             if (
                 a.duration !==
@@ -5506,8 +5905,6 @@ async function prepareTimetableGeneratorData() {
             }
 
 
-            // Room-required before non-room-required
-
             if (
                 a.requiresRoom !==
                 b.requiresRoom
@@ -5520,7 +5917,13 @@ async function prepareTimetableGeneratorData() {
             }
 
 
-            return 0;
+            return String(
+                a.taskId
+            ).localeCompare(
+                String(
+                    b.taskId
+                )
+            );
 
         }
     );
@@ -5818,7 +6221,6 @@ async function prepareTimetableGeneratorData() {
 
 
 
-
 function validateLessonTasks(
     data,
     tasks
@@ -5895,6 +6297,25 @@ function validateLessonTasks(
     // ========================================================
 
     const parallelGroups =
+        new Map();
+
+
+    // ========================================================
+    // TRACK OCCURRENCES BY REQUIREMENT
+    //
+    // IMPORTANT:
+    //
+    // A requirement in a multi-stream parallel group may
+    // legitimately start at O6, O11, O16, etc.
+    //
+    // Therefore we must NOT require every requirement to start
+    // at O1.
+    //
+    // We only require that the occurrence indexes assigned to
+    // each requirement form one continuous range.
+    // ========================================================
+
+    const requirementParallelCoverage =
         new Map();
 
 
@@ -6382,9 +6803,115 @@ function validateLessonTasks(
             }
 
 
-            // ------------------------------------------------
+            // =================================================
+            // RECORD REQUIREMENT OCCURRENCE COVERAGE
+            // =================================================
+
+            if (
+                task.requirementId &&
+                Number.isInteger(
+                    occurrenceStart
+                ) &&
+                Number.isInteger(
+                    occurrenceEnd
+                ) &&
+                occurrenceEnd >= occurrenceStart
+            ) {
+
+                const requirementKey =
+                    String(
+                        task.requirementId
+                    );
+
+
+                if (
+                    !requirementParallelCoverage.has(
+                        requirementKey
+                    )
+                ) {
+
+                    requirementParallelCoverage.set(
+                        requirementKey,
+                        {
+                            parallelGroup:
+                                parallelGroup,
+
+                            streamId:
+                                task.streamId,
+
+                            occurrences:
+                                new Set(),
+
+                            tasks:
+                                []
+                        }
+                    );
+
+                }
+
+
+                const requirementCoverage =
+                    requirementParallelCoverage.get(
+                        requirementKey
+                    );
+
+
+                if (
+                    requirementCoverage.parallelGroup !==
+                    parallelGroup
+                ) {
+
+                    errors.push(
+                        `Requirement ${requirementKey} appears in multiple parallel groups: ` +
+                        `${requirementCoverage.parallelGroup} and ${parallelGroup}.`
+                    );
+
+                }
+
+
+                if (
+                    String(
+                        requirementCoverage.streamId
+                    ) !==
+                    String(
+                        task.streamId
+                    )
+                ) {
+
+                    errors.push(
+                        `Requirement ${requirementKey} appears in multiple streams within parallel tasks.`
+                    );
+
+                }
+
+
+                for (
+                    let occurrence =
+                        occurrenceStart;
+
+                    occurrence <=
+                    occurrenceEnd;
+
+                    occurrence++
+                ) {
+
+                    requirementCoverage.occurrences.add(
+                        occurrence
+                    );
+
+                }
+
+
+                requirementCoverage.tasks.push(
+                    task
+                );
+
+            }
+
+
+            // =================================================
             // CREATE GROUP ENTRY
-            // ------------------------------------------------
+            // =================================================
 
             if (
                 !parallelGroups.has(
@@ -6511,16 +7038,7 @@ function validateLessonTasks(
 
 
             // ------------------------------------------------
-            // RECORD COVERED OCCURRENCES
-            // ------------------------------------------------
-            //
-            // IMPORTANT:
-            //
-            // A double lesson O1-O2 covers BOTH O1 and O2.
-            //
-            // Therefore continuity must be checked against the
-            // complete covered range, not merely the start values.
-            //
+            // RECORD COVERED OCCURRENCIES
             // ------------------------------------------------
 
             if (
@@ -6704,6 +7222,25 @@ function validateLessonTasks(
 
     // ========================================================
     // VALIDATE SCHOOL-WIDE PARALLEL GROUPS
+    //
+    // IMPORTANT:
+    //
+    // "School-wide" means the group is identified across the
+    // school. It does NOT mean every stream or requirement in
+    // the group must appear in every occurrence.
+    //
+    // For example:
+    //
+    // RE/GE/BS:
+    //
+    //     Stream A: O1-O5
+    //     Stream A: O6-O10
+    //     Stream B: O1-O5
+    //     Stream B: O6-O10
+    //
+    // This is valid even though each occurrence contains only
+    // the requirements assigned to that occurrence.
+    //
     // ========================================================
 
     parallelGroups.forEach(
@@ -6862,6 +7399,21 @@ function validateLessonTasks(
 
 
             // ------------------------------------------------
+            // DETERMINE GROUP TYPE
+            //
+            // Single-stream groups intentionally allow several
+            // requirements to occupy the same occurrence.
+            //
+            // Multi-stream groups must not contain two
+            // different requirements from the SAME stream at
+            // the same occurrence.
+            // ------------------------------------------------
+
+            const isMultiStreamGroup =
+                expectedStreamIds.size > 1;
+
+
+            // ------------------------------------------------
             // VALIDATE EVERY OCCURRENCE ENTRY
             // ------------------------------------------------
 
@@ -6890,59 +7442,12 @@ function validateLessonTasks(
 
 
                     // ----------------------------------------
-                    // REQUIRED STREAM MEMBERS
+                    // DO NOT REQUIRE EVERY STREAM HERE
                     // ----------------------------------------
-
-                    expectedStreamIds.forEach(
-                        streamId => {
-
-                            if (
-                                !occurrenceInfo.streams.has(
-                                    streamId
-                                )
-                            ) {
-
-                                errors.push(
-                                    `Parallel group ${groupKey}, ` +
-                                    `${occurrenceKey}: ` +
-                                    `stream ${streamId} is missing ` +
-                                    `from the school-wide occurrence.`
-                                );
-
-                            }
-
-                        }
-                    );
-
-
-                    // ----------------------------------------
-                    // REQUIRED REQUIREMENT MEMBERS
-                    // ----------------------------------------
-
-                    expectedRequirementIds.forEach(
-                        requirementId => {
-
-                            if (
-                                !occurrenceInfo.requirements.has(
-                                    requirementId
-                                )
-                            ) {
-
-                                errors.push(
-                                    `Parallel group ${groupKey}, ` +
-                                    `${occurrenceKey}: ` +
-                                    `requirement ${requirementId} is missing ` +
-                                    `from the school-wide occurrence.`
-                                );
-
-                            }
-
-                        }
-                    );
-
-
-                    // ----------------------------------------
-                    // NO UNEXPECTED STREAM
+                    //
+                    // Only participating streams for THIS
+                    // occurrence need to be present.
+                    //
                     // ----------------------------------------
 
                     occurrenceInfo.streams.forEach(
@@ -6969,32 +7474,155 @@ function validateLessonTasks(
                         }
                     );
 
+
+                    // ----------------------------------------
+                    // DO NOT REQUIRE EVERY REQUIREMENT HERE
+                    // ----------------------------------------
+                    //
+                    // A requirement may legitimately belong to
+                    // another occurrence range.
+                    //
+                    // ----------------------------------------
+
+                    occurrenceInfo.requirements.forEach(
+                        (
+                            requirementInfo,
+                            requirementId
+                        ) => {
+
+                            if (
+                                expectedRequirementIds.size > 0 &&
+                                !expectedRequirementIds.has(
+                                    String(
+                                        requirementId
+                                    )
+                                )
+                            ) {
+
+                                errors.push(
+                                    `Parallel group ${groupKey}, ` +
+                                    `${occurrenceKey}: ` +
+                                    `unexpected requirement ${requirementId} ` +
+                                    `was assigned to the occurrence.`
+                                );
+
+                            }
+
+                        }
+                    );
+
+
+                    // ----------------------------------------
+                    // MULTI-STREAM SAME-STREAM COLLISION
+                    // ----------------------------------------
+                    //
+                    // In a multi-stream group:
+                    //
+                    //     10L O1 -> Requirement A
+                    //     10L O1 -> Requirement B
+                    //
+                    // is NOT a valid occurrence assignment.
+                    //
+                    // But:
+                    //
+                    //     10L O1 -> Requirement A
+                    //     10M O1 -> Requirement B
+                    //
+                    // is valid.
+                    //
+                    // ----------------------------------------
+
+                    if (
+                        isMultiStreamGroup
+                    ) {
+
+                        const streamRequirements =
+                            new Map();
+
+
+                        occurrenceInfo.requirements.forEach(
+                            requirementInfo => {
+
+                                const streamKey =
+                                    String(
+                                        requirementInfo.streamId
+                                    );
+
+
+                                if (
+                                    !streamRequirements.has(
+                                        streamKey
+                                    )
+                                ) {
+
+                                    streamRequirements.set(
+                                        streamKey,
+                                        []
+                                    );
+
+                                }
+
+
+                                streamRequirements
+                                    .get(
+                                        streamKey
+                                    )
+                                    .push(
+                                        requirementInfo.requirementId
+                                    );
+
+                            }
+                        );
+
+
+                        streamRequirements.forEach(
+                            (
+                                requirementIds,
+                                streamId
+                            ) => {
+
+                                const uniqueRequirementIds =
+                                    [
+                                        ...new Set(
+                                            requirementIds.map(
+                                                id =>
+                                                    String(id)
+                                            )
+                                        )
+                                    ];
+
+
+                                if (
+                                    uniqueRequirementIds.length > 1
+                                ) {
+
+                                    errors.push(
+                                        `Parallel group ${groupKey}, ` +
+                                        `${occurrenceKey}: stream ${streamId} ` +
+                                        `has multiple requirements in the same ` +
+                                        `multi-stream parallel occurrence: ` +
+                                        `${uniqueRequirementIds.join(", ")}.`
+                                    );
+
+                                }
+
+                            }
+                        );
+
+                    }
+
                 }
             );
 
 
             // =================================================
-            // CHECK FULL OCCURRENCE CONTINUITY
+            // CHECK GROUP-WIDE OCCURRENCE CONTINUITY
             // =================================================
             //
-            // DO NOT check only occurrenceStart values.
+            // A double O1-O2 followed by O3 is continuous.
             //
-            // Example:
-            //
-            //     O1-O2  double
-            //     O3     single
-            //
-            // Start values:
-            //
-            //     1, 3
-            //
-            // That is VALID.
-            //
-            // Covered occurrences:
-            //
-            //     1, 2, 3
-            //
-            // That is CONTINUOUS.
+            // We therefore validate the COMPLETE covered range,
+            // not only occurrenceStart values.
             //
             // =================================================
 
@@ -7032,52 +7660,198 @@ function validateLessonTasks(
                 ];
 
 
-            for (
-                let index = 0;
-                index <
-                uniqueCoveredOccurrenceNumbers.length;
-                index++
+            if (
+                uniqueCoveredOccurrenceNumbers.length > 0
             ) {
 
-                const expected =
-                    index + 1;
-
-
-                const actual =
-                    uniqueCoveredOccurrenceNumbers[index];
+                const firstCovered =
+                    uniqueCoveredOccurrenceNumbers[0];
 
 
                 if (
-                    actual !==
-                    expected
+                    firstCovered !== 1
                 ) {
 
                     errors.push(
                         `Parallel group ${groupKey}: ` +
-                        `occurrence sequence is not continuous. ` +
-                        `Expected O${expected} but found O${actual}.`
+                        `occurrence sequence starts at O${firstCovered} ` +
+                        `instead of O1.`
                     );
 
-                    break;
+                }
+
+
+                for (
+                    let index = 1;
+                    index <
+                    uniqueCoveredOccurrenceNumbers.length;
+                    index++
+                ) {
+
+                    const previous =
+                        uniqueCoveredOccurrenceNumbers[
+                            index - 1
+                        ];
+
+
+                    const actual =
+                        uniqueCoveredOccurrenceNumbers[
+                            index
+                        ];
+
+
+                    const expected =
+                        previous + 1;
+
+
+                    if (
+                        actual !==
+                        expected
+                    ) {
+
+                        errors.push(
+                            `Parallel group ${groupKey}: ` +
+                            `occurrence sequence is not continuous. ` +
+                            `Expected O${expected} but found O${actual}.`
+                        );
+
+                        break;
+
+                    }
 
                 }
 
             }
 
 
-            // ------------------------------------------------
-            // CHECK FOR OVERLAPPING OCCURRENCE RANGES
-            // ------------------------------------------------
+            // =================================================
+            // CHECK REQUIREMENT OCCURRENCE CONTINUITY
+            // =================================================
             //
-            // Two separate tasks belonging to the same
-            // requirement should not claim the same occurrence
-            // unless they are deliberately part of the same
-            // occurrence representation.
+            // Each requirement must have a continuous occurrence
+            // range.
             //
-            // Multiple streams/requirements may legitimately
-            // share the same school-wide occurrence.
+            // Examples:
             //
-            // ------------------------------------------------
+            //     O1 O2 O3 O4 O5       VALID
+            //
+            //     O6 O7 O8 O9 O10      VALID
+            //
+            //     O1 O2 O4 O5          INVALID
+            //
+            // This deliberately does NOT require every
+            // requirement to start at O1.
+            //
+            // =================================================
+
+            requirementParallelCoverage.forEach(
+                (
+                    coverage,
+                    requirementId
+                ) => {
+
+                    if (
+                        coverage.parallelGroup !==
+                        groupKey
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const occurrences =
+                        [
+                            ...coverage.occurrences
+                        ]
+                            .map(
+                                value =>
+                                    Number(
+                                        value
+                                    )
+                            )
+                            .filter(
+                                value =>
+                                    Number.isInteger(
+                                        value
+                                    ) &&
+                                    value > 0
+                            )
+                            .sort(
+                                (
+                                    a,
+                                    b
+                                ) =>
+                                    a - b
+                            );
+
+
+                    const uniqueOccurrences =
+                        [
+                            ...new Set(
+                                occurrences
+                            )
+                        ];
+
+
+                    if (
+                        uniqueOccurrences.length === 0
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    for (
+                        let index = 1;
+                        index <
+                        uniqueOccurrences.length;
+                        index++
+                    ) {
+
+                        const previous =
+                            uniqueOccurrences[
+                                index - 1
+                            ];
+
+
+                        const actual =
+                            uniqueOccurrences[
+                                index
+                            ];
+
+
+                        const expected =
+                            previous + 1;
+
+
+                        if (
+                            actual !==
+                            expected
+                        ) {
+
+                            errors.push(
+                                `Parallel group ${groupKey}: ` +
+                                `requirement ${requirementId} ` +
+                                `has a gap in its occurrence sequence. ` +
+                                `Expected O${expected} but found O${actual}.`
+                            );
+
+                            break;
+
+                        }
+
+                    }
+
+                }
+            );
+
+
+            // =================================================
+            // CHECK FOR DUPLICATE REQUIREMENT/STREAM
+            // REPRESENTATION WITHIN AN OCCURRENCE
+            // =================================================
 
             groupInfo.occurrences.forEach(
                 (
@@ -7139,12 +7913,6 @@ function validateLessonTasks(
                             }
 
 
-                            // Same requirement may legitimately have
-                            // multiple task records only if they are
-                            // representing distinct stream members.
-                            //
-                            // Detect duplicate stream representation.
-
                             const seenStreams =
                                 new Set();
 
@@ -7167,7 +7935,8 @@ function validateLessonTasks(
                                         errors.push(
                                             `Parallel group ${groupKey}, ` +
                                             `${occurrenceKey}: requirement ${requirementId} ` +
-                                            `contains duplicate task representation for stream ${streamId}.`
+                                            `contains duplicate task representation ` +
+                                            `for stream ${streamId}.`
                                         );
 
                                     }
@@ -7268,6 +8037,77 @@ function validateLessonTasks(
 
 
     // ========================================================
+    // VALIDATE TASK PARALLEL GROUP STREAM MEMBERSHIP
+    // ========================================================
+    //
+    // Every task must only claim streams that actually belong
+    // to the authoritative parallel group.
+    //
+    // ========================================================
+
+    tasks.forEach(
+        task => {
+
+            const groupKey =
+                normalizeParallelGroupKey(
+                    task.parallelGroup ??
+                    task.parallel_group
+                );
+
+
+            if (
+                !groupKey
+            ) {
+
+                return;
+
+            }
+
+
+            const authoritativeGroup =
+                data.parallelGroups instanceof Map
+                    ? data.parallelGroups.get(
+                        groupKey
+                    )
+                    : null;
+
+
+            if (
+                !authoritativeGroup
+            ) {
+
+                return;
+
+            }
+
+
+            const actualStreamId =
+                String(
+                    task.streamId
+                );
+
+
+            if (
+                authoritativeGroup.streamIds instanceof Set &&
+                authoritativeGroup.streamIds.size > 0 &&
+                !authoritativeGroup.streamIds.has(
+                    actualStreamId
+                )
+            ) {
+
+                errors.push(
+                    `Parallel task ${task.taskId}: ` +
+                    `stream ${actualStreamId} does not belong to ` +
+                    `parallel group ${groupKey}.`
+                );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
     // PARALLEL OCCURRENCE DIAGNOSTIC
     // ========================================================
 
@@ -7335,6 +8175,9 @@ function validateLessonTasks(
 
                                             subjectId:
                                                 task.subjectId,
+
+                                            requirementId:
+                                                task.requirementId,
 
                                             taskType:
                                                 task.taskType,
@@ -7495,6 +8338,9 @@ function shuffleArray(
     return result;
 
 }
+
+
+
 
 
 // ============================================================
@@ -8083,7 +8929,8 @@ function incrementDailyRequirementLessonCount(
 
 
 
-   // ============================================================
+
+// ============================================================
 // CREATE OCCUPANCY INDEXES
 // ============================================================
 
@@ -8118,18 +8965,6 @@ function createOccupancyIndexes(
 
     // ========================================================
     // PERIOD LOOKUP
-    // ========================================================
-    //
-    // Generated entries store:
-    //
-    //     period_id
-    //
-    // Therefore period_id is the canonical period identity.
-    //
-    // The complete period collection is also stored on the
-    // occupancy indexes because teacher consecutive-limit
-    // checks need to resolve period IDs back to period objects.
-    //
     // ========================================================
 
     const periods =
@@ -8196,6 +9031,13 @@ function createOccupancyIndexes(
 
 
         // ====================================================
+        // PERIOD LOOKUP
+        // ====================================================
+
+        periodLookup,
+
+
+        // ====================================================
         // TEACHER LIMITS
         // ====================================================
 
@@ -8219,11 +9061,49 @@ function createOccupancyIndexes(
         studentGroupPeriod:
             new Set(),
 
+
+        // ====================================================
+        // DETAILED STREAM/PERIOD LESSONS
+        // ====================================================
+        //
+        // IMPORTANT:
+        //
+        // New parallel conflict logic searches this map
+        // school-wide by:
+        //
+        //     streamId + periodId
+        //
+        // and then checks:
+        //
+        //     parallelGroup
+        //     parallelOccurrenceKey
+        //     parallelIdentity
+        //
+        // ====================================================
+
+        streamPeriodLessons:
+            new Map(),
+
+
+        // ====================================================
+        // DETAILED STUDENT GROUP/PERIOD LESSONS
+        // ====================================================
+
         studentGroupPeriodLessons:
             new Map(),
 
+
+        // ====================================================
+        // TASK OCCUPANCY
+        // ====================================================
+
         taskPeriod:
             new Set(),
+
+
+        // ====================================================
+        // TEACHER + SUBJECT + PERIOD
+        // ====================================================
 
         teacherSubjectPeriod:
             new Set(),
@@ -8261,10 +9141,6 @@ function createOccupancyIndexes(
         //
         // One double lesson occupies two periods but counts
         // as one lesson for the requirement/day daily limit.
-        //
-        // Key format:
-        //
-        //     requirementId__dayNumber__lessonId
         //
         // ====================================================
 
@@ -8658,6 +9534,80 @@ function createOccupancyIndexes(
 
 
             // =================================================
+            // PARALLEL METADATA
+            // =================================================
+
+            const parallelGroup =
+                normalizeKey(
+                    entry.parallelGroup ??
+                    entry.parallel_group
+                );
+
+
+            const parallelOccurrenceKey =
+                normalizeKey(
+                    entry.parallelOccurrenceKey ??
+                    entry.parallel_occurrence_key
+                );
+
+
+            const rawParallelOccurrence =
+                entry.parallelOccurrence ??
+                entry.parallel_occurrence;
+
+
+            const numericParallelOccurrence =
+                Number(
+                    rawParallelOccurrence
+                );
+
+
+            const parallelOccurrence =
+                Number.isFinite(
+                    numericParallelOccurrence
+                )
+                    ? numericParallelOccurrence
+                    : null;
+
+
+            const parallelOccurrenceIndexes =
+                Array.isArray(
+                    entry.parallelOccurrenceIndexes
+                )
+                    ? [
+                        ...entry.parallelOccurrenceIndexes
+                    ]
+                    : (
+                        Array.isArray(
+                            entry.parallel_occurrence_indexes
+                        )
+                            ? [
+                                ...entry.parallel_occurrence_indexes
+                            ]
+                            : []
+                    );
+
+
+            const suppliedParallelIdentity =
+                normalizeKey(
+                    entry.parallelIdentity ??
+                    entry.parallel_identity
+                );
+
+
+            const parallelIdentity =
+                (
+                    parallelGroup &&
+                    parallelOccurrenceKey
+                )
+                    ? `${parallelGroup}__${parallelOccurrenceKey}`
+                    : (
+                        suppliedParallelIdentity ||
+                        ""
+                    );
+
+
+            // =================================================
             // STUDENT GROUPS
             // =================================================
 
@@ -8665,6 +9615,72 @@ function createOccupancyIndexes(
                 getStudentGroups(
                     entry
                 );
+
+
+            // =================================================
+            // COMMON LESSON DETAIL
+            // =================================================
+            //
+            // Keep one consistent object shape everywhere.
+            //
+            // =================================================
+
+            const lessonDetail = {
+
+                taskId:
+                    taskId ||
+                    null,
+
+                lessonId:
+                    lessonId ||
+                    null,
+
+                requirementId:
+                    requirementId ||
+                    null,
+
+                subjectId:
+                    subjectId ||
+                    null,
+
+                teacherId:
+                    teacherId ||
+                    null,
+
+                streamId:
+                    streamId ||
+                    null,
+
+                roomId:
+                    roomId ||
+                    null,
+
+                parallelGroup:
+                    parallelGroup ||
+                    null,
+
+                parallelOccurrenceKey:
+                    parallelOccurrenceKey ||
+                    null,
+
+                parallelOccurrence:
+                    parallelOccurrence,
+
+                parallelOccurrenceIndexes:
+                    [
+                        ...parallelOccurrenceIndexes
+                    ],
+
+                parallelIdentity:
+                    parallelIdentity ||
+                    null,
+
+                studentGroupIds:
+                    [
+                        ...studentGroups
+                    ]
+
+            };
 
 
             // =================================================
@@ -8709,48 +9725,47 @@ function createOccupancyIndexes(
                     .push({
 
                         taskId:
-                            taskId ||
-                            null,
+                            lessonDetail.taskId,
 
                         lessonId:
-                            lessonId ||
-                            null,
+                            lessonDetail.lessonId,
+
+                        requirementId:
+                            lessonDetail.requirementId,
 
                         subjectId:
-                            subjectId ||
-                            null,
+                            lessonDetail.subjectId,
 
                         streamId:
-                            streamId ||
-                            null,
+                            lessonDetail.streamId,
 
                         parallelGroup:
-                            normalizeKey(
-                                entry.parallelGroup ??
-                                entry.parallel_group
-                            ) ||
-                            null,
+                            lessonDetail.parallelGroup,
+
+                        parallelOccurrenceKey:
+                            lessonDetail.parallelOccurrenceKey,
+
+                        parallelOccurrence:
+                            lessonDetail.parallelOccurrence,
+
+                        parallelOccurrenceIndexes:
+                            [
+                                ...lessonDetail.parallelOccurrenceIndexes
+                            ],
+
+                        parallelIdentity:
+                            lessonDetail.parallelIdentity,
 
                         studentGroupIds:
-                            studentGroups
+                            [
+                                ...lessonDetail.studentGroupIds
+                            ]
 
                     });
 
 
                 // ---------------------------------------------
                 // TEACHER + SUBJECT + PERIOD
-                // ---------------------------------------------
-                //
-                // This allows the conflict engine to recognize
-                // the special valid case:
-                //
-                // same teacher
-                // + same subject
-                // + same period
-                // + different streams
-                //
-                // = shared/concurrent teaching.
-                //
                 // ---------------------------------------------
 
                 if (
@@ -8790,9 +9805,83 @@ function createOccupancyIndexes(
                 streamId
             ) {
 
+                const streamPeriodKey =
+                    `${streamId}__${periodId}`;
+
+
                 occupancy.streamPeriod.add(
-                    `${streamId}__${periodId}`
+                    streamPeriodKey
                 );
+
+
+                // ---------------------------------------------
+                // STORE DETAILED STREAM/PERIOD LESSON
+                // ---------------------------------------------
+
+                if (
+                    !occupancy.streamPeriodLessons.has(
+                        streamPeriodKey
+                    )
+                ) {
+
+                    occupancy.streamPeriodLessons.set(
+                        streamPeriodKey,
+                        []
+                    );
+
+                }
+
+
+                occupancy.streamPeriodLessons
+                    .get(
+                        streamPeriodKey
+                    )
+                    .push({
+
+                        taskId:
+                            lessonDetail.taskId,
+
+                        lessonId:
+                            lessonDetail.lessonId,
+
+                        requirementId:
+                            lessonDetail.requirementId,
+
+                        subjectId:
+                            lessonDetail.subjectId,
+
+                        teacherId:
+                            lessonDetail.teacherId,
+
+                        streamId:
+                            lessonDetail.streamId,
+
+                        roomId:
+                            lessonDetail.roomId,
+
+                        parallelGroup:
+                            lessonDetail.parallelGroup,
+
+                        parallelOccurrenceKey:
+                            lessonDetail.parallelOccurrenceKey,
+
+                        parallelOccurrence:
+                            lessonDetail.parallelOccurrence,
+
+                        parallelOccurrenceIndexes:
+                            [
+                                ...lessonDetail.parallelOccurrenceIndexes
+                            ],
+
+                        parallelIdentity:
+                            lessonDetail.parallelIdentity,
+
+                        studentGroupIds:
+                            [
+                                ...lessonDetail.studentGroupIds
+                            ]
+
+                    });
 
             }
 
@@ -8877,31 +9966,39 @@ function createOccupancyIndexes(
                         .push({
 
                             taskId:
-                                taskId ||
-                                null,
+                                lessonDetail.taskId,
 
                             lessonId:
-                                lessonId ||
-                                null,
+                                lessonDetail.lessonId,
+
+                            requirementId:
+                                lessonDetail.requirementId,
 
                             subjectId:
-                                subjectId ||
-                                null,
+                                lessonDetail.subjectId,
 
                             teacherId:
-                                teacherId ||
-                                null,
+                                lessonDetail.teacherId,
 
                             streamId:
-                                streamId ||
-                                null,
+                                lessonDetail.streamId,
 
                             parallelGroup:
-                                normalizeKey(
-                                    entry.parallelGroup ??
-                                    entry.parallel_group
-                                ) ||
-                                null
+                                lessonDetail.parallelGroup,
+
+                            parallelOccurrenceKey:
+                                lessonDetail.parallelOccurrenceKey,
+
+                            parallelOccurrence:
+                                lessonDetail.parallelOccurrence,
+
+                            parallelOccurrenceIndexes:
+                                [
+                                    ...lessonDetail.parallelOccurrenceIndexes
+                                ],
+
+                            parallelIdentity:
+                                lessonDetail.parallelIdentity
 
                         });
 
@@ -9018,19 +10115,6 @@ function createOccupancyIndexes(
     // A double lesson occupies two periods but counts as ONE
     // lesson for maxLessonsPerDay.
     //
-    // Therefore:
-    //
-    //     period 2 -> Chemistry
-    //     period 3 -> Chemistry
-    //
-    // must produce:
-    //
-    //     Chemistry/day = 1
-    //
-    // NOT:
-    //
-    //     Chemistry/day = 2
-    //
     // ========================================================
 
     entries.forEach(
@@ -9145,20 +10229,11 @@ function createOccupancyIndexes(
             // ------------------------------------------------
             // PARALLEL OCCURRENCE
             // ------------------------------------------------
-            //
-            // This is an additional fallback for generated
-            // entries where lessonId/taskId is not available.
-            //
-            // A double lesson should normally have the same
-            // occurrence key in both periods.
-            //
-            // ------------------------------------------------
 
             const parallelOccurrenceKey =
                 normalizeKey(
                     entry.parallelOccurrenceKey ??
-                    entry.parallel_occurrence_key ??
-                    entry.parallelOccurrence
+                    entry.parallel_occurrence_key
                 );
 
 
@@ -9166,20 +10241,34 @@ function createOccupancyIndexes(
             // DETERMINE UNIQUE LESSON ID
             // ------------------------------------------------
             //
-            // Priority:
+            // Prefer lessonId/taskId.
             //
-            // 1. lessonId
-            // 2. taskId
-            // 3. parallel occurrence key
-            // 4. period fallback
+            // IMPORTANT:
+            //
+            // Do NOT use parallelOccurrenceKey alone when
+            // different requirements in a parallel group share
+            // the same occurrence.
+            //
+            // Example:
+            //
+            // BIO + PHY
+            // both O1
+            //
+            // They are two different requirements and must each
+            // be counted independently.
+            //
+            // Therefore requirementId is part of the fallback.
             //
             // ------------------------------------------------
 
             const uniqueLessonId =
                 lessonId ||
                 taskId ||
-                parallelOccurrenceKey ||
-                `${requirementId}__${periodId}`;
+                (
+                    parallelOccurrenceKey
+                        ? `${requirementId}__${parallelOccurrenceKey}`
+                        : `${requirementId}__${periodId}`
+                );
 
 
             // ------------------------------------------------
@@ -9247,6 +10336,9 @@ function createOccupancyIndexes(
     return occupancy;
 
 }
+
+
+
 // ============================================================
 // GET TEACHER MAX CONSECUTIVE LESSONS
 // ============================================================
@@ -9258,7 +10350,7 @@ function getTeacherMaxConsecutiveLessons(
 
     if (
         !indexes ||
-        !indexes.teacherLimits ||
+        !(indexes.teacherLimits instanceof Map) ||
         !teacherId
     ) {
 
@@ -9273,17 +10365,45 @@ function getTeacherMaxConsecutiveLessons(
         );
 
 
+    if (
+        !normalizedTeacherId
+    ) {
+
+        return 0;
+
+    }
+
+
     const limits =
         indexes.teacherLimits.get(
             normalizedTeacherId
         );
 
 
-    return Number(
-        limits?.maxConsecutiveLessons
-    ) || 0;
+    if (
+        !limits ||
+        typeof limits !== "object"
+    ) {
+
+        return 0;
+
+    }
+
+
+    const maximum =
+        Number(
+            limits.maxConsecutiveLessons ??
+            limits.max_consecutive_lessons
+        );
+
+
+    return Number.isFinite(maximum) &&
+        maximum > 0
+        ? maximum
+        : 0;
 
 }
+
 
 
 // ============================================================
@@ -9297,7 +10417,6 @@ function getIndexedPeriod(
 
     if (
         !indexes ||
-        !Array.isArray(indexes.periods) ||
         !periodId
     ) {
 
@@ -9310,6 +10429,48 @@ function getIndexedPeriod(
         normalizeTimetableId(
             periodId
         );
+
+
+    if (
+        !normalizedPeriodId
+    ) {
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // FAST LOOKUP WHEN PERIOD MAP EXISTS
+    // ========================================================
+
+    if (
+        indexes.periodLookup instanceof Map
+    ) {
+
+        return (
+            indexes.periodLookup.get(
+                normalizedPeriodId
+            ) ||
+            null
+        );
+
+    }
+
+
+    // ========================================================
+    // FALLBACK TO PERIOD ARRAY
+    // ========================================================
+
+    if (
+        !Array.isArray(
+            indexes.periods
+        )
+    ) {
+
+        return null;
+
+    }
 
 
     return (
@@ -9326,6 +10487,7 @@ function getIndexedPeriod(
 }
 
 
+
 // ============================================================
 // GET TEACHER'S CURRENT PERIODS
 // ============================================================
@@ -9337,7 +10499,7 @@ function getTeacherOccupiedPeriods(
 
     if (
         !indexes ||
-        !indexes.teacherPeriod ||
+        !(indexes.teacherPeriod instanceof Set) ||
         !teacherId
     ) {
 
@@ -9352,17 +10514,30 @@ function getTeacherOccupiedPeriods(
         );
 
 
+    if (
+        !normalizedTeacherId
+    ) {
+
+        return [];
+
+    }
+
+
     const prefix =
         `${normalizedTeacherId}__`;
 
 
     const periods = [];
 
+    const seenPeriodIds =
+        new Set();
+
 
     indexes.teacherPeriod.forEach(
         key => {
 
             if (
+                typeof key !== "string" ||
                 !key.startsWith(
                     prefix
                 )
@@ -9374,9 +10549,23 @@ function getTeacherOccupiedPeriods(
 
 
             const periodId =
-                key.substring(
-                    prefix.length
+                normalizeTimetableId(
+                    key.substring(
+                        prefix.length
+                    )
                 );
+
+
+            if (
+                !periodId ||
+                seenPeriodIds.has(
+                    periodId
+                )
+            ) {
+
+                return;
+
+            }
 
 
             const period =
@@ -9389,6 +10578,11 @@ function getTeacherOccupiedPeriods(
             if (
                 period
             ) {
+
+                seenPeriodIds.add(
+                    periodId
+                );
+
 
                 periods.push(
                     period
@@ -9414,12 +10608,10 @@ function calculateLongestConsecutivePeriodRun(
     periods
 ) {
 
-    // ========================================================
-    // VALIDATE INPUT
-    // ========================================================
-
     if (
-        !Array.isArray(periods) ||
+        !Array.isArray(
+            periods
+        ) ||
         periods.length === 0
     ) {
 
@@ -9427,10 +10619,6 @@ function calculateLongestConsecutivePeriodRun(
 
     }
 
-
-    // ========================================================
-    // GROUP PERIOD ORDERS BY DAY
-    // ========================================================
 
     const dayGroups =
         new Map();
@@ -9449,9 +10637,19 @@ function calculateLongestConsecutivePeriodRun(
             }
 
 
-            // ==================================================
-            // SUPPORT NORMALIZED AND DATABASE FIELD NAMES
-            // ==================================================
+            const isTeachingPeriod =
+                period.isTeachingPeriod ??
+                period.is_teaching_period;
+
+
+            if (
+                isTeachingPeriod === false
+            ) {
+
+                return;
+
+            }
+
 
             const dayNumber =
                 Number(
@@ -9489,7 +10687,7 @@ function calculateLongestConsecutivePeriodRun(
 
                 dayGroups.set(
                     dayNumber,
-                    []
+                    new Set()
                 );
 
             }
@@ -9499,7 +10697,7 @@ function calculateLongestConsecutivePeriodRun(
                 .get(
                     dayNumber
                 )
-                .push(
+                .add(
                     periodOrder
                 );
 
@@ -9507,45 +10705,23 @@ function calculateLongestConsecutivePeriodRun(
     );
 
 
-    // ========================================================
-    // FIND LONGEST RUN ACROSS ALL DAYS
-    // ========================================================
-
     let longestRun =
         0;
 
 
     dayGroups.forEach(
-        orders => {
-
-            if (
-                !Array.isArray(
-                    orders
-                ) ||
-                orders.length === 0
-            ) {
-
-                return;
-
-            }
-
-
-            // ==================================================
-            // REMOVE DUPLICATE PERIOD ORDERS
-            // ==================================================
+        orderSet => {
 
             const uniqueOrders =
                 [
-                    ...new Set(
-                        orders
-                    )
+                    ...orderSet
                 ]
                 .sort(
                     (
-                        a,
-                        b
+                        first,
+                        second
                     ) =>
-                        a - b
+                        first - second
                 );
 
 
@@ -9558,10 +10734,6 @@ function calculateLongestConsecutivePeriodRun(
             }
 
 
-            // ==================================================
-            // SINGLE PERIOD
-            // ==================================================
-
             let currentRun =
                 1;
 
@@ -9570,22 +10742,18 @@ function calculateLongestConsecutivePeriodRun(
                 1;
 
 
-            // ==================================================
-            // CHECK CONSECUTIVE PERIODS
-            // ==================================================
-
             for (
-                let i = 1;
-                i < uniqueOrders.length;
-                i++
+                let index = 1;
+                index < uniqueOrders.length;
+                index++
             ) {
 
                 const currentOrder =
-                    uniqueOrders[i];
+                    uniqueOrders[index];
 
 
                 const previousOrder =
-                    uniqueOrders[i - 1];
+                    uniqueOrders[index - 1];
 
 
                 if (
@@ -9611,10 +10779,6 @@ function calculateLongestConsecutivePeriodRun(
 
             }
 
-
-            // ==================================================
-            // UPDATE GLOBAL LONGEST RUN
-            // ==================================================
 
             longestRun =
                 Math.max(
@@ -9644,7 +10808,9 @@ function wouldExceedTeacherConsecutiveLimit(
 
     if (
         !task ||
-        !Array.isArray(candidatePeriods) ||
+        !Array.isArray(
+            candidatePeriods
+        ) ||
         candidatePeriods.length === 0 ||
         !indexes
     ) {
@@ -9686,20 +10852,12 @@ function wouldExceedTeacherConsecutiveLimit(
     }
 
 
-    // ========================================================
-    // CURRENT TEACHER PERIODS
-    // ========================================================
-
     const occupiedPeriods =
         getTeacherOccupiedPeriods(
             indexes,
             teacherId
         );
 
-
-    // ========================================================
-    // PROJECTED PERIODS
-    // ========================================================
 
     const projectedPeriodMap =
         new Map();
@@ -9708,23 +10866,22 @@ function wouldExceedTeacherConsecutiveLimit(
     occupiedPeriods.forEach(
         period => {
 
+            const periodId =
+                normalizeTimetableId(
+                    period?.id
+                );
+
+
             if (
-                !period ||
-                period.id === null ||
-                period.id === undefined
+                periodId
             ) {
 
-                return;
+                projectedPeriodMap.set(
+                    periodId,
+                    period
+                );
 
             }
-
-
-            projectedPeriodMap.set(
-                normalizeTimetableId(
-                    period.id
-                ),
-                period
-            );
 
         }
     );
@@ -9733,48 +10890,36 @@ function wouldExceedTeacherConsecutiveLimit(
     candidatePeriods.forEach(
         period => {
 
+            const periodId =
+                normalizeTimetableId(
+                    period?.id
+                );
+
+
             if (
-                !period ||
-                period.id === null ||
-                period.id === undefined
+                periodId
             ) {
 
-                return;
+                projectedPeriodMap.set(
+                    periodId,
+                    period
+                );
 
             }
-
-
-            projectedPeriodMap.set(
-                normalizeTimetableId(
-                    period.id
-                ),
-                period
-            );
 
         }
     );
 
 
-    const projectedPeriods =
-        [
-            ...projectedPeriodMap.values()
-        ];
-
-
-    // ========================================================
-    // CALCULATE PROJECTED LONGEST RUN
-    // ========================================================
-
     const longestRun =
         calculateLongestConsecutivePeriodRun(
-            projectedPeriods
+            [
+                ...projectedPeriodMap.values()
+            ]
         );
 
 
-    return (
-        longestRun >
-        maximum
-    );
+    return longestRun > maximum;
 
 }
 
@@ -9807,10 +10952,8 @@ function getTeacherConsecutiveConflictReason(
 
 
     return (
-
         `Teacher would exceed the maximum of ` +
         `${maximum} consecutive lessons.`
-
     );
 
 }
@@ -9835,11 +10978,9 @@ function getTaskStudentGroups(
 
 
     const possibleGroups =
-
         task.studentGroupIds ??
         task.student_group_ids ??
         task.studentGroups ??
-        task.student_group_ids ??
         task.studentGroupId ??
         task.student_group_id ??
         task.groupIds ??
@@ -9848,10 +10989,6 @@ function getTaskStudentGroups(
         task.group_id ??
         task.groups;
 
-
-    // ========================================================
-    // ARRAY
-    // ========================================================
 
     if (
         Array.isArray(
@@ -9864,7 +11001,15 @@ function getTaskStudentGroups(
                 .map(
                     group =>
                         normalizeTimetableId(
-                            group
+                            typeof group === "object"
+                                ? (
+                                    group.id ??
+                                    group.groupId ??
+                                    group.group_id ??
+                                    group.streamId ??
+                                    group.stream_id
+                                )
+                                : group
                         )
                 )
                 .filter(
@@ -9872,24 +11017,14 @@ function getTaskStudentGroups(
                 );
 
 
-        if (
-            groups.length > 0
-        ) {
-
-            return [
-                ...new Set(
-                    groups
-                )
-            ];
-
-        }
+        return [
+            ...new Set(
+                groups
+            )
+        ];
 
     }
 
-
-    // ========================================================
-    // SINGLE VALUE
-    // ========================================================
 
     if (
         possibleGroups !== undefined &&
@@ -9901,7 +11036,15 @@ function getTaskStudentGroups(
 
         const normalized =
             normalizeTimetableId(
-                possibleGroups
+                typeof possibleGroups === "object"
+                    ? (
+                        possibleGroups.id ??
+                        possibleGroups.groupId ??
+                        possibleGroups.group_id ??
+                        possibleGroups.streamId ??
+                        possibleGroups.stream_id
+                    )
+                    : possibleGroups
             );
 
 
@@ -9917,10 +11060,6 @@ function getTaskStudentGroups(
 
     }
 
-
-    // ========================================================
-    // FALLBACK TO STREAM
-    // ========================================================
 
     const streamId =
         normalizeTimetableId(
@@ -9971,6 +11110,16 @@ function getTeacherLessonsAtPeriod(
 
 
     if (
+        !normalizedTeacherId ||
+        !normalizedPeriodId
+    ) {
+
+        return [];
+
+    }
+
+
+    if (
         indexes.teacherPeriodLessons instanceof Map
     ) {
 
@@ -10003,6 +11152,10 @@ function getTeacherLessonsAtPeriod(
 
 
 
+// ============================================================
+// GET TASK PARALLEL GROUP
+// ============================================================
+
 function getTaskParallelGroup(
     task
 ) {
@@ -10023,6 +11176,11 @@ function getTaskParallelGroup(
 
 }
 
+
+
+// ============================================================
+// GET TASK PARALLEL OCCURRENCE KEY
+// ============================================================
 
 function getTaskParallelOccurrenceKey(
     task
@@ -10045,6 +11203,11 @@ function getTaskParallelOccurrenceKey(
 }
 
 
+
+// ============================================================
+// CHECK WHETHER TWO TEACHER LESSONS MAY SHARE A SESSION
+// ============================================================
+
 function areConcurrentTeacherLessonsAllowed(
     task,
     existingLesson
@@ -10060,10 +11223,6 @@ function areConcurrentTeacherLessonsAllowed(
     }
 
 
-    // ========================================================
-    // SUBJECT
-    // ========================================================
-
     const taskSubjectId =
         normalizeTimetableId(
             task.subjectId ??
@@ -10078,10 +11237,6 @@ function areConcurrentTeacherLessonsAllowed(
         );
 
 
-    // ========================================================
-    // SUBJECT MUST MATCH
-    // ========================================================
-
     if (
         !taskSubjectId ||
         !existingSubjectId ||
@@ -10093,10 +11248,6 @@ function areConcurrentTeacherLessonsAllowed(
 
     }
 
-
-    // ========================================================
-    // PARALLEL GROUP
-    // ========================================================
 
     const taskParallelGroup =
         getTaskParallelGroup(
@@ -10110,10 +11261,6 @@ function areConcurrentTeacherLessonsAllowed(
         );
 
 
-    // ========================================================
-    // PARALLEL OCCURRENCE
-    // ========================================================
-
     const taskParallelOccurrenceKey =
         getTaskParallelOccurrenceKey(
             task
@@ -10125,18 +11272,6 @@ function areConcurrentTeacherLessonsAllowed(
             existingLesson
         );
 
-
-    // ========================================================
-    // EXPLICIT PARALLEL TEACHING
-    // ========================================================
-    //
-    // If either lesson belongs to an explicit parallel group,
-    // BOTH must have:
-    //
-    //     same parallel group
-    //     same parallel occurrence
-    //
-    // ========================================================
 
     if (
         taskParallelGroup ||
@@ -10163,11 +11298,6 @@ function areConcurrentTeacherLessonsAllowed(
         }
 
 
-        // ----------------------------------------------------
-        // Explicit parallel groups must also have an
-        // occurrence identity.
-        // ----------------------------------------------------
-
         if (
             !taskParallelOccurrenceKey ||
             !existingParallelOccurrenceKey
@@ -10186,18 +11316,9 @@ function areConcurrentTeacherLessonsAllowed(
     }
 
 
-    // ========================================================
-    // LEGACY SHARED TEACHING
-    // ========================================================
-    //
-    // If neither lesson belongs to an explicit parallel group,
-    // retain the existing shared-teaching compatibility:
-    //
-    // same subject + same teacher + same period
-    //
-    // may represent one shared teacher session.
-    //
-    // ========================================================
+    // Legacy shared teaching:
+    // same subject is sufficient here because the caller has
+    // already matched the same teacher's occupancy index.
 
     return true;
 
@@ -10205,8 +11326,9 @@ function areConcurrentTeacherLessonsAllowed(
 
 
 
-
-
+// ============================================================
+// CHECK SINGLE SLOT CONFLICT
+// ============================================================
 
 function checkSingleSlotConflict(
     task,
@@ -10214,10 +11336,6 @@ function checkSingleSlotConflict(
     room,
     indexes
 ) {
-
-    // ========================================================
-    // BASIC VALIDATION
-    // ========================================================
 
     if (
         !task ||
@@ -10233,10 +11351,6 @@ function checkSingleSlotConflict(
 
     }
 
-
-    // ========================================================
-    // PERIOD ID
-    // ========================================================
 
     const periodId =
         normalizeTimetableId(
@@ -10256,10 +11370,6 @@ function checkSingleSlotConflict(
 
     }
 
-
-    // ========================================================
-    // TASK IDS
-    // ========================================================
 
     const studentGroups =
         getTaskStudentGroups(
@@ -10336,10 +11446,6 @@ function checkSingleSlotConflict(
         }
 
 
-        // ====================================================
-        // GET EXISTING LESSONS
-        // ====================================================
-
         const existingLessons =
             indexes.studentGroupPeriodLessons instanceof Map
                 ? (
@@ -10349,10 +11455,6 @@ function checkSingleSlotConflict(
                 )
                 : [];
 
-
-        // ====================================================
-        // UNKNOWN OCCUPANCY
-        // ====================================================
 
         if (
             existingLessons.length === 0
@@ -10366,17 +11468,6 @@ function checkSingleSlotConflict(
 
         }
 
-
-        // ====================================================
-        // CHECK EVERY EXISTING LESSON
-        // ====================================================
-        //
-        // ALL existing lessons must be legitimately parallel
-        // with the new task.
-        //
-        // It is not enough for just one existing lesson to match.
-        //
-        // ====================================================
 
         const parallelTeachingAllowed =
             existingLessons.every(
@@ -10423,10 +11514,6 @@ function checkSingleSlotConflict(
                         );
 
 
-                    // ========================================
-                    // SUBJECT MUST BE DIFFERENT
-                    // ========================================
-
                     if (
                         !taskSubjectId ||
                         !existingSubjectId ||
@@ -10439,10 +11526,6 @@ function checkSingleSlotConflict(
                     }
 
 
-                    // ========================================
-                    // TEACHER MUST BE DIFFERENT
-                    // ========================================
-
                     if (
                         !taskTeacherId ||
                         !existingTeacherId ||
@@ -10454,17 +11537,6 @@ function checkSingleSlotConflict(
 
                     }
 
-
-                    // ========================================
-                    // EXPLICIT PARALLEL GROUP
-                    // ========================================
-                    //
-                    // Both sides must have:
-                    //
-                    //     same group
-                    //     same occurrence
-                    //
-                    // ========================================
 
                     if (
                         taskParallelGroup ||
@@ -10511,10 +11583,6 @@ function checkSingleSlotConflict(
                         }
 
 
-                        // ------------------------------------
-                        // Full identity check
-                        // ------------------------------------
-
                         if (
                             taskParallelIdentity &&
                             existingParallelIdentity &&
@@ -10531,16 +11599,6 @@ function checkSingleSlotConflict(
 
                     }
 
-
-                    // ========================================
-                    // NORMAL NON-GROUP PARALLEL TEACHING
-                    // ========================================
-                    //
-                    // Retain compatibility with existing
-                    // parallel teaching data that has no
-                    // explicit parallel group.
-                    //
-                    // ========================================
 
                     return true;
 
@@ -10582,7 +11640,8 @@ function checkSingleSlotConflict(
             );
 
 
-        let existingTeacherLessons = [];
+        let existingTeacherLessons =
+            [];
 
 
         if (
@@ -10598,23 +11657,6 @@ function checkSingleSlotConflict(
 
         }
 
-
-        // ====================================================
-        // SHARED TEACHER SESSION
-        // ====================================================
-        //
-        // A teacher can teach multiple streams simultaneously
-        // when this is genuinely one shared/concurrent lesson.
-        //
-        // For explicit parallel groups:
-        //
-        //     same subject
-        //     same parallel group
-        //     same occurrence
-        //
-        // are required.
-        //
-        // ====================================================
 
         let teacherConcurrentSession =
             false;
@@ -10636,10 +11678,6 @@ function checkSingleSlotConflict(
         }
 
 
-        // ====================================================
-        // TEACHER PERIOD CONFLICT
-        // ====================================================
-
         if (
             existingTeacherLessons.length > 0 &&
             !teacherConcurrentSession
@@ -10653,10 +11691,6 @@ function checkSingleSlotConflict(
 
         }
 
-
-        // ====================================================
-        // TEACHER LIMITS
-        // ====================================================
 
         const teacherLimits =
             indexes.teacherLimits instanceof Map
@@ -10672,13 +11706,10 @@ function checkSingleSlotConflict(
                 : 1;
 
 
-        // ====================================================
-        // DAILY TEACHER LIMIT
-        // ====================================================
-
         const maximumDailyLessons =
             Number(
-                teacherLimits?.maxLessonsPerDay
+                teacherLimits?.maxLessonsPerDay ??
+                teacherLimits?.max_lessons_per_day
             ) || 0;
 
 
@@ -10705,7 +11736,9 @@ function checkSingleSlotConflict(
                         indexes,
                         taskTeacherId,
                         dayNumber,
-                        Array.isArray(indexes.periods)
+                        Array.isArray(
+                            indexes.periods
+                        )
                             ? indexes.periods
                             : []
                     );
@@ -10730,13 +11763,10 @@ function checkSingleSlotConflict(
         }
 
 
-        // ====================================================
-        // WEEKLY TEACHER LIMIT
-        // ====================================================
-
         const maximumWeeklyLessons =
             Number(
-                teacherLimits?.maxLessonsPerWeek
+                teacherLimits?.maxLessonsPerWeek ??
+                teacherLimits?.max_lessons_per_week
             ) || 0;
 
 
@@ -10768,10 +11798,6 @@ function checkSingleSlotConflict(
 
         }
 
-
-        // ====================================================
-        // TEACHER CONSECUTIVE LIMIT
-        // ====================================================
 
         if (
             !teacherConcurrentSession &&
@@ -10861,7 +11887,9 @@ function checkSingleSlotConflict(
     if (
         requirementId &&
         maxPerDay > 0 &&
-        Number.isFinite(dayNumber)
+        Number.isFinite(
+            dayNumber
+        )
     ) {
 
         const currentCount =
@@ -10888,16 +11916,13 @@ function checkSingleSlotConflict(
     }
 
 
-    // ========================================================
-    // VALID
-    // ========================================================
-
     return {
         valid: true,
         reason: ""
     };
 
 }
+
 // ============================================================
 // RESERVE SLOT
 // ============================================================
