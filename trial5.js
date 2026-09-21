@@ -4084,6 +4084,8 @@ async function prepareTimetableGeneratorData() {
 
 }
 
+
+
 function createLessonTasks(
     requirements,
     lookup,
@@ -4341,7 +4343,9 @@ function createLessonTasks(
                             i <= lessons;
                             i++
                         ) {
-                            indexes.push(i);
+                            indexes.push(
+                                i
+                            );
                         }
 
                         requirementOccurrenceAssignments.set(
@@ -4372,16 +4376,6 @@ function createLessonTasks(
 
             /* =====================================================
                MULTI-STREAM PARALLEL GROUP
-
-               Build one common occurrence sequence for the
-               parallel group.
-
-               Requirements are ordered deterministically by:
-               1. subject
-               2. requirement ID
-
-               This prevents the occurrence meaning from changing
-               between streams simply because database IDs differ.
                ===================================================== */
 
             const streamRequirements =
@@ -4429,13 +4423,7 @@ function createLessonTasks(
             );
 
             /*
-             * Build deterministic requirement signatures.
-             *
-             * Subject is the primary identity because the same
-             * subject in different streams represents the same
-             * parallel lane.
-             *
-             * Requirement ID is only the deterministic fallback.
+             * Deterministic requirement ordering.
              */
 
             const getRequirementSortKey =
@@ -4504,34 +4492,7 @@ function createLessonTasks(
             );
 
             /*
-             * Determine the common occurrence lane.
-             *
-             * Every stream receives the same occurrence positions
-             * for the corresponding subject/requirement sequence.
-             */
-
-            const streamIds =
-                [
-                    ...streamRequirements.keys()
-                ].sort(
-                    (
-                        a,
-                        b
-                    ) =>
-                        String(a).localeCompare(
-                            String(b),
-                            undefined,
-                            {
-                                numeric: true
-                            }
-                        )
-                );
-
-            /*
              * Build subject-based requirement lanes.
-             *
-             * Each subject lane consumes the same number of
-             * occurrences across streams wherever possible.
              */
 
             const subjectGroups =
@@ -4594,10 +4555,6 @@ function createLessonTasks(
                 }
             );
 
-            /*
-             * Sort subjects deterministically.
-             */
-
             const orderedSubjectIds =
                 [
                     ...subjectGroups.keys()
@@ -4642,11 +4599,6 @@ function createLessonTasks(
                             subjectId
                         );
 
-                    /*
-                     * Determine the maximum number of lessons
-                     * required by this subject in any stream.
-                     */
-
                     let subjectOccurrenceCount =
                         0;
 
@@ -4686,11 +4638,6 @@ function createLessonTasks(
                                 );
                         }
                     );
-
-                    /*
-                     * Assign each stream's requirements for this
-                     * subject into the same common occurrence lane.
-                     */
 
                     streamIds.forEach(
                         streamId => {
@@ -4957,9 +4904,14 @@ function createLessonTasks(
                     )
                     : null;
 
+            const isParallel =
+                Boolean(
+                    parallelGroup &&
+                    parallelPlan
+                );
+
             /*
-             * A double lesson always consumes exactly
-             * two timetable periods.
+             * A double consumes exactly two timetable periods.
              */
 
             const doubleCount =
@@ -4997,11 +4949,18 @@ function createLessonTasks(
 
                 teacher,
 
-                parallelGroup,
+                parallelGroup:
+                    isParallel
+                        ? parallelGroup
+                        : null,
 
+                /*
+                 * Normalization stores this value as
+                 * requiresRoom.
+                 */
                 roomRequired:
                     Boolean(
-                        requirement.roomRequired
+                        requirement.requiresRoom
                     ),
 
                 roomTypeId:
@@ -5021,7 +4980,7 @@ function createLessonTasks(
                 [];
 
             if (
-                parallelPlan &&
+                isParallel &&
                 parallelPlan
                     .requirementOccurrenceAssignments
                     instanceof Map
@@ -5040,30 +4999,26 @@ function createLessonTasks(
             }
 
             /*
-             * Non-parallel requirements use their own
-             * simple sequential occurrence numbering.
+             * Only parallel requirements need occurrence
+             * assignments.
+             *
+             * Non-parallel requirements deliberately keep this
+             * array empty so that they never receive values such
+             * as null-O1.
              */
 
             if (
+                isParallel &&
                 occurrenceIndexes.length === 0
             ) {
 
-                for (
-                    let i = 1;
-                    i <= lessonsPerWeek;
-                    i++
-                ) {
-                    occurrenceIndexes.push(
-                        i
-                    );
-                }
+                throw new Error(
+                    `Parallel requirement ${requirementId} belongs to ${parallelGroup} but has no occurrence assignments.`
+                );
             }
 
-            /*
-             * Hard safety check.
-             */
-
             if (
+                isParallel &&
                 occurrenceIndexes.length <
                 lessonsPerWeek
             ) {
@@ -5086,16 +5041,14 @@ function createLessonTasks(
                 );
             }
 
-            /*
-             * Do not allow more occurrence indexes than the
-             * requirement actually needs.
-             */
+            if (isParallel) {
 
-            occurrenceIndexes =
-                occurrenceIndexes.slice(
-                    0,
-                    lessonsPerWeek
-                );
+                occurrenceIndexes =
+                    occurrenceIndexes.slice(
+                        0,
+                        lessonsPerWeek
+                    );
+            }
 
             /* =====================================================
                CREATE DOUBLE LESSON TASKS
@@ -5113,59 +5066,76 @@ function createLessonTasks(
                 const endIndex =
                     startIndex + 1;
 
-                const startOccurrence =
-                    occurrenceIndexes[
-                        startIndex
-                    ];
-
-                const endOccurrence =
-                    occurrenceIndexes[
-                        endIndex
-                    ];
-
-                if (
-                    !Number.isInteger(
-                        startOccurrence
-                    ) ||
-                    !Number.isInteger(
-                        endOccurrence
-                    )
-                ) {
-
-                    throw new Error(
-                        `Invalid parallel occurrence indexes for double task ${requirementId}-D${i + 1}.`
-                    );
-                }
-
                 /*
-                 * A double must occupy two consecutive
-                 * occurrence positions.
+                 * Parallel tasks use the occurrence plan.
+                 *
+                 * Non-parallel tasks do not have occurrence
+                 * metadata at all.
                  */
 
-                if (
-                    endOccurrence !==
-                    startOccurrence + 1
-                ) {
+                let startOccurrence =
+                    null;
 
-                    throw new Error(
-                        `Double task ${requirementId}-D${i + 1} has non-consecutive occurrence indexes: ${startOccurrence}, ${endOccurrence}.`
-                    );
+                let endOccurrence =
+                    null;
+
+                if (isParallel) {
+
+                    startOccurrence =
+                        occurrenceIndexes[
+                            startIndex
+                        ];
+
+                    endOccurrence =
+                        occurrenceIndexes[
+                            endIndex
+                        ];
+
+                    if (
+                        !Number.isInteger(
+                            startOccurrence
+                        ) ||
+                        !Number.isInteger(
+                            endOccurrence
+                        )
+                    ) {
+
+                        throw new Error(
+                            `Invalid parallel occurrence indexes for double task ${requirementId}-D${i + 1}.`
+                        );
+                    }
+
+                    if (
+                        endOccurrence !==
+                        startOccurrence + 1
+                    ) {
+
+                        throw new Error(
+                            `Double task ${requirementId}-D${i + 1} has non-consecutive occurrence indexes: ${startOccurrence}, ${endOccurrence}.`
+                        );
+                    }
                 }
 
                 const parallelOccurrenceIndexes =
-                    [
-                        startOccurrence,
-                        endOccurrence
-                    ];
+                    isParallel
+                        ? [
+                            startOccurrence,
+                            endOccurrence
+                        ]
+                        : [];
 
                 const parallelOccurrenceStart =
-                    startOccurrence;
+                    isParallel
+                        ? startOccurrence
+                        : null;
 
                 const parallelOccurrenceEnd =
-                    endOccurrence;
+                    isParallel
+                        ? endOccurrence
+                        : null;
 
                 const parallelOccurrenceKey =
-                    parallelGroup
+                    isParallel
                         ? `${parallelGroup}-O${parallelOccurrenceStart}`
                         : null;
 
@@ -5198,10 +5168,14 @@ function createLessonTasks(
                     parallelOccurrenceKey,
 
                     parallelTaskSequence:
-                        i + 1,
+                        isParallel
+                            ? i + 1
+                            : null,
 
                     parallelOccurrencePosition:
-                        parallelOccurrenceStart,
+                        isParallel
+                            ? parallelOccurrenceStart
+                            : null,
 
                     lessonsPerWeek,
 
@@ -5224,24 +5198,30 @@ function createLessonTasks(
                     periodsUsedByDoubles +
                     i;
 
-                const occurrence =
-                    occurrenceIndexes[
-                        occurrenceIndex
-                    ];
+                let occurrence =
+                    null;
 
-                if (
-                    !Number.isInteger(
-                        occurrence
-                    )
-                ) {
+                if (isParallel) {
 
-                    throw new Error(
-                        `Invalid parallel occurrence for single task ${requirementId}-S${i + 1}.`
-                    );
+                    occurrence =
+                        occurrenceIndexes[
+                            occurrenceIndex
+                        ];
+
+                    if (
+                        !Number.isInteger(
+                            occurrence
+                        )
+                    ) {
+
+                        throw new Error(
+                            `Invalid parallel occurrence for single task ${requirementId}-S${i + 1}.`
+                        );
+                    }
                 }
 
                 const parallelOccurrenceKey =
-                    parallelGroup
+                    isParallel
                         ? `${parallelGroup}-O${occurrence}`
                         : null;
 
@@ -5268,15 +5248,21 @@ function createLessonTasks(
                         null,
 
                     parallelOccurrenceStart:
-                        occurrence,
+                        isParallel
+                            ? occurrence
+                            : null,
 
                     parallelOccurrenceEnd:
-                        occurrence,
+                        isParallel
+                            ? occurrence
+                            : null,
 
                     parallelOccurrenceIndexes:
-                        [
-                            occurrence
-                        ],
+                        isParallel
+                            ? [
+                                occurrence
+                            ]
+                            : [],
 
                     parallelOccurrenceKey,
 
@@ -5284,7 +5270,9 @@ function createLessonTasks(
                         null,
 
                     parallelOccurrencePosition:
-                        occurrence,
+                        isParallel
+                            ? occurrence
+                            : null,
 
                     lessonsPerWeek,
 
@@ -5405,7 +5393,7 @@ function createLessonTasks(
 
             if (
                 coverage.lessons !==
-                expectedLessons ||
+                expectedLessons - expectedDoubleCount ||
                 coverage.doubles !==
                 expectedDoubleCount ||
                 coverage.periods !==
@@ -5440,9 +5428,30 @@ function createLessonTasks(
     tasks.forEach(
         task => {
 
+            /*
+             * Non-parallel tasks must have NO parallel
+             * occurrence metadata.
+             */
+
             if (
                 !task.parallelGroup
             ) {
+
+                if (
+                    task.parallelOccurrenceKey !== null ||
+                    task.parallelOccurrenceStart !== null ||
+                    task.parallelOccurrenceEnd !== null ||
+                    !Array.isArray(
+                        task.parallelOccurrenceIndexes
+                    ) ||
+                    task.parallelOccurrenceIndexes.length !== 0
+                ) {
+
+                    throw new Error(
+                        `Non-parallel task ${task.taskId} contains invalid parallel occurrence metadata.`
+                    );
+                }
+
                 return;
             }
 
@@ -5770,6 +5779,7 @@ function createLessonTasks(
     return tasks;
 }
 
+
 function validateLessonTasks(
     data,
     tasks
@@ -5855,42 +5865,6 @@ function validateLessonTasks(
 
     const requirementParallelCoverage =
         new Map();
-
-
-    // ========================================================
-    // NORMALIZE LESSON COUNT
-    //
-    // Must match createLessonTasks().
-    //
-    // Invalid / fractional lesson counts are treated as 0
-    // here because createLessonTasks() does the same.
-    // ========================================================
-
-    function getValidLessonCount(
-        value
-    ) {
-
-        const numericValue =
-            Number(
-                value
-            );
-
-
-        if (
-            !Number.isInteger(
-                numericValue
-            ) ||
-            numericValue < 0
-        ) {
-
-            return 0;
-
-        }
-
-
-        return numericValue;
-
-    }
 
 
     // ========================================================
@@ -6062,14 +6036,6 @@ function validateLessonTasks(
 
             // ------------------------------------------------
             // PERIOD IDS
-            //
-            // IMPORTANT:
-            //
-            // createLessonTasks() runs BEFORE actual periods
-            // are assigned. Therefore periodIds are NOT
-            // required at this validation stage.
-            //
-            // If periodIds already exist, validate their type.
             // ------------------------------------------------
 
             if (
@@ -6131,13 +6097,18 @@ function validateLessonTasks(
                 );
 
 
-            // ------------------------------------------------
+            // =================================================
             // NON-PARALLEL TASK
-            // ------------------------------------------------
+            // =================================================
 
             if (
                 !parallelGroup
             ) {
+
+                // --------------------------------------------
+                // Non-parallel tasks MUST NOT have occurrence
+                // metadata.
+                // --------------------------------------------
 
                 if (
                     task.parallelOccurrenceKey !== undefined &&
@@ -6223,17 +6194,29 @@ function validateLessonTasks(
 
 
             // =================================================
+            // AUTHORITATIVE PARALLEL GROUP
+            // =================================================
+
+            const authoritativeGroup =
+                data.parallelGroups instanceof Map
+                    ? data.parallelGroups.get(
+                        parallelGroup
+                    )
+                    : null;
+
+
+            // =================================================
             // PARALLEL GROUP STREAM MEMBERS
             //
-            // IMPORTANT:
+            // If the task contains the field, validate it.
             //
-            // createLessonTasks() does not currently attach
-            // parallelGroupStreamIds to each task.
-            //
-            // Therefore this is validated only if the field
-            // exists. Authoritative membership is checked
-            // later using data.parallelGroups.
+            // If the task does not contain the field, use the
+            // authoritative group definition instead.
             // =================================================
+
+            let taskParallelStreamIds =
+                [];
+
 
             if (
                 task.parallelGroupStreamIds !== undefined &&
@@ -6251,15 +6234,54 @@ function validateLessonTasks(
                     );
 
                 }
-                else if (
-                    task.parallelGroupStreamIds.length === 0
-                ) {
+                else {
 
-                    errors.push(
-                        `Parallel task ${task.taskId} has an empty parallel group stream ID list.`
-                    );
+                    taskParallelStreamIds =
+                        task.parallelGroupStreamIds
+                            .map(
+                                streamId =>
+                                    String(
+                                        streamId
+                                    )
+                            )
+                            .filter(
+                                streamId =>
+                                    streamId.trim() !== ""
+                            );
+
+
+                    if (
+                        taskParallelStreamIds.length === 0
+                    ) {
+
+                        errors.push(
+                            `Parallel task ${task.taskId} has an empty parallel group stream ID list.`
+                        );
+
+                    }
 
                 }
+
+            }
+            else if (
+                authoritativeGroup &&
+                authoritativeGroup.streamIds instanceof Set
+            ) {
+
+                taskParallelStreamIds =
+                    [
+                        ...authoritativeGroup.streamIds
+                    ]
+                        .map(
+                            streamId =>
+                                String(
+                                    streamId
+                                )
+                        )
+                        .filter(
+                            streamId =>
+                                streamId.trim() !== ""
+                        );
 
             }
 
@@ -6395,34 +6417,42 @@ function validateLessonTasks(
                 }
 
 
-                for (
-                    let index = 0;
-                    index <
-                    task.parallelOccurrenceIndexes.length;
-                    index++
+                if (
+                    Number.isInteger(
+                        occurrenceStart
+                    )
                 ) {
 
-                    const expectedOccurrence =
-                        occurrenceStart +
-                        index;
-
-
-                    const actualOccurrence =
-                        Number(
-                            task.parallelOccurrenceIndexes[index]
-                        );
-
-
-                    if (
-                        actualOccurrence !==
-                        expectedOccurrence
+                    for (
+                        let index = 0;
+                        index <
+                        task.parallelOccurrenceIndexes.length;
+                        index++
                     ) {
 
-                        errors.push(
-                            `Parallel task ${task.taskId}: ` +
-                            `occurrence index ${actualOccurrence} ` +
-                            `does not match expected O${expectedOccurrence}.`
-                        );
+                        const expectedOccurrence =
+                            occurrenceStart +
+                            index;
+
+
+                        const actualOccurrence =
+                            Number(
+                                task.parallelOccurrenceIndexes[index]
+                            );
+
+
+                        if (
+                            actualOccurrence !==
+                            expectedOccurrence
+                        ) {
+
+                            errors.push(
+                                `Parallel task ${task.taskId}: ` +
+                                `occurrence index ${actualOccurrence} ` +
+                                `does not match expected O${expectedOccurrence}.`
+                            );
+
+                        }
 
                     }
 
@@ -6435,20 +6465,28 @@ function validateLessonTasks(
             // OCCURRENCE KEY FORMAT
             // =================================================
 
-            const expectedOccurrenceKey =
-                `${parallelGroup}-O${occurrenceStart}`;
-
-
             if (
-                occurrenceKey !==
-                expectedOccurrenceKey
+                Number.isInteger(
+                    occurrenceStart
+                )
             ) {
 
-                errors.push(
-                    `Parallel task ${task.taskId}: ` +
-                    `occurrence key ${occurrenceKey} ` +
-                    `does not match expected ${expectedOccurrenceKey}.`
-                );
+                const expectedOccurrenceKey =
+                    `${parallelGroup}-O${occurrenceStart}`;
+
+
+                if (
+                    occurrenceKey !==
+                    expectedOccurrenceKey
+                ) {
+
+                    errors.push(
+                        `Parallel task ${task.taskId}: ` +
+                        `occurrence key ${occurrenceKey} ` +
+                        `does not match expected ${expectedOccurrenceKey}.`
+                    );
+
+                }
 
             }
 
@@ -6847,12 +6885,6 @@ function validateLessonTasks(
                 );
 
 
-            /*
-             * Match createLessonTasks():
-             *
-             * only non-negative integers generate tasks.
-             */
-
             const expected =
                 Number.isInteger(
                     rawLessons
@@ -6923,10 +6955,6 @@ function validateLessonTasks(
             groupKey
         ) => {
 
-            // ------------------------------------------------
-            // DETERMINE EXPECTED GROUP MEMBERS
-            // ------------------------------------------------
-
             const expectedStreamIds =
                 new Set();
 
@@ -6934,10 +6962,6 @@ function validateLessonTasks(
             const expectedRequirementIds =
                 new Set();
 
-
-            // ------------------------------------------------
-            // GET AUTHORITATIVE GROUP DEFINITION
-            // ------------------------------------------------
 
             let authoritativeGroup =
                 null;
@@ -7030,10 +7054,6 @@ function validateLessonTasks(
             }
 
 
-            // ------------------------------------------------
-            // FALL BACK TO GENERATED MEMBERSHIP
-            // ------------------------------------------------
-
             if (
                 expectedStreamIds.size === 0
             ) {
@@ -7072,17 +7092,9 @@ function validateLessonTasks(
             }
 
 
-            // ------------------------------------------------
-            // DETERMINE GROUP TYPE
-            // ------------------------------------------------
-
             const isMultiStreamGroup =
                 expectedStreamIds.size > 1;
 
-
-            // ------------------------------------------------
-            // VALIDATE EVERY OCCURRENCE
-            // ------------------------------------------------
 
             groupInfo.occurrences.forEach(
                 (
@@ -7108,10 +7120,6 @@ function validateLessonTasks(
                     }
 
 
-                    // ----------------------------------------
-                    // VALIDATE PARTICIPATING STREAMS
-                    // ----------------------------------------
-
                     occurrenceInfo.streams.forEach(
                         streamId => {
 
@@ -7135,10 +7143,6 @@ function validateLessonTasks(
                         }
                     );
 
-
-                    // ----------------------------------------
-                    // VALIDATE PARTICIPATING REQUIREMENTS
-                    // ----------------------------------------
 
                     occurrenceInfo.requirements.forEach(
                         (
@@ -7166,10 +7170,6 @@ function validateLessonTasks(
                         }
                     );
 
-
-                    // ----------------------------------------
-                    // MULTI-STREAM SAME-STREAM COLLISION
-                    // ----------------------------------------
 
                     if (
                         isMultiStreamGroup
@@ -7468,7 +7468,6 @@ function validateLessonTasks(
 
             // =================================================
             // CHECK DUPLICATE REQUIREMENT/STREAM
-            // REPRESENTATION WITHIN AN OCCURRENCE
             // =================================================
 
             groupInfo.occurrences.forEach(
@@ -7904,9 +7903,6 @@ function validateLessonTasks(
     };
 
 }
-
-
-
 
 // ============================================================
 // SHUFFLE ARRAY
@@ -10854,6 +10850,32 @@ function areConcurrentTeacherLessonsAllowed(
     return true;
 
 }
+
+
+
+
+function getTaskParallelOccurrenceKey(task) {
+
+    if (!task) {
+        return "";
+    }
+
+    const key =
+        task.parallelOccurrenceKey ??
+        task.parallel_occurrence_key;
+
+    if (
+        key === null ||
+        key === undefined
+    ) {
+        return "";
+    }
+
+    return String(key).trim();
+}
+
+
+
 
 
 // ============================================================
