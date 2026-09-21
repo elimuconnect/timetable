@@ -2090,6 +2090,7 @@ function validateTimetablePeriods(data) {
 // camelCase fields only.
 // ============================================================
 
+
 function getTeachingPeriods(periods) {
 
     if (
@@ -2106,11 +2107,9 @@ function getTeachingPeriods(periods) {
 
             return (
 
-                period.isTeachingPeriod !== false &&
+                period.isTeachingPeriod === true &&
 
-                period.periodType !== "break" &&
-
-                period.periodType !== "lunch"
+                period.periodType === "lesson"
 
             );
 
