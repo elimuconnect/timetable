@@ -4498,7 +4498,7 @@ function createLessonTasks(
             const subjectGroups =
                 new Map();
 
-            streamIds.forEach(
+            actualStreamIds.forEach(
                 streamId => {
 
                     const list =
@@ -4578,7 +4578,7 @@ function createLessonTasks(
             const streamOccurrenceLanes =
                 new Map();
 
-            streamIds.forEach(
+            actualStreamIds.forEach(
                 streamId => {
 
                     streamOccurrenceLanes.set(
@@ -4639,7 +4639,7 @@ function createLessonTasks(
                         }
                     );
 
-                    streamIds.forEach(
+                    actualStreamIds.forEach(
                         streamId => {
 
                             const requirementsForStream =
@@ -4740,7 +4740,8 @@ function createLessonTasks(
                 {
                     groupKey,
 
-                    streamIds,
+                    streamIds:
+                        actualStreamIds,
 
                     occurrenceCount:
                         maximumOccurrenceCount,
@@ -4954,10 +4955,6 @@ function createLessonTasks(
                         ? parallelGroup
                         : null,
 
-                /*
-                 * Normalization stores this value as
-                 * requiresRoom.
-                 */
                 roomRequired:
                     Boolean(
                         requirement.requiresRoom
@@ -4997,15 +4994,6 @@ function createLessonTasks(
                         )
                     ];
             }
-
-            /*
-             * Only parallel requirements need occurrence
-             * assignments.
-             *
-             * Non-parallel requirements deliberately keep this
-             * array empty so that they never receive values such
-             * as null-O1.
-             */
 
             if (
                 isParallel &&
@@ -5065,13 +5053,6 @@ function createLessonTasks(
 
                 const endIndex =
                     startIndex + 1;
-
-                /*
-                 * Parallel tasks use the occurrence plan.
-                 *
-                 * Non-parallel tasks do not have occurrence
-                 * metadata at all.
-                 */
 
                 let startOccurrence =
                     null;
@@ -5428,11 +5409,6 @@ function createLessonTasks(
     tasks.forEach(
         task => {
 
-            /*
-             * Non-parallel tasks must have NO parallel
-             * occurrence metadata.
-             */
-
             if (
                 !task.parallelGroup
             ) {
@@ -5778,6 +5754,7 @@ function createLessonTasks(
 
     return tasks;
 }
+
 
 
 function validateLessonTasks(
