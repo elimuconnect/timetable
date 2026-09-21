@@ -6160,7 +6160,6 @@ function getTaskParallelGroup(
 }
 
 
-
 // ============================================================
 // CHECK WHETHER TWO LESSONS MAY RUN CONCURRENTLY
 // ============================================================
@@ -6210,15 +6209,15 @@ function areConcurrentTeacherLessonsAllowed(
 
 
     // ========================================================
-    // PARALLEL GROUP
+    // PARALLEL GROUP MUST EXIST
     // ========================================================
     //
-    // If an explicit parallel group exists, both lessons must
-    // belong to the SAME parallel group.
+    // A teacher may teach the same subject concurrently in
+    // multiple classes ONLY when both lessons belong to the
+    // SAME explicit parallel group.
     //
-    // If neither side has a parallel group, same-subject
-    // concurrent teaching remains allowed for compatibility
-    // with existing shared-teaching data.
+    // Same subject + same teacher without a parallel group
+    // is NOT allowed.
     //
     // ========================================================
 
@@ -6236,31 +6235,25 @@ function areConcurrentTeacherLessonsAllowed(
 
 
     if (
-        taskParallelGroup ||
-        existingParallelGroup
+        !taskParallelGroup ||
+        !existingParallelGroup
     ) {
 
-        return (
-            taskParallelGroup &&
-            existingParallelGroup &&
-            taskParallelGroup ===
-            existingParallelGroup
-        );
+        return false;
 
     }
 
 
-    return true;
+    // ========================================================
+    // BOTH MUST BELONG TO THE SAME PARALLEL GROUP
+    // ========================================================
+
+    return (
+        taskParallelGroup ===
+        existingParallelGroup
+    );
 
 }
-
-
-
-// ============================================================
-// CHECK SINGLE SLOT CONFLICT
-// ============================================================
-
-
 
 
 
