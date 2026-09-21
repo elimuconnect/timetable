@@ -23721,7 +23721,6 @@ function repairSingleFailedTask(
 }
 
 
-
 function buildStage7PeriodCandidates(
     task,
     periods
@@ -23741,9 +23740,36 @@ function buildStage7PeriodCandidates(
     const candidates =
         periods
             .filter(
-                period =>
-                    period &&
-                    period.id
+                period => {
+
+                    if (
+                        !period ||
+                        !period.id
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    // ==================================================
+                    // ONLY REAL TEACHING LESSON PERIODS
+                    // ==================================================
+                    //
+                    // Stage 7 must use exactly the same definition of
+                    // a teaching period as the main generator.
+                    //
+                    // Assembly, breaks, lunch and activities must never
+                    // be considered as lesson slots.
+                    //
+                    // ==================================================
+
+                    return (
+                        period.isTeachingPeriod === true &&
+                        period.periodType === "lesson"
+                    );
+
+                }
             )
             .sort(
                 (
@@ -23806,8 +23832,6 @@ function buildStage7PeriodCandidates(
     return candidates;
 
 }
-
-
 
 // ============================================================
 // STAGE 7 — BUILD ROOM CANDIDATES
