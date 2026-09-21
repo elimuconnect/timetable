@@ -10743,7 +10743,6 @@ function getPeriodPositionScore(
 // ============================================================
 
 
-
 function calculateCandidateSlotScore(
     task,
     period,
@@ -10791,25 +10790,6 @@ function calculateCandidateSlotScore(
 
     // ========================================================
     // PARALLEL GROUP SYNCHRONIZATION
-    // ========================================================
-    //
-    // If another lesson belonging to the SAME explicit
-    // parallel group is already placed in this stream and
-    // period, strongly prefer this period.
-    //
-    // This keeps all members of a parallel group together.
-    //
-    // IMPORTANT:
-    //
-    // This is ONLY a scoring preference.
-    //
-    // The final validity decision is still made by:
-    //
-    //     checkSingleSlotConflict()
-    //
-    // Therefore this does not weaken any existing conflict
-    // validation.
-    //
     // ========================================================
 
     const taskParallelGroup =
@@ -10899,13 +10879,6 @@ function calculateCandidateSlotScore(
             parallelGroupMatches > 0
         ) {
 
-            // ------------------------------------------------
-            // Very strong preference:
-            //
-            // Keep all members of an explicit parallel group
-            // in the same period.
-            // ------------------------------------------------
-
             score +=
                 1000;
 
@@ -10938,7 +10911,7 @@ function calculateCandidateSlotScore(
 
 
     // --------------------------------------------------------
-    // Prefer spreading lessons across the week.
+    // Prefer spreading the subject across different days.
     // --------------------------------------------------------
 
     if (
@@ -10971,6 +10944,298 @@ function calculateCandidateSlotScore(
         reasons.push(
             "Subject already has multiple lessons on this day."
         );
+
+    }
+
+
+    // ========================================================
+    // SUBJECT PERIOD-POSITION DISTRIBUTION
+    // ========================================================
+    //
+    // Prevents a subject from repeatedly occupying the same
+    // period position on different days.
+    //
+    // Example:
+    //
+    // Monday    Mathematics -> Period 2
+    // Tuesday   Mathematics -> Period 2
+    // Wednesday Mathematics -> Period 2
+    //
+    // The old scoring system could repeatedly select Period 2
+    // because earlier periods received a positional advantage.
+    //
+    // This section strongly prefers a period position that the
+    // same requirement has not already used during the week.
+    //
+    // Parallel lessons are excluded from the penalty because
+    // synchronization is more important.
+    //
+    // ========================================================
+
+    const candidatePeriodNumber =
+        Number(
+            period.periodNumber ??
+            period.period_number
+        );
+
+
+    if (
+        requirementId &&
+        Number.isFinite(candidatePeriodNumber)
+    ) {
+
+        const usedPeriodPositions =
+            new Set();
+
+
+        const seenLessonIds =
+            new Set();
+
+
+        const studentGroups =
+            getTaskStudentGroups(
+                task
+            );
+
+
+        if (
+            indexes.studentGroupPeriodLessons instanceof Map
+        ) {
+
+            for (
+                const studentGroupId of studentGroups
+            ) {
+
+                if (
+                    !studentGroupId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const studentGroupPrefix =
+                    `${studentGroupId}__`;
+
+
+                indexes.studentGroupPeriodLessons.forEach(
+                    (
+                        lessons,
+                        key
+                    ) => {
+
+                        if (
+                            !key.startsWith(
+                                studentGroupPrefix
+                            )
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !Array.isArray(lessons)
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        for (
+                            const existingLesson of lessons
+                        ) {
+
+                            if (
+                                !existingLesson
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            const lessonId =
+                                normalizeTimetableId(
+                                    existingLesson.id ??
+                                    existingLesson.taskId ??
+                                    existingLesson.task_id
+                                );
+
+
+                            if (
+                                lessonId &&
+                                seenLessonIds.has(
+                                    lessonId
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+
+                            if (
+                                lessonId
+                            ) {
+
+                                seenLessonIds.add(
+                                    lessonId
+                                );
+
+                            }
+
+
+                            const existingRequirementId =
+                                normalizeTimetableId(
+                                    existingLesson.requirementId ??
+                                    existingLesson.requirement_id
+                                );
+
+
+                            const existingSubjectId =
+                                normalizeTimetableId(
+                                    existingLesson.subjectId ??
+                                    existingLesson.subject_id
+                                );
+
+
+                            const taskSubjectId =
+                                normalizeTimetableId(
+                                    task.subjectId ??
+                                    task.subject_id
+                                );
+
+
+                            const sameRequirement =
+                                existingRequirementId &&
+                                existingRequirementId ===
+                                    requirementId;
+
+
+                            const sameSubject =
+                                !sameRequirement &&
+                                taskSubjectId &&
+                                existingSubjectId &&
+                                existingSubjectId ===
+                                    taskSubjectId &&
+                                normalizeTimetableId(
+                                    existingLesson.streamId ??
+                                    existingLesson.stream_id
+                                ) ===
+                                    normalizeTimetableId(
+                                        task.streamId
+                                    );
+
+
+                            if (
+                                sameRequirement ||
+                                sameSubject
+                            ) {
+
+                                const existingPeriodId =
+                                    normalizeTimetableId(
+                                        existingLesson.periodId ??
+                                        existingLesson.period_id
+                                    );
+
+
+                                if (
+                                    !existingPeriodId
+                                ) {
+
+                                    continue;
+
+                                }
+
+
+                                const existingPeriod =
+                                    data.periods.find(
+                                        item =>
+                                            normalizeTimetableId(
+                                                item.id
+                                            ) ===
+                                            existingPeriodId
+                                    );
+
+
+                                if (
+                                    existingPeriod
+                                ) {
+
+                                    const existingPeriodNumber =
+                                        Number(
+                                            existingPeriod.periodNumber ??
+                                            existingPeriod.period_number
+                                        );
+
+
+                                    if (
+                                        Number.isFinite(
+                                            existingPeriodNumber
+                                        )
+                                    ) {
+
+                                        usedPeriodPositions.add(
+                                            existingPeriodNumber
+                                        );
+
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+                );
+
+            }
+
+        }
+
+
+        if (
+            usedPeriodPositions.has(
+                candidatePeriodNumber
+            )
+        ) {
+
+            // ------------------------------------------------
+            // Strong penalty:
+            //
+            // The subject already uses this same period
+            // position elsewhere in the week.
+            // ------------------------------------------------
+
+            score -=
+                45;
+
+            reasons.push(
+                "Subject already uses this period position elsewhere in the week."
+            );
+
+        }
+        else {
+
+            // ------------------------------------------------
+            // Strong preference:
+            //
+            // Use a different period position.
+            // ------------------------------------------------
+
+            score +=
+                30;
+
+            reasons.push(
+                "Subject uses a new period position for better weekly distribution."
+            );
+
+        }
 
     }
 
@@ -11140,6 +11405,12 @@ function calculateCandidateSlotScore(
     // ========================================================
     // PERIOD POSITION
     // ========================================================
+    //
+    // Earlier periods are still preferred, but only mildly.
+    // The new subject-period distribution rule above has a
+    // stronger influence on weekly distribution.
+    //
+    // ========================================================
 
     const dayPeriods =
         data.periods.filter(
@@ -11151,11 +11422,23 @@ function calculateCandidateSlotScore(
         );
 
 
-    const positionScore =
+    const rawPositionScore =
         getPeriodPositionScore(
             period,
             dayPeriods
         );
+
+
+    // --------------------------------------------------------
+    // Reduce the influence of early-period preference.
+    //
+    // This prevents the generator from filling Period 2,
+    // Period 3, etc. repeatedly just because they are early.
+    // --------------------------------------------------------
+
+    const positionScore =
+        rawPositionScore *
+        0.35;
 
 
     score +=
@@ -11167,7 +11450,7 @@ function calculateCandidateSlotScore(
     ) {
 
         reasons.push(
-            "Earlier teaching period is preferred."
+            "Earlier teaching period is mildly preferred."
         );
 
     }
@@ -11181,10 +11464,6 @@ function calculateCandidateSlotScore(
         room &&
         room.id
     ) {
-
-        // Prefer a room that is not already heavily used.
-        //
-        // We calculate usage from roomPeriod.
 
         const roomId =
             normalizeTimetableId(
@@ -11256,7 +11535,6 @@ function calculateCandidateSlotScore(
     };
 
 }
-
 // SCORE SINGLE LESSON CANDIDATES
 // ============================================================
 //
