@@ -9498,6 +9498,8 @@ function sortTasksForScheduling(
     return sortedTasks;
 
 }
+
+
 function calculateTaskPriorityScore(
     task,
     data,
@@ -10839,6 +10841,9 @@ function getPeriodPositionScore(
 // ============================================================
 
 
+
+
+
 function calculateCandidateSlotScore(
     task,
     period,
@@ -11284,6 +11289,30 @@ function calculateCandidateSlotScore(
     // ========================================================
     // FUTURE REQUIREMENT FEASIBILITY
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // For a requirement such as:
+    //
+    //     5 lessons/week
+    //     max 1 lesson/day
+    //
+    // the important resource is NOT the number of individual
+    // periods available.
+    //
+    // The important resource is the number of DISTINCT DAYS
+    // on which the remaining lessons can be placed.
+    //
+    // The previous version counted every valid period. That
+    // could make one day with several free periods look like
+    // several future opportunities even though maxLessonsPerDay
+    // allows only one lesson from this requirement that day.
+    //
+    // This version evaluates future capacity by day and also
+    // simulates the current candidate before calculating the
+    // remaining capacity.
+    //
+    // ========================================================
 
     if (
         requirementId &&
@@ -11296,14 +11325,30 @@ function calculateCandidateSlotScore(
             );
 
 
-        let futureValidSlots =
-            0;
-
-
         const candidatePeriodId =
             normalizeTimetableId(
                 period.id
             );
+
+
+        const candidateDayNumber =
+            Number(
+                period.dayNumber
+            );
+
+
+        const maxPerDay =
+            Number(
+                task.maxLessonsPerDay
+            ) || 1;
+
+
+        // ----------------------------------------------------
+        // Build daily requirement usage.
+        // ----------------------------------------------------
+
+        const dailyCounts =
+            new Map();
 
 
         for (
@@ -11320,45 +11365,16 @@ function calculateCandidateSlotScore(
             }
 
 
-            const possiblePeriodId =
-                normalizeTimetableId(
-                    possiblePeriod.id
-                );
-
-
-            if (
-                possiblePeriodId ===
-                candidatePeriodId
-            ) {
-
-                continue;
-
-            }
-
-
             const possibleDayNumber =
                 Number(
                     possiblePeriod.dayNumber
                 );
 
 
-            const possibleDailyCount =
-                getDailyRequirementLessonCount(
-                    indexes,
-                    requirementId,
-                    possibleDayNumber
-                );
-
-
-            const maxPerDay =
-                Number(
-                    task.maxLessonsPerDay
-                ) || 1;
-
-
             if (
-                possibleDailyCount >=
-                maxPerDay
+                !Number.isFinite(
+                    possibleDayNumber
+                )
             ) {
 
                 continue;
@@ -11366,46 +11382,236 @@ function calculateCandidateSlotScore(
             }
 
 
-            const possibleConflict =
-                checkSingleSlotConflict(
-                    task,
-                    possiblePeriod,
-                    room,
-                    indexes
-                );
-
-
             if (
-                possibleConflict &&
-                possibleConflict.valid
+                !dailyCounts.has(
+                    possibleDayNumber
+                )
             ) {
 
-                futureValidSlots++;
+                dailyCounts.set(
+                    possibleDayNumber,
+                    getDailyRequirementLessonCount(
+                        indexes,
+                        requirementId,
+                        possibleDayNumber
+                    )
+                );
 
             }
 
         }
 
 
+        // ----------------------------------------------------
+        // Simulate the current candidate.
+        //
+        // The candidate has not yet been reserved in indexes,
+        // so manually account for it here.
+        // ----------------------------------------------------
+
+        if (
+            Number.isFinite(
+                candidateDayNumber
+            )
+        ) {
+
+            const currentCandidateDayCount =
+                dailyCounts.get(
+                    candidateDayNumber
+                ) || 0;
+
+
+            dailyCounts.set(
+                candidateDayNumber,
+                currentCandidateDayCount + 1
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // Number of lessons still required after this candidate.
+        // ----------------------------------------------------
+
         const requiredFutureLessons =
             remainingRequirementLessons -
             1;
 
 
+        // ----------------------------------------------------
+        // Calculate future capacity.
+        //
+        // For maxPerDay = 1:
+        //
+        //     one available day = one future lesson
+        //
+        // This prevents several free periods on the same day
+        // from being incorrectly counted as several lessons.
+        // ----------------------------------------------------
+
+        let futureCapacity =
+            0;
+
+
+        let futureAvailableDays =
+            0;
+
+
+        for (
+            const [
+                possibleDayNumber,
+                usedCount
+            ] of dailyCounts.entries()
+        ) {
+
+            const remainingDailyCapacity =
+                Math.max(
+                    0,
+                    maxPerDay -
+                    usedCount
+                );
+
+
+            if (
+                remainingDailyCapacity <= 0
+            ) {
+
+                continue;
+
+            }
+
+
+            // ------------------------------------------------
+            // Find at least one actual valid period on this day.
+            // ------------------------------------------------
+
+            let dayHasValidFutureSlot =
+                false;
+
+
+            for (
+                const possiblePeriod of teachingPeriods
+            ) {
+
+                if (
+                    !possiblePeriod ||
+                    !possiblePeriod.id
+                ) {
+
+                    continue;
+
+                }
+
+
+                const possiblePeriodId =
+                    normalizeTimetableId(
+                        possiblePeriod.id
+                    );
+
+
+                // --------------------------------------------
+                // Do not count the candidate period itself.
+                // --------------------------------------------
+
+                if (
+                    possiblePeriodId ===
+                    candidatePeriodId
+                ) {
+
+                    continue;
+
+                }
+
+
+                const possiblePeriodDay =
+                    Number(
+                        possiblePeriod.dayNumber
+                    );
+
+
+                if (
+                    possiblePeriodDay !==
+                    possibleDayNumber
+                ) {
+
+                    continue;
+
+                }
+
+
+                const possibleConflict =
+                    checkSingleSlotConflict(
+                        task,
+                        possiblePeriod,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    possibleConflict &&
+                    possibleConflict.valid
+                ) {
+
+                    dayHasValidFutureSlot =
+                        true;
+
+                    break;
+
+                }
+
+            }
+
+
+            if (
+                !dayHasValidFutureSlot
+            ) {
+
+                continue;
+
+            }
+
+
+            futureAvailableDays++;
+
+
+            // ------------------------------------------------
+            // Respect the daily limit.
+            // ------------------------------------------------
+
+            futureCapacity +=
+                Math.min(
+                    remainingDailyCapacity,
+                    maxPerDay
+                );
+
+        }
+
+
+        // ----------------------------------------------------
+        // For maxPerDay = 1, futureCapacity is exactly the
+        // number of distinct usable future days.
+        // ----------------------------------------------------
+
         const futureSlack =
-            futureValidSlots -
+            futureCapacity -
             requiredFutureLessons;
 
 
+        // ----------------------------------------------------
+        // Strongly protect candidates that would make the
+        // requirement impossible to complete.
+        // ----------------------------------------------------
+
         if (
-            futureValidSlots === 0
+            futureCapacity === 0
         ) {
 
             score -=
                 100000;
 
             reasons.push(
-                "Candidate leaves no valid future slot for the remaining requirement lessons."
+                "Candidate leaves no valid future capacity for the remaining requirement lessons."
             );
 
         }
@@ -11417,7 +11623,7 @@ function calculateCandidateSlotScore(
                 50000;
 
             reasons.push(
-                "Candidate leaves fewer valid future slots than the remaining lessons require."
+                `Candidate leaves only ${futureCapacity} future lesson opportunities across ${futureAvailableDays} days, but ${requiredFutureLessons} lessons remain.`
             );
 
         }
@@ -11429,7 +11635,7 @@ function calculateCandidateSlotScore(
                 5000;
 
             reasons.push(
-                "Candidate leaves exactly enough valid future slots for the remaining lessons."
+                `Candidate leaves exactly enough future capacity across ${futureAvailableDays} days for the remaining lessons.`
             );
 
         }
@@ -11441,7 +11647,7 @@ function calculateCandidateSlotScore(
                 1500;
 
             reasons.push(
-                "Candidate leaves only one spare future opportunity."
+                `Candidate leaves only one spare future lesson opportunity across ${futureAvailableDays} days.`
             );
 
         }
@@ -11453,7 +11659,7 @@ function calculateCandidateSlotScore(
                 500;
 
             reasons.push(
-                "Candidate preserves a small number of future opportunities."
+                `Candidate preserves a small amount of future capacity across ${futureAvailableDays} days.`
             );
 
         }
@@ -11463,7 +11669,7 @@ function calculateCandidateSlotScore(
                 100;
 
             reasons.push(
-                "Candidate preserves sufficient future scheduling flexibility."
+                `Candidate preserves sufficient future capacity across ${futureAvailableDays} days.`
             );
 
         }
@@ -11525,25 +11731,6 @@ function calculateCandidateSlotScore(
     // ========================================================
     // TEACHER DAILY BALANCE
     // ========================================================
-    //
-    // The scheduler must consider the teacher's actual total
-    // workload rather than treating 5 lessons/day as excessive.
-    //
-    // Example:
-    //
-    // Yusuf:
-    // 6 streams × 5 lessons = 30/week
-    // Expected average = 30 / 5 = 6/day
-    //
-    // Ruth:
-    // 6 streams × 4 lessons = 24/week
-    // Expected average = 24 / 5 = 4.8/day
-    //
-    // Therefore:
-    // 30/week -> approximately 6/day
-    // 24/week -> approximately 5/day
-    //
-    // ========================================================
 
     if (
         task.teacherId
@@ -11571,9 +11758,6 @@ function calculateCandidateSlotScore(
 
         // ----------------------------------------------------
         // Lessons still remaining for this teacher.
-        //
-        // Count duration so double lessons are counted as
-        // two teaching periods.
         // ----------------------------------------------------
 
         let remainingTeacherLessons =
@@ -11634,7 +11818,7 @@ function calculateCandidateSlotScore(
 
 
         // ----------------------------------------------------
-        // Total teacher workload represented by the scheduler.
+        // Total teacher workload represented by scheduler.
         // ----------------------------------------------------
 
         const actualTeacherRequiredLessons =
@@ -16597,13 +16781,12 @@ function selectNextSmartTask(
             }
             else {
 
-              candidates =
+             candidates =
     getScoredSingleLessonCandidates(
         task,
         data,
-        indexes,
-        remainingTasks
-    ); 
+        indexes
+    );
             }
 
 
