@@ -19183,7 +19183,7 @@ function generateSmartTimetable(
 
                 })
             );
-
+)
         );
 
     }
