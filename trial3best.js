@@ -18019,21 +18019,14 @@ function generateSmartTimetable(
 
         };
 
-    // ========================================================
+  // ========================================================
     // HELPER — REQUIREMENT DAY-FEASIBILITY FORWARD CHECK
     // ========================================================
     //
     // For requirements with maxLessonsPerDay = 1:
-    //
-    //   5 lessons/week -> 5 different days
-    //   4 lessons/week -> 4 different days
-    //   3 lessons/week -> 3 different days
-    //
-    // The check examines ALL remaining tasks belonging to
-    // each requirement and determines whether their available
-    // days can still be assigned without repeating a day.
-    //
-    // This is stronger than checking only the next task.
+    // Uses the Pigeonhole Principle: If the number of remaining 
+    // unplaced tasks exceeds the total number of unique available 
+    // school days left across them, a dead end is mathematically guaranteed.
     //
     // ========================================================
 
@@ -18151,126 +18144,116 @@ function generateSmartTimetable(
                 }
 
                 // ------------------------------------------------
-                // BUILD TASK -> AVAILABLE DAYS
+                // COLLECT ALL AVAILABLE DAYS FOR REMAINING TASKS
                 // ------------------------------------------------
 
-                const taskDays =
-                    [];
+                const allAvailableDays =
+                    new Set();
 
                 let requirementDeadEnd =
                     false;
 
-                requirementTasks.forEach(
-                    task => {
+                for (
+                    const task of requirementTasks
+                ) {
 
-                        if (
-                            requirementDeadEnd
-                        ) {
-
-                            return;
-
-                        }
-
-                        const candidates =
-                            task.taskType === "double"
-                                ? getScoredDoubleLessonCandidates(
-                                    task,
-                                    data,
-                                    indexes
-                                )
-                                : getScoredSingleLessonCandidates(
-                                    task,
-                                    data,
-                                    indexes,
-                                    remainingTasks
-                                );
-
-                        const availableDays =
-                            new Set();
-
-                        if (
-                            Array.isArray(
-                                candidates
+                    const candidates =
+                        task.taskType === "double"
+                            ? getScoredDoubleLessonCandidates(
+                                task,
+                                data,
+                                indexes
                             )
-                        ) {
-
-                            candidates.forEach(
-                                candidate => {
-
-                                    const period =
-                                        candidate?.period ||
-                                        candidate?.firstPeriod ||
-                                        null;
-
-                                    const dayNumber =
-                                        Number(
-                                            period?.dayNumber
-                                        );
-
-                                    if (
-                                        Number.isFinite(
-                                            dayNumber
-                                        )
-                                    ) {
-
-                                        availableDays.add(
-                                            dayNumber
-                                        );
-
-                                    }
-
-                                }
+                            : getScoredSingleLessonCandidates(
+                                task,
+                                data,
+                                indexes,
+                                remainingTasks
                             );
 
-                        }
+                    const taskDays =
+                        new Set();
 
-                        // ------------------------------------------------
-                        // TASK HAS NO AVAILABLE DAY
-                        // ------------------------------------------------
+                    if (
+                        Array.isArray(
+                            candidates
+                        )
+                    ) {
 
-                        if (
-                            availableDays.size === 0
-                        ) {
+                        candidates.forEach(
+                            candidate => {
 
-                            console.warn(
-                                "SMART FORWARD CHECK — TASK HAS NO AVAILABLE DAY:",
-                                {
+                                const period =
+                                    candidate?.period ||
+                                    candidate?.firstPeriod ||
+                                    null;
 
-                                    taskId:
-                                        task.taskId,
+                                const dayNumber =
+                                    Number(
+                                        period?.dayNumber
+                                    );
 
-                                    requirementId,
+                                if (
+                                    Number.isFinite(
+                                        dayNumber
+                                    )
+                                ) {
 
-                                    streamId:
-                                        task.streamId,
+                                    taskDays.add(
+                                        dayNumber
+                                    );
 
-                                    subjectId:
-                                        task.subjectId,
-
-                                    teacherId:
-                                        task.teacherId,
-
-                                    remainingRequirementTasks:
-                                        requirementTasks.length
+                                    allAvailableDays.add(
+                                        dayNumber
+                                    );
 
                                 }
-                            );
 
-                            requirementDeadEnd =
-                                true;
-
-                            return;
-
-                        }
-
-                        taskDays.push(
-                            [
-                                ...availableDays
-                            ]
+                            }
                         );
 
                     }
-                );
+
+                    // ------------------------------------------------
+                    // INDIVIDUAL TASK HAS NO AVAILABLE DAY
+                    // ------------------------------------------------
+
+                    if (
+                        taskDays.size === 0
+                    ) {
+
+                        console.warn(
+                            "SMART FORWARD CHECK — TASK HAS NO AVAILABLE DAY:",
+                            {
+
+                                taskId:
+                                    task.taskId,
+
+                                requirementId,
+
+                                streamId:
+                                    task.streamId,
+
+                                subjectId:
+                                    task.subjectId,
+
+                                teacherId:
+                                    task.teacherId,
+
+                                remainingRequirementTasks:
+                                    requirementTasks.length
+
+                            }
+                        );
+
+                        requirementDeadEnd =
+                            true;
+
+                        break;
+
+                    }
+
+                }
 
                 if (
                     requirementDeadEnd
@@ -18281,165 +18264,33 @@ function generateSmartTimetable(
                 }
 
                 // ------------------------------------------------
-                // TOO MANY LESSONS FOR FIVE SCHOOL DAYS
-                // ------------------------------------------------
-
-                if (
-                    taskDays.length > 5
-                ) {
-
-                    console.warn(
-                        "SMART FORWARD CHECK — TOO MANY DISTINCT-DAY LESSONS:",
-                        {
-
-                            requirementId,
-
-                            remainingLessons:
-                                taskDays.length,
-
-                            availableSchoolDays:
-                                5
-
-                        }
-                    );
-
-                    return true;
-
-                }
-
-                // ------------------------------------------------
-                // SORT MOST-CONSTRAINED TASKS FIRST
-                // ------------------------------------------------
-
-                taskDays.sort(
-                    (
-                        a,
-                        b
-                    ) =>
-                        a.length -
-                        b.length
-                );
-
-                // ------------------------------------------------
-                // BIPARTITE MATCHING
+                // PIGEONHOLE PRINCIPLE CHECK
                 //
-                // Each remaining task must receive a different
-                // school day.
-                // ------------------------------------------------
-
-                const dayToTask =
-                    new Map();
-
-                const assignTaskToDay =
-                    (
-                        taskIndex,
-                        seenDays
-                    ) => {
-
-                        const days =
-                            taskDays[
-                                taskIndex
-                            ];
-
-                        for (
-                            const day
-                            of days
-                        ) {
-
-                            if (
-                                seenDays.has(
-                                    day
-                                )
-                            ) {
-
-                                continue;
-
-                            }
-
-                            seenDays.add(
-                                day
-                            );
-
-                            const currentTask =
-                                dayToTask.get(
-                                    day
-                                );
-
-                            if (
-                                currentTask ===
-                                undefined ||
-                                assignTaskToDay(
-                                    currentTask,
-                                    seenDays
-                                )
-                            ) {
-
-                                dayToTask.set(
-                                    day,
-                                    taskIndex
-                                );
-
-                                return true;
-
-                            }
-
-                        }
-
-                        return false;
-
-                    };
-
-                let matchingSucceeded =
-                    true;
-
-                for (
-                    let taskIndex = 0;
-
-                    taskIndex <
-                        taskDays.length;
-
-                    taskIndex++
-                ) {
-
-                    if (
-                        !assignTaskToDay(
-                            taskIndex,
-                            new Set()
-                        )
-                    ) {
-
-                        matchingSucceeded =
-                            false;
-
-                        break;
-
-                    }
-
-                }
-
-                // ------------------------------------------------
-                // REQUIREMENT CANNOT FIT ACROSS DISTINCT DAYS
+                // If there are more remaining tasks than unique 
+                // available school days across them, it's impossible 
+                // to give every task its own distinct day.
                 // ------------------------------------------------
 
                 if (
-                    !matchingSucceeded
+                    requirementTasks.length >
+                    allAvailableDays.size
                 ) {
 
                     console.warn(
-                        "SMART FORWARD CHECK — REQUIREMENT DAY DEAD END:",
+                        "SMART FORWARD CHECK — REQUIREMENT DAY DEAD END (PIGEONHOLE):",
                         {
 
                             requirementId,
 
                             remainingLessons:
-                                taskDays.length,
+                                requirementTasks.length,
 
-                            taskDayOptions:
-                                taskDays,
+                            uniqueAvailableDaysCount:
+                                allAvailableDays.size,
 
-                            matchedDays:
+                            availableDays:
                                 [
-                                    ...dayToTask.keys()
+                                    ...allAvailableDays
                                 ]
 
                         }
@@ -18452,7 +18303,7 @@ function generateSmartTimetable(
                             requirementId,
 
                             reason:
-                                "Remaining lessons cannot be assigned to distinct school days."
+                                "More remaining lessons than unique available school days."
 
                         }
                     );
@@ -18466,7 +18317,6 @@ function generateSmartTimetable(
             return false;
 
         };
-
     // ========================================================
     // DEPTH-FIRST BRANCH-AWARE SEARCH
     // ========================================================
