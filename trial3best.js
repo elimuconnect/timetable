@@ -10838,6 +10838,7 @@ function getPeriodPositionScore(
 //
 // ============================================================
 
+
 function calculateCandidateSlotScore(
     task,
     period,
@@ -11052,25 +11053,6 @@ function calculateCandidateSlotScore(
 
     // ========================================================
     // REQUIREMENT-LEVEL REMAINING LESSON PRESSURE
-    // ========================================================
-    //
-    // createLessonTasks() creates one task per weekly lesson.
-    //
-    // Therefore all tasks belonging to the same requirement
-    // share the same requirementId.
-    //
-    // Example:
-    //
-    // English 5/week:
-    //
-    //   REQ-S1
-    //   REQ-S2
-    //   REQ-S3
-    //   REQ-S4
-    //   REQ-S5
-    //
-    // Count how many are still unplaced.
-    //
     // ========================================================
 
     let remainingRequirementLessons =
@@ -11302,23 +11284,6 @@ function calculateCandidateSlotScore(
     // ========================================================
     // FUTURE REQUIREMENT FEASIBILITY
     // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // This is the main new protection.
-    //
-    // Before strongly preferring a candidate, determine how
-    // many valid teaching periods remain for this requirement.
-    //
-    // If only a few valid opportunities remain, protect them.
-    //
-    // A candidate that leaves very little room for the remaining
-    // lessons receives a penalty.
-    //
-    // A candidate that preserves many future opportunities is
-    // preferred.
-    //
-    // ========================================================
 
     if (
         requirementId &&
@@ -11361,9 +11326,6 @@ function calculateCandidateSlotScore(
                 );
 
 
-            // The currently evaluated candidate is already
-            // being considered. We want the opportunities
-            // available AFTER this candidate is selected.
             if (
                 possiblePeriodId ===
                 candidatePeriodId
@@ -11379,10 +11341,6 @@ function calculateCandidateSlotScore(
                     possiblePeriod.dayNumber
                 );
 
-
-            // ------------------------------------------------
-            // Respect max lessons per day.
-            // ------------------------------------------------
 
             const possibleDailyCount =
                 getDailyRequirementLessonCount(
@@ -11408,13 +11366,6 @@ function calculateCandidateSlotScore(
             }
 
 
-            // ------------------------------------------------
-            // Check the actual conflict engine.
-            //
-            // We deliberately use the same room being evaluated
-            // for room-required tasks.
-            // ------------------------------------------------
-
             const possibleConflict =
                 checkSingleSlotConflict(
                     task,
@@ -11435,10 +11386,6 @@ function calculateCandidateSlotScore(
 
         }
 
-
-        // ====================================================
-        // COMPARE FUTURE OPPORTUNITIES WITH LESSONS NEEDED
-        // ====================================================
 
         const requiredFutureLessons =
             remainingRequirementLessons -
@@ -11578,6 +11525,25 @@ function calculateCandidateSlotScore(
     // ========================================================
     // TEACHER DAILY BALANCE
     // ========================================================
+    //
+    // The scheduler must consider the teacher's actual total
+    // workload rather than treating 5 lessons/day as excessive.
+    //
+    // Example:
+    //
+    // Yusuf:
+    // 6 streams × 5 lessons = 30/week
+    // Expected average = 30 / 5 = 6/day
+    //
+    // Ruth:
+    // 6 streams × 4 lessons = 24/week
+    // Expected average = 24 / 5 = 4.8/day
+    //
+    // Therefore:
+    // 30/week -> approximately 6/day
+    // 24/week -> approximately 5/day
+    //
+    // ========================================================
 
     if (
         task.teacherId
@@ -11592,6 +11558,111 @@ function calculateCandidateSlotScore(
             );
 
 
+        // ----------------------------------------------------
+        // Lessons already placed for this teacher.
+        // ----------------------------------------------------
+
+        const placedTeacherLessons =
+            getTeacherWeeklyLessonCount(
+                indexes,
+                task.teacherId
+            );
+
+
+        // ----------------------------------------------------
+        // Lessons still remaining for this teacher.
+        //
+        // Count duration so double lessons are counted as
+        // two teaching periods.
+        // ----------------------------------------------------
+
+        let remainingTeacherLessons =
+            0;
+
+
+        if (
+            Array.isArray(
+                remainingTasks
+            )
+        ) {
+
+            remainingTeacherLessons =
+                remainingTasks.reduce(
+                    (
+                        total,
+                        remainingTask
+                    ) => {
+
+                        if (
+                            !remainingTask ||
+                            remainingTask.placed
+                        ) {
+
+                            return total;
+
+                        }
+
+
+                        if (
+                            normalizeTimetableId(
+                                remainingTask.teacherId
+                            ) !==
+                            normalizeTimetableId(
+                                task.teacherId
+                            )
+                        ) {
+
+                            return total;
+
+                        }
+
+
+                        return (
+                            total +
+                            (
+                                Number(
+                                    remainingTask.duration
+                                ) || 1
+                            )
+                        );
+
+                    },
+                    0
+                );
+
+        }
+
+
+        // ----------------------------------------------------
+        // Total teacher workload represented by the scheduler.
+        // ----------------------------------------------------
+
+        const actualTeacherRequiredLessons =
+            placedTeacherLessons +
+            remainingTeacherLessons;
+
+
+        // ----------------------------------------------------
+        // Expected daily workload.
+        //
+        // 30/week -> 6/day
+        // 24/week -> 5/day
+        // 35/week -> 7/day
+        // ----------------------------------------------------
+
+        const normalDailyLoad =
+            actualTeacherRequiredLessons > 0
+                ? Math.ceil(
+                    actualTeacherRequiredLessons /
+                    5
+                )
+                : 5;
+
+
+        // ----------------------------------------------------
+        // Score according to actual workload.
+        // ----------------------------------------------------
+
         if (
             teacherDailyCount === 0
         ) {
@@ -11600,31 +11671,56 @@ function calculateCandidateSlotScore(
                 20;
 
             reasons.push(
-                "Teacher has no lesson on this day."
+                `Teacher has no lesson on this day; expected daily workload is about ${normalDailyLoad}.`
             );
 
         }
         else if (
-            teacherDailyCount <= 2
+            teacherDailyCount <
+            normalDailyLoad
         ) {
 
             score +=
                 8;
 
             reasons.push(
-                "Teacher has a light workload on this day."
+                `Teacher is below the expected daily workload (${teacherDailyCount}/${normalDailyLoad}).`
             );
 
         }
         else if (
-            teacherDailyCount >= 5
+            teacherDailyCount ===
+            normalDailyLoad
+        ) {
+
+            score +=
+                0;
+
+            reasons.push(
+                `Teacher is at the expected daily workload (${teacherDailyCount}/${normalDailyLoad}).`
+            );
+
+        }
+        else if (
+            teacherDailyCount ===
+            normalDailyLoad + 1
         ) {
 
             score -=
-                20;
+                5;
 
             reasons.push(
-                "Teacher is heavily loaded on this day."
+                `Teacher is one lesson above the expected daily workload (${teacherDailyCount}/${normalDailyLoad}).`
+            );
+
+        }
+        else {
+
+            score -=
+                15;
+
+            reasons.push(
+                `Teacher is significantly above the expected daily workload (${teacherDailyCount}/${normalDailyLoad}).`
             );
 
         }
@@ -11828,11 +11924,11 @@ function calculateCandidateSlotScore(
 //
 // ============================================================
 
-
 function getScoredSingleLessonCandidates(
     task,
     data,
-    indexes
+    indexes,
+    remainingTasks = []
 ) {
 
     if (
@@ -12044,13 +12140,31 @@ function getScoredSingleLessonCandidates(
                     }
 
 
+                    // ====================================================
+                    // SCORE CANDIDATE
+                    // ====================================================
+                    //
+                    // Pass remainingTasks so the scoring engine can
+                    // understand the teacher's TOTAL required workload,
+                    // including lessons that have not yet been placed.
+                    //
+                    // This is important for teachers such as Yusuf:
+                    // 6 streams × 5 lessons = 30 lessons/week.
+                    //
+                    // A teacher with 30 required lessons should naturally
+                    // average about 6 lessons/day, so 5 lessons on a day
+                    // should NOT automatically be treated as excessive.
+                    //
+                    // ====================================================
+
                     const scoring =
                         calculateCandidateSlotScore(
                             task,
                             period,
                             room,
                             data,
-                            indexes
+                            indexes,
+                            remainingTasks
                         );
 
 
@@ -12133,6 +12247,21 @@ function getScoredSingleLessonCandidates(
     // ========================================================
     // BEST CANDIDATE FIRST
     // ========================================================
+    //
+    // Deterministic ordering.
+    //
+    // DO NOT use Math.random() here.
+    //
+    // If two candidates have exactly the same score, use:
+    //
+    // 1. Earlier period order
+    // 2. Room ID
+    // 3. Period ID
+    //
+    // This prevents the scheduler from producing a different
+    // timetable simply because of random tie-breaking.
+    //
+    // ========================================================
 
     candidates.sort(
         (
@@ -12153,9 +12282,73 @@ function getScoredSingleLessonCandidates(
             }
 
 
-            return (
-                Math.random() -
-                0.5
+            const aPeriodOrder =
+                Number(
+                    a.period?.periodOrder ??
+                    a.period?.period_order ??
+                    999999
+                );
+
+
+            const bPeriodOrder =
+                Number(
+                    b.period?.periodOrder ??
+                    b.period?.period_order ??
+                    999999
+                );
+
+
+            if (
+                aPeriodOrder !==
+                bPeriodOrder
+            ) {
+
+                return (
+                    aPeriodOrder -
+                    bPeriodOrder
+                );
+
+            }
+
+
+            const aRoomId =
+                normalizeTimetableId(
+                    a.room?.id
+                );
+
+
+            const bRoomId =
+                normalizeTimetableId(
+                    b.room?.id
+                );
+
+
+            if (
+                aRoomId !==
+                bRoomId
+            ) {
+
+                return aRoomId.localeCompare(
+                    bRoomId
+                );
+
+            }
+
+
+            const aPeriodId =
+                normalizeTimetableId(
+                    a.period?.id
+                );
+
+
+            const bPeriodId =
+                normalizeTimetableId(
+                    b.period?.id
+                );
+
+
+            return aPeriodId.localeCompare(
+                bPeriodId
             );
 
         }
