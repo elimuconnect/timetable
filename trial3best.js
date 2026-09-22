@@ -16597,13 +16597,13 @@ function selectNextSmartTask(
             }
             else {
 
-                candidates =
-                    getScoredSingleLessonCandidates(
-                        task,
-                        data,
-                        indexes
-                    );
-
+              candidates =
+    getScoredSingleLessonCandidates(
+        task,
+        data,
+        indexes,
+        remainingTasks
+    ); 
             }
 
 
