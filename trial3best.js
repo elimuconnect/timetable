@@ -17368,7 +17368,6 @@ function generateSmartTimetable(
         "======================================"
     );
 
-
     // ========================================================
     // VALIDATE DATA
     // ========================================================
@@ -17385,7 +17384,6 @@ function generateSmartTimetable(
 
     }
 
-
     // ========================================================
     // CREATE FRESH OCCUPANCY INDEXES
     // ========================================================
@@ -17394,7 +17392,6 @@ function generateSmartTimetable(
         createOccupancyIndexes(
             data
         );
-
 
     // ========================================================
     // BUILD TEACHER LIMIT INDEX
@@ -17408,7 +17405,6 @@ function generateSmartTimetable(
             new Map();
 
     }
-
 
     if (
         Array.isArray(data.teachers)
@@ -17426,12 +17422,10 @@ function generateSmartTimetable(
 
                 }
 
-
                 const teacherId =
                     normalizeTimetableId(
                         teacher.id
                     );
-
 
                 if (
                     !teacherId
@@ -17440,7 +17434,6 @@ function generateSmartTimetable(
                     return;
 
                 }
-
 
                 indexes.teacherLimits.set(
                     teacherId,
@@ -17469,7 +17462,6 @@ function generateSmartTimetable(
 
     }
 
-
     // ========================================================
     // CREATE RESULT
     // ========================================================
@@ -17477,10 +17469,8 @@ function generateSmartTimetable(
     const result =
         createTimetablePlacementResult();
 
-
     result.statistics.totalTasks =
         data.lessonTasks.length;
-
 
     // ========================================================
     // ACTIVE TASK QUEUE
@@ -17493,7 +17483,6 @@ function generateSmartTimetable(
                 !task.placed
         );
 
-
     // ========================================================
     // SEARCH CONFIGURATION
     // ========================================================
@@ -17504,26 +17493,20 @@ function generateSmartTimetable(
             30000
         );
 
-
     const MAX_SEARCH_DEPTH =
         data.lessonTasks.length + 5;
-
 
     let searchNodes =
         0;
 
-
     let deepestSearchDepth =
         0;
-
 
     let backtrackCount =
         0;
 
-
     let completeSolutionFound =
         false;
-
 
     // ========================================================
     // HELPER — GET TASK ID
@@ -17540,7 +17523,6 @@ function generateSmartTimetable(
 
             }
 
-
             return normalizeTimetableId(
                 task.taskId ??
                 task.task_id ??
@@ -17548,7 +17530,6 @@ function generateSmartTimetable(
             );
 
         };
-
 
     // ========================================================
     // HELPER — REMOVE TASK ENTRIES FROM RESULT
@@ -17562,7 +17543,6 @@ function generateSmartTimetable(
                     task
                 );
 
-
             if (
                 !taskId ||
                 !Array.isArray(
@@ -17573,7 +17553,6 @@ function generateSmartTimetable(
                 return;
 
             }
-
 
             result.entries =
                 result.entries.filter(
@@ -17587,13 +17566,11 @@ function generateSmartTimetable(
 
                         }
 
-
                         const entryTaskId =
                             normalizeTimetableId(
                                 entry.task_id ??
                                 entry.taskId
                             );
-
 
                         return (
                             entryTaskId !==
@@ -17604,7 +17581,6 @@ function generateSmartTimetable(
                 );
 
         };
-
 
     // ========================================================
     // HELPER — REMOVE TASK FROM PLACED RESULTS
@@ -17618,7 +17594,6 @@ function generateSmartTimetable(
                     task
                 );
 
-
             if (
                 !taskId ||
                 !Array.isArray(
@@ -17629,7 +17604,6 @@ function generateSmartTimetable(
                 return;
 
             }
-
 
             for (
                 let i =
@@ -17643,17 +17617,14 @@ function generateSmartTimetable(
                 const placedItem =
                     result.placedTasks[i];
 
-
                 const placedTask =
                     placedItem?.task ||
                     placedItem;
-
 
                 const placedTaskId =
                     getTaskId(
                         placedTask
                     );
-
 
                 if (
                     placedTaskId ===
@@ -17673,7 +17644,6 @@ function generateSmartTimetable(
 
         };
 
-
     // ========================================================
     // HELPER — RESET TASK
     // ========================================================
@@ -17689,20 +17659,16 @@ function generateSmartTimetable(
 
             }
 
-
             task.placed =
                 false;
 
-
             task.periodIds =
                 [];
-
 
             task.roomId =
                 null;
 
         };
-
 
     // ========================================================
     // HELPER — REMOVE TASK FROM ACTIVE QUEUE
@@ -17716,7 +17682,6 @@ function generateSmartTimetable(
                     task
                 );
 
-
             if (
                 index >= 0
             ) {
@@ -17729,7 +17694,6 @@ function generateSmartTimetable(
             }
 
         };
-
 
     // ========================================================
     // HELPER — RETURN TASK TO ACTIVE QUEUE
@@ -17746,11 +17710,9 @@ function generateSmartTimetable(
 
             }
 
-
             resetTaskForRetry(
                 task
             );
-
 
             if (
                 !remainingTasks.includes(
@@ -17765,7 +17727,6 @@ function generateSmartTimetable(
             }
 
         };
-
 
     // ========================================================
     // HELPER — UNDO ONE PLACEMENT
@@ -17783,10 +17744,8 @@ function generateSmartTimetable(
 
             }
 
-
             const task =
                 placementRecord.task;
-
 
             console.warn(
                 "SMART BACKTRACK — UNDO BRANCH:",
@@ -17813,7 +17772,6 @@ function generateSmartTimetable(
                 }
             );
 
-
             // ------------------------------------------------
             // RELEASE OCCUPANCY INDEXES
             // ------------------------------------------------
@@ -17826,7 +17784,6 @@ function generateSmartTimetable(
                         ...task.periodIds
                     ]
                     : [];
-
 
             periodIds.forEach(
                 periodId => {
@@ -17842,7 +17799,6 @@ function generateSmartTimetable(
                                 )
                         );
 
-
                     if (
                         !period
                     ) {
@@ -17856,7 +17812,6 @@ function generateSmartTimetable(
 
                     }
 
-
                     releaseReservedSlot(
                         task,
                         period,
@@ -17868,7 +17823,6 @@ function generateSmartTimetable(
                 }
             );
 
-
             // ------------------------------------------------
             // REMOVE GENERATED ENTRIES
             // ------------------------------------------------
@@ -17877,7 +17831,6 @@ function generateSmartTimetable(
                 task
             );
 
-
             // ------------------------------------------------
             // REMOVE PLACED TASK RECORD
             // ------------------------------------------------
@@ -17885,7 +17838,6 @@ function generateSmartTimetable(
             removeTaskFromPlacedResults(
                 task
             );
-
 
             // ------------------------------------------------
             // UPDATE STATISTICS
@@ -17899,7 +17851,6 @@ function generateSmartTimetable(
                         0
                     ) - 1
                 );
-
 
             result.statistics.totalPeriodsPlaced =
                 Math.max(
@@ -17915,7 +17866,6 @@ function generateSmartTimetable(
                     )
                 );
 
-
             // ------------------------------------------------
             // RETURN TASK TO QUEUE
             // ------------------------------------------------
@@ -17924,11 +17874,9 @@ function generateSmartTimetable(
                 task
             );
 
-
             return true;
 
         };
-
 
     // ========================================================
     // HELPER — RECORD SUCCESSFUL PLACEMENT
@@ -17950,7 +17898,6 @@ function generateSmartTimetable(
 
             }
 
-
             // ------------------------------------------------
             // ADD GENERATED ENTRIES
             // ------------------------------------------------
@@ -17967,7 +17914,6 @@ function generateSmartTimetable(
 
             }
 
-
             // ------------------------------------------------
             // CREATE PLACEMENT RECORD
             // ------------------------------------------------
@@ -17983,20 +17929,16 @@ function generateSmartTimetable(
 
             };
 
-
             result.placedTasks.push(
                 placementRecord
             );
 
-
             result.statistics.placedTasks++;
-
 
             result.statistics.totalPeriodsPlaced +=
                 Number(
                     task.duration
                 ) || 0;
-
 
             // ------------------------------------------------
             // REMOVE TASK FROM ACTIVE QUEUE
@@ -18006,11 +17948,9 @@ function generateSmartTimetable(
                 task
             );
 
-
             return placementRecord;
 
         };
-
 
     // ========================================================
     // HELPER — UNDO FAILED CANDIDATE ATTEMPT
@@ -18027,7 +17967,6 @@ function generateSmartTimetable(
 
             }
 
-
             if (
                 task.placed &&
                 Array.isArray(
@@ -18040,7 +17979,6 @@ function generateSmartTimetable(
                     [
                         ...task.periodIds
                     ];
-
 
                 periodIds.forEach(
                     periodId => {
@@ -18055,7 +17993,6 @@ function generateSmartTimetable(
                                         periodId
                                     )
                             );
-
 
                         if (
                             period
@@ -18076,26 +18013,27 @@ function generateSmartTimetable(
 
             }
 
-
             resetTaskForRetry(
                 task
             );
 
         };
 
-
     // ========================================================
-    // HELPER — IMMEDIATE FORWARD CHECK
+    // HELPER — REQUIREMENT DAY-FEASIBILITY FORWARD CHECK
     // ========================================================
     //
-    // After placing a task, immediately select the next
-    // most-constrained task.
+    // For requirements with maxLessonsPerDay = 1:
     //
-    // If that next task has ZERO candidates, the current
-    // placement has already created a dead branch.
+    //   5 lessons/week -> 5 different days
+    //   4 lessons/week -> 4 different days
+    //   3 lessons/week -> 3 different days
     //
-    // We therefore undo the current placement immediately
-    // instead of descending deeper into the search tree.
+    // The check examines ALL remaining tasks belonging to
+    // each requirement and determines whether their available
+    // days can still be assigned without repeating a day.
+    //
+    // This is stronger than checking only the next task.
     //
     // ========================================================
 
@@ -18113,66 +18051,421 @@ function generateSmartTimetable(
 
             }
 
+            // ------------------------------------------------
+            // GROUP REMAINING TASKS BY REQUIREMENT
+            // ------------------------------------------------
 
-            const nextSelection =
-                selectNextSmartTask(
-                    remainingTasks,
-                    data,
-                    indexes
-                );
+            const requirementGroups =
+                new Map();
 
+            remainingTasks.forEach(
+                task => {
 
-            const candidateCount =
-                Number(
-                    nextSelection?.candidateCount
-                ) || 0;
+                    if (
+                        !task ||
+                        task.placed
+                    ) {
 
+                        return;
 
-            if (
-                !nextSelection ||
-                !nextSelection.task ||
-                candidateCount === 0
+                    }
+
+                    const requirementId =
+                        task.requirementId ??
+                        task.requirement_id ??
+                        null;
+
+                    if (
+                        !requirementId
+                    ) {
+
+                        return;
+
+                    }
+
+                    if (
+                        !requirementGroups.has(
+                            requirementId
+                        )
+                    ) {
+
+                        requirementGroups.set(
+                            requirementId,
+                            []
+                        );
+
+                    }
+
+                    requirementGroups
+                        .get(
+                            requirementId
+                        )
+                        .push(
+                            task
+                        );
+
+                }
+            );
+
+            // ------------------------------------------------
+            // CHECK EACH REQUIREMENT
+            // ------------------------------------------------
+
+            for (
+                const [
+                    requirementId,
+                    requirementTasks
+                ]
+                of requirementGroups
             ) {
 
-                console.warn(
-                    "SMART FORWARD CHECK — DEAD END:",
-                    {
+                if (
+                    !Array.isArray(
+                        requirementTasks
+                    ) ||
+                    requirementTasks.length === 0
+                ) {
 
-                        nextTaskId:
-                            nextSelection?.task?.taskId ||
-                            null,
+                    continue;
 
-                        nextRequirementId:
-                            nextSelection?.task?.requirementId ||
-                            null,
+                }
 
-                        nextStreamId:
-                            nextSelection?.task?.streamId ||
-                            null,
+                const firstTask =
+                    requirementTasks[0];
 
-                        nextSubjectId:
-                            nextSelection?.task?.subjectId ||
-                            null,
+                const maxPerDay =
+                    Number(
+                        firstTask.maxLessonsPerDay
+                    ) || 1;
 
-                        nextTeacherId:
-                            nextSelection?.task?.teacherId ||
-                            null,
+                // ------------------------------------------------
+                // ONLY DISTINCT-DAY REQUIREMENTS
+                // ------------------------------------------------
 
-                        candidateCount
+                if (
+                    maxPerDay !== 1
+                ) {
+
+                    continue;
+
+                }
+
+                // ------------------------------------------------
+                // BUILD TASK -> AVAILABLE DAYS
+                // ------------------------------------------------
+
+                const taskDays =
+                    [];
+
+                let requirementDeadEnd =
+                    false;
+
+                requirementTasks.forEach(
+                    task => {
+
+                        if (
+                            requirementDeadEnd
+                        ) {
+
+                            return;
+
+                        }
+
+                        const candidates =
+                            task.taskType === "double"
+                                ? getScoredDoubleLessonCandidates(
+                                    task,
+                                    data,
+                                    indexes
+                                )
+                                : getScoredSingleLessonCandidates(
+                                    task,
+                                    data,
+                                    indexes,
+                                    remainingTasks
+                                );
+
+                        const availableDays =
+                            new Set();
+
+                        if (
+                            Array.isArray(
+                                candidates
+                            )
+                        ) {
+
+                            candidates.forEach(
+                                candidate => {
+
+                                    const period =
+                                        candidate?.period ||
+                                        candidate?.firstPeriod ||
+                                        null;
+
+                                    const dayNumber =
+                                        Number(
+                                            period?.dayNumber
+                                        );
+
+                                    if (
+                                        Number.isFinite(
+                                            dayNumber
+                                        )
+                                    ) {
+
+                                        availableDays.add(
+                                            dayNumber
+                                        );
+
+                                    }
+
+                                }
+                            );
+
+                        }
+
+                        // ------------------------------------------------
+                        // TASK HAS NO AVAILABLE DAY
+                        // ------------------------------------------------
+
+                        if (
+                            availableDays.size === 0
+                        ) {
+
+                            console.warn(
+                                "SMART FORWARD CHECK — TASK HAS NO AVAILABLE DAY:",
+                                {
+
+                                    taskId:
+                                        task.taskId,
+
+                                    requirementId,
+
+                                    streamId:
+                                        task.streamId,
+
+                                    subjectId:
+                                        task.subjectId,
+
+                                    teacherId:
+                                        task.teacherId,
+
+                                    remainingRequirementTasks:
+                                        requirementTasks.length
+
+                                }
+                            );
+
+                            requirementDeadEnd =
+                                true;
+
+                            return;
+
+                        }
+
+                        taskDays.push(
+                            [
+                                ...availableDays
+                            ]
+                        );
 
                     }
                 );
 
+                if (
+                    requirementDeadEnd
+                ) {
 
-                return true;
+                    return true;
+
+                }
+
+                // ------------------------------------------------
+                // TOO MANY LESSONS FOR FIVE SCHOOL DAYS
+                // ------------------------------------------------
+
+                if (
+                    taskDays.length > 5
+                ) {
+
+                    console.warn(
+                        "SMART FORWARD CHECK — TOO MANY DISTINCT-DAY LESSONS:",
+                        {
+
+                            requirementId,
+
+                            remainingLessons:
+                                taskDays.length,
+
+                            availableSchoolDays:
+                                5
+
+                        }
+                    );
+
+                    return true;
+
+                }
+
+                // ------------------------------------------------
+                // SORT MOST-CONSTRAINED TASKS FIRST
+                // ------------------------------------------------
+
+                taskDays.sort(
+                    (
+                        a,
+                        b
+                    ) =>
+                        a.length -
+                        b.length
+                );
+
+                // ------------------------------------------------
+                // BIPARTITE MATCHING
+                //
+                // Each remaining task must receive a different
+                // school day.
+                // ------------------------------------------------
+
+                const dayToTask =
+                    new Map();
+
+                const assignTaskToDay =
+                    (
+                        taskIndex,
+                        seenDays
+                    ) => {
+
+                        const days =
+                            taskDays[
+                                taskIndex
+                            ];
+
+                        for (
+                            const day
+                            of days
+                        ) {
+
+                            if (
+                                seenDays.has(
+                                    day
+                                )
+                            ) {
+
+                                continue;
+
+                            }
+
+                            seenDays.add(
+                                day
+                            );
+
+                            const currentTask =
+                                dayToTask.get(
+                                    day
+                                );
+
+                            if (
+                                currentTask ===
+                                undefined ||
+                                assignTaskToDay(
+                                    currentTask,
+                                    seenDays
+                                )
+                            ) {
+
+                                dayToTask.set(
+                                    day,
+                                    taskIndex
+                                );
+
+                                return true;
+
+                            }
+
+                        }
+
+                        return false;
+
+                    };
+
+                let matchingSucceeded =
+                    true;
+
+                for (
+                    let taskIndex = 0;
+
+                    taskIndex <
+                        taskDays.length;
+
+                    taskIndex++
+                ) {
+
+                    if (
+                        !assignTaskToDay(
+                            taskIndex,
+                            new Set()
+                        )
+                    ) {
+
+                        matchingSucceeded =
+                            false;
+
+                        break;
+
+                    }
+
+                }
+
+                // ------------------------------------------------
+                // REQUIREMENT CANNOT FIT ACROSS DISTINCT DAYS
+                // ------------------------------------------------
+
+                if (
+                    !matchingSucceeded
+                ) {
+
+                    console.warn(
+                        "SMART FORWARD CHECK — REQUIREMENT DAY DEAD END:",
+                        {
+
+                            requirementId,
+
+                            remainingLessons:
+                                taskDays.length,
+
+                            taskDayOptions:
+                                taskDays,
+
+                            matchedDays:
+                                [
+                                    ...dayToTask.keys()
+                                ]
+
+                        }
+                    );
+
+                    console.warn(
+                        "SMART FORWARD CHECK — BRANCH MUST BACKTRACK:",
+                        {
+
+                            requirementId,
+
+                            reason:
+                                "Remaining lessons cannot be assigned to distinct school days."
+
+                        }
+                    );
+
+                    return true;
+
+                }
 
             }
-
 
             return false;
 
         };
-
 
     // ========================================================
     // DEPTH-FIRST BRANCH-AWARE SEARCH
@@ -18183,13 +18476,11 @@ function generateSmartTimetable(
 
             searchNodes++;
 
-
             deepestSearchDepth =
                 Math.max(
                     deepestSearchDepth,
                     depth
                 );
-
 
             // ------------------------------------------------
             // SEARCH LIMIT
@@ -18214,11 +18505,9 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 return false;
 
             }
-
 
             // ------------------------------------------------
             // COMPLETE SOLUTION
@@ -18234,7 +18523,6 @@ function generateSmartTimetable(
                 return true;
 
             }
-
 
             // ------------------------------------------------
             // DEPTH SAFETY
@@ -18257,11 +18545,9 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 return false;
 
             }
-
 
             // ------------------------------------------------
             // SELECT MOST CONSTRAINED TASK
@@ -18273,7 +18559,6 @@ function generateSmartTimetable(
                     data,
                     indexes
                 );
-
 
             // ------------------------------------------------
             // NO TASK SELECTION
@@ -18296,15 +18581,12 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 return false;
 
             }
 
-
             const task =
                 selection.task;
-
 
             // ------------------------------------------------
             // NO CANDIDATES
@@ -18341,11 +18623,9 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 return false;
 
             }
-
 
             console.log(
                 "SMART SEARCH — TASK SELECTED:",
@@ -18371,7 +18651,6 @@ function generateSmartTimetable(
                 }
             );
 
-
             // ------------------------------------------------
             // TRY CANDIDATES IN RANKED ORDER
             // ------------------------------------------------
@@ -18389,7 +18668,6 @@ function generateSmartTimetable(
                     selection.candidates[
                         candidateIndex
                     ];
-
 
                 console.log(
                     "SMART SEARCH — TRY CANDIDATE:",
@@ -18418,7 +18696,6 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 const candidateSelection = {
 
                     task,
@@ -18427,13 +18704,11 @@ function generateSmartTimetable(
 
                 };
 
-
                 const attempt =
                     placeSelectedSmartTask(
                         candidateSelection,
                         indexes
                     );
-
 
                 // ------------------------------------------------
                 // CANDIDATE REJECTED
@@ -18463,16 +18738,13 @@ function generateSmartTimetable(
                         }
                     );
 
-
                     cleanupFailedPlacement(
                         task
                     );
 
-
                     continue;
 
                 }
-
 
                 // ------------------------------------------------
                 // RECORD PLACEMENT
@@ -18485,7 +18757,6 @@ function generateSmartTimetable(
                         candidate
                     );
 
-
                 if (
                     !placementRecord
                 ) {
@@ -18497,7 +18768,6 @@ function generateSmartTimetable(
                     continue;
 
                 }
-
 
                 console.log(
                     "SMART PLACEMENT SUCCESS:",
@@ -18527,36 +18797,24 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 // ------------------------------------------------
-                // IMMEDIATE FORWARD CHECK
+                // STRONG FORWARD CHECK
                 // ------------------------------------------------
-                //
-                // IMPORTANT:
                 //
                 // recordPlacement() has already removed the
                 // current task from remainingTasks.
                 //
-                // Therefore this check examines the NEXT task.
+                // The check now examines every remaining
+                // requirement with maxLessonsPerDay = 1.
                 //
-                // Example:
-                //
-                //     S4 placed
-                //     ↓
-                //     check S5
-                //     ↓
-                //     S5 has 0 candidates
-                //     ↓
-                //     undo S4 immediately
-                //
-                // This prevents the search from going deeper
-                // into an already impossible branch.
+                // This catches situations where the remaining
+                // lessons can no longer fit across the required
+                // number of distinct school days.
                 //
                 // ------------------------------------------------
 
                 const forwardDeadEnd =
                     hasImmediateForwardDeadEnd();
-
 
                 if (
                     forwardDeadEnd
@@ -18579,19 +18837,15 @@ function generateSmartTimetable(
                         }
                     );
 
-
                     undoPlacement(
                         placementRecord
                     );
 
-
                     backtrackCount++;
-
 
                     continue;
 
                 }
-
 
                 // ------------------------------------------------
                 // RECURSIVE SEARCH
@@ -18601,7 +18855,6 @@ function generateSmartTimetable(
                     searchSchedule(
                         depth + 1
                     );
-
 
                 // ------------------------------------------------
                 // COMPLETE SOLUTION FOUND
@@ -18615,13 +18868,11 @@ function generateSmartTimetable(
 
                 }
 
-
                 // ------------------------------------------------
                 // BRANCH FAILED
                 // ------------------------------------------------
 
                 backtrackCount++;
-
 
                 console.warn(
                     "SMART BACKTRACK — BRANCH FAILED:",
@@ -18642,18 +18893,15 @@ function generateSmartTimetable(
                     }
                 );
 
-
                 undoPlacement(
                     placementRecord
                 );
-
 
                 // ------------------------------------------------
                 // Continue with NEXT candidate
                 // ------------------------------------------------
 
             }
-
 
             // ------------------------------------------------
             // ALL CANDIDATES EXHAUSTED
@@ -18674,11 +18922,9 @@ function generateSmartTimetable(
                 }
             );
 
-
             return false;
 
         };
-
 
     // ========================================================
     // START SEARCH
@@ -18706,12 +18952,10 @@ function generateSmartTimetable(
         MAX_SEARCH_NODES
     );
 
-
     const searchSucceeded =
         searchSchedule(
             0
         );
-
 
     // ========================================================
     // SEARCH RESULT
@@ -18773,7 +19017,6 @@ function generateSmartTimetable(
             remainingTasks.length
         );
 
-
         remainingTasks.forEach(
             task => {
 
@@ -18785,7 +19028,6 @@ function generateSmartTimetable(
 
                 }
 
-
                 result.failedTasks.push({
 
                     task,
@@ -18795,7 +19037,6 @@ function generateSmartTimetable(
 
                 });
 
-
                 resetTaskForRetry(
                     task
                 );
@@ -18803,12 +19044,10 @@ function generateSmartTimetable(
             }
         );
 
-
         remainingTasks.length =
             0;
 
     }
-
 
     // ========================================================
     // FINAL STATISTICS
@@ -18817,10 +19056,8 @@ function generateSmartTimetable(
     result.statistics.failedTasks =
         result.failedTasks.length;
 
-
     result.statistics.totalPeriodsPlaced =
         result.entries.length;
-
 
     // ========================================================
     // LOG RESULT
@@ -18882,7 +19119,6 @@ function generateSmartTimetable(
         "======================================"
     );
 
-
     // ========================================================
     // FAILED TASK TABLE
     // ========================================================
@@ -18928,7 +19164,6 @@ function generateSmartTimetable(
 
     }
 
-
     // ========================================================
     // FAILURE REASON SUMMARY
     // ========================================================
@@ -18936,14 +19171,12 @@ function generateSmartTimetable(
     const failureReasonCounts =
         new Map();
 
-
     result.failedTasks.forEach(
         item => {
 
             const reason =
                 item?.reason ||
                 "Unknown failure";
-
 
             failureReasonCounts.set(
                 reason,
@@ -18958,7 +19191,6 @@ function generateSmartTimetable(
         }
     );
 
-
     console.log(
         "======================================"
     );
@@ -18970,7 +19202,6 @@ function generateSmartTimetable(
     console.log(
         "======================================"
     );
-
 
     console.table(
         [
@@ -19000,7 +19231,6 @@ function generateSmartTimetable(
         )
     );
 
-
     // ========================================================
     // STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
     // ========================================================
@@ -19012,14 +19242,12 @@ function generateSmartTimetable(
         const failedRequirementMap =
             new Map();
 
-
         result.failedTasks.forEach(
             item => {
 
                 const task =
                     item?.task ||
                     item;
-
 
                 if (
                     !task
@@ -19029,12 +19257,10 @@ function generateSmartTimetable(
 
                 }
 
-
                 const requirementId =
                     task.requirementId ??
                     task.requirement_id ??
                     null;
-
 
                 if (
                     !requirementId
@@ -19043,7 +19269,6 @@ function generateSmartTimetable(
                     return;
 
                 }
-
 
                 if (
                     !failedRequirementMap.has(
@@ -19057,7 +19282,6 @@ function generateSmartTimetable(
                     );
 
                 }
-
 
                 failedRequirementMap
                     .get(
@@ -19100,7 +19324,6 @@ function generateSmartTimetable(
             }
         );
 
-
         console.log(
             "======================================"
         );
@@ -19112,7 +19335,6 @@ function generateSmartTimetable(
         console.log(
             "======================================"
         );
-
 
         console.table(
             [
@@ -19185,13 +19407,11 @@ function generateSmartTimetable(
             )
         );
 
-
         console.log(
             "======================================"
         );
 
     }
-
 
     // ========================================================
     // SUCCESS TABLE
@@ -19237,14 +19457,12 @@ function generateSmartTimetable(
 
     }
 
-
     // ========================================================
     // FINAL INTERNAL CONSISTENCY CHECK
     // ========================================================
 
     const placedTaskIds =
         new Set();
-
 
     result.placedTasks.forEach(
         item => {
@@ -19253,12 +19471,10 @@ function generateSmartTimetable(
                 item?.task ||
                 item;
 
-
             const taskId =
                 getTaskId(
                     task
                 );
-
 
             if (
                 taskId
@@ -19272,7 +19488,6 @@ function generateSmartTimetable(
 
         }
     );
-
 
     const duplicatePlacedTaskIds =
         result.placedTasks
@@ -19295,7 +19510,6 @@ function generateSmartTimetable(
                     ) !== index
             );
 
-
     if (
         duplicatePlacedTaskIds.length > 0
     ) {
@@ -19310,7 +19524,6 @@ function generateSmartTimetable(
         );
 
     }
-
 
     // ========================================================
     // RETURN COMPLETE RESULT
