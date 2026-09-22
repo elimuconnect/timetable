@@ -18018,305 +18018,34 @@ function generateSmartTimetable(
             );
 
         };
-
-  // ========================================================
-    // HELPER — REQUIREMENT DAY-FEASIBILITY FORWARD CHECK
+// ========================================================
+    // HELPER — SIMPLIFIED FORWARD CHECK (NO FALSE DEAD ENDS)
     // ========================================================
-    //
-    // For requirements with maxLessonsPerDay = 1:
-    // Uses the Pigeonhole Principle: If the number of remaining 
-    // unplaced tasks exceeds the total number of unique available 
-    // school days left across them, a dead end is mathematically guaranteed.
-    //
-    // ========================================================
-
-    const hasImmediateForwardDeadEnd =
-        () => {
-
-            if (
-                !Array.isArray(
-                    remainingTasks
-                ) ||
-                remainingTasks.length === 0
-            ) {
-
-                return false;
-
-            }
-
-            // ------------------------------------------------
-            // GROUP REMAINING TASKS BY REQUIREMENT
-            // ------------------------------------------------
-
-            const requirementGroups =
-                new Map();
-
-            remainingTasks.forEach(
-                task => {
-
-                    if (
-                        !task ||
-                        task.placed
-                    ) {
-
-                        return;
-
-                    }
-
-                    const requirementId =
-                        task.requirementId ??
-                        task.requirement_id ??
-                        null;
-
-                    if (
-                        !requirementId
-                    ) {
-
-                        return;
-
-                    }
-
-                    if (
-                        !requirementGroups.has(
-                            requirementId
-                        )
-                    ) {
-
-                        requirementGroups.set(
-                            requirementId,
-                            []
-                        );
-
-                    }
-
-                    requirementGroups
-                        .get(
-                            requirementId
-                        )
-                        .push(
-                            task
-                        );
-
-                }
-            );
-
-            // ------------------------------------------------
-            // CHECK EACH REQUIREMENT
-            // ------------------------------------------------
-
-            for (
-                const [
-                    requirementId,
-                    requirementTasks
-                ]
-                of requirementGroups
-            ) {
-
-                if (
-                    !Array.isArray(
-                        requirementTasks
-                    ) ||
-                    requirementTasks.length === 0
-                ) {
-
-                    continue;
-
-                }
-
-                const firstTask =
-                    requirementTasks[0];
-
-                const maxPerDay =
-                    Number(
-                        firstTask.maxLessonsPerDay
-                    ) || 1;
-
-                // ------------------------------------------------
-                // ONLY DISTINCT-DAY REQUIREMENTS
-                // ------------------------------------------------
-
-                if (
-                    maxPerDay !== 1
-                ) {
-
-                    continue;
-
-                }
-
-                // ------------------------------------------------
-                // COLLECT ALL AVAILABLE DAYS FOR REMAINING TASKS
-                // ------------------------------------------------
-
-                const allAvailableDays =
-                    new Set();
-
-                let requirementDeadEnd =
-                    false;
-
-                for (
-                    const task of requirementTasks
-                ) {
-
-                    const candidates =
-                        task.taskType === "double"
-                            ? getScoredDoubleLessonCandidates(
-                                task,
-                                data,
-                                indexes
-                            )
-                            : getScoredSingleLessonCandidates(
-                                task,
-                                data,
-                                indexes,
-                                remainingTasks
-                            );
-
-                    const taskDays =
-                        new Set();
-
-                    if (
-                        Array.isArray(
-                            candidates
-                        )
-                    ) {
-
-                        candidates.forEach(
-                            candidate => {
-
-                                const period =
-                                    candidate?.period ||
-                                    candidate?.firstPeriod ||
-                                    null;
-
-                                const dayNumber =
-                                    Number(
-                                        period?.dayNumber
-                                    );
-
-                                if (
-                                    Number.isFinite(
-                                        dayNumber
-                                    )
-                                ) {
-
-                                    taskDays.add(
-                                        dayNumber
-                                    );
-
-                                    allAvailableDays.add(
-                                        dayNumber
-                                    );
-
-                                }
-
-                            }
-                        );
-
-                    }
-
-                    // ------------------------------------------------
-                    // INDIVIDUAL TASK HAS NO AVAILABLE DAY
-                    // ------------------------------------------------
-
-                    if (
-                        taskDays.size === 0
-                    ) {
-
-                        console.warn(
-                            "SMART FORWARD CHECK — TASK HAS NO AVAILABLE DAY:",
-                            {
-
-                                taskId:
-                                    task.taskId,
-
-                                requirementId,
-
-                                streamId:
-                                    task.streamId,
-
-                                subjectId:
-                                    task.subjectId,
-
-                                teacherId:
-                                    task.teacherId,
-
-                                remainingRequirementTasks:
-                                    requirementTasks.length
-
-                            }
-                        );
-
-                        requirementDeadEnd =
-                            true;
-
-                        break;
-
-                    }
-
-                }
-
-                if (
-                    requirementDeadEnd
-                ) {
-
-                    return true;
-
-                }
-
-                // ------------------------------------------------
-                // PIGEONHOLE PRINCIPLE CHECK
-                //
-                // If there are more remaining tasks than unique 
-                // available school days across them, it's impossible 
-                // to give every task its own distinct day.
-                // ------------------------------------------------
-
-                if (
-                    requirementTasks.length >
-                    allAvailableDays.size
-                ) {
-
-                    console.warn(
-                        "SMART FORWARD CHECK — REQUIREMENT DAY DEAD END (PIGEONHOLE):",
-                        {
-
-                            requirementId,
-
-                            remainingLessons:
-                                requirementTasks.length,
-
-                            uniqueAvailableDaysCount:
-                                allAvailableDays.size,
-
-                            availableDays:
-                                [
-                                    ...allAvailableDays
-                                ]
-
-                        }
-                    );
-
-                    console.warn(
-                        "SMART FORWARD CHECK — BRANCH MUST BACKTRACK:",
-                        {
-
-                            requirementId,
-
-                            reason:
-                                "More remaining lessons than unique available school days."
-
-                        }
-                    );
-
-                    return true;
-
-                }
-
-            }
-
+    const hasImmediateForwardDeadEnd = () => {
+        if (!Array.isArray(remainingTasks) || remainingTasks.length === 0) {
             return false;
+        }
 
-        };
+        // Just ensure no unplaced task has been completely boxed into 0 candidates
+        for (const task of remainingTasks) {
+            if (!task || task.placed) continue;
+
+            const candidates =
+                task.taskType === "double"
+                    ? getScoredDoubleLessonCandidates(task, data, indexes)
+                    : getScoredSingleLessonCandidates(task, data, indexes, remainingTasks);
+
+            if (!Array.isArray(candidates) || candidates.length === 0) {
+                console.warn(
+                    "SMART FORWARD CHECK — TASK HAS ZERO CANDIDATES:",
+                    { taskId: task.taskId, requirementId: task.requirementId }
+                );
+                return true; // True dead end: this specific task can't be placed anywhere
+            }
+        }
+
+        return false;
+    };
     // ========================================================
     // DEPTH-FIRST BRANCH-AWARE SEARCH
     // ========================================================
