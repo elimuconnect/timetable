@@ -17351,6 +17351,7 @@ function selectNextSmartTask(
 // ============================================================
 
 
+
 function generateSmartTimetable(
     data
 ) {
@@ -17484,19 +17485,6 @@ function generateSmartTimetable(
     // ========================================================
     // ACTIVE TASK QUEUE
     // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // This array represents tasks that have NOT yet been
-    // successfully placed in the current search branch.
-    //
-    // Unlike the previous implementation, we do NOT permanently
-    // fail a task just because it currently has no candidate.
-    //
-    // The recursive search will undo the previous placement
-    // and try another candidate for that previous task.
-    //
-    // ========================================================
 
     const remainingTasks =
         data.lessonTasks.filter(
@@ -17508,23 +17496,6 @@ function generateSmartTimetable(
 
     // ========================================================
     // SEARCH CONFIGURATION
-    // ========================================================
-    //
-    // This is a real branch-aware backtracking search.
-    //
-    // Each search node represents:
-    //
-    //      select task
-    //      try candidate
-    //      continue deeper
-    //
-    // If the deeper branch fails:
-    //
-    //      undo candidate
-    //      try next candidate
-    //
-    // Therefore S4/S5 cannot simply oscillate.
-    //
     // ========================================================
 
     const MAX_SEARCH_NODES =
@@ -17799,17 +17770,6 @@ function generateSmartTimetable(
     // ========================================================
     // HELPER — UNDO ONE PLACEMENT
     // ========================================================
-    //
-    // This is the critical difference from the previous
-    // implementation.
-    //
-    // We do NOT merely release the latest task and immediately
-    // retry the dead task.
-    //
-    // We undo the branch and return control to the parent
-    // search frame so the parent's NEXT candidate can be tried.
-    //
-    // ========================================================
 
     const undoPlacement =
         placementRecord => {
@@ -18055,14 +18015,6 @@ function generateSmartTimetable(
     // ========================================================
     // HELPER — UNDO FAILED CANDIDATE ATTEMPT
     // ========================================================
-    //
-    // Normally placeSelectedSmartTask() either succeeds or
-    // rolls back its own reservation.
-    //
-    // This function exists only as a defensive cleanup in
-    // case a failed attempt partially changed the task.
-    //
-    // ========================================================
 
     const cleanupFailedPlacement =
         task => {
@@ -18133,35 +18085,97 @@ function generateSmartTimetable(
 
 
     // ========================================================
-    // DEPTH-FIRST BRANCH-AWARE SEARCH
+    // HELPER — IMMEDIATE FORWARD CHECK
     // ========================================================
     //
-    // This is the main fix.
+    // After placing a task, immediately select the next
+    // most-constrained task.
     //
-    // Example:
+    // If that next task has ZERO candidates, the current
+    // placement has already created a dead branch.
     //
-    //      S3 -> candidate A
-    //          S4 -> candidate B
-    //              S5 -> NO CANDIDATE
+    // We therefore undo the current placement immediately
+    // instead of descending deeper into the search tree.
     //
-    // The search does:
-    //
-    //      undo S4
-    //      try S4 candidate C
-    //
-    // If that also fails:
-    //
-    //      undo S4
-    //      undo S3
-    //      try S3 candidate B
-    //
-    // It does NOT:
-    //
-    //      undo S4
-    //      place S5
-    //      undo S5
-    //      place S4
-    //
+    // ========================================================
+
+    const hasImmediateForwardDeadEnd =
+        () => {
+
+            if (
+                !Array.isArray(
+                    remainingTasks
+                ) ||
+                remainingTasks.length === 0
+            ) {
+
+                return false;
+
+            }
+
+
+            const nextSelection =
+                selectNextSmartTask(
+                    remainingTasks,
+                    data,
+                    indexes
+                );
+
+
+            const candidateCount =
+                Number(
+                    nextSelection?.candidateCount
+                ) || 0;
+
+
+            if (
+                !nextSelection ||
+                !nextSelection.task ||
+                candidateCount === 0
+            ) {
+
+                console.warn(
+                    "SMART FORWARD CHECK — DEAD END:",
+                    {
+
+                        nextTaskId:
+                            nextSelection?.task?.taskId ||
+                            null,
+
+                        nextRequirementId:
+                            nextSelection?.task?.requirementId ||
+                            null,
+
+                        nextStreamId:
+                            nextSelection?.task?.streamId ||
+                            null,
+
+                        nextSubjectId:
+                            nextSelection?.task?.subjectId ||
+                            null,
+
+                        nextTeacherId:
+                            nextSelection?.task?.teacherId ||
+                            null,
+
+                        candidateCount
+
+                    }
+                );
+
+
+                return true;
+
+            }
+
+
+            return false;
+
+        };
+
+
+    // ========================================================
+    // DEPTH-FIRST BRANCH-AWARE SEARCH
     // ========================================================
 
     const searchSchedule =
@@ -18294,15 +18308,6 @@ function generateSmartTimetable(
 
             // ------------------------------------------------
             // NO CANDIDATES
-            // ------------------------------------------------
-            //
-            // IMPORTANT:
-            //
-            // Do NOT mark this task permanently failed.
-            //
-            // Returning false causes the parent search frame
-            // to undo its placement and try another candidate.
-            //
             // ------------------------------------------------
 
             if (
@@ -18524,6 +18529,71 @@ function generateSmartTimetable(
 
 
                 // ------------------------------------------------
+                // IMMEDIATE FORWARD CHECK
+                // ------------------------------------------------
+                //
+                // IMPORTANT:
+                //
+                // recordPlacement() has already removed the
+                // current task from remainingTasks.
+                //
+                // Therefore this check examines the NEXT task.
+                //
+                // Example:
+                //
+                //     S4 placed
+                //     ↓
+                //     check S5
+                //     ↓
+                //     S5 has 0 candidates
+                //     ↓
+                //     undo S4 immediately
+                //
+                // This prevents the search from going deeper
+                // into an already impossible branch.
+                //
+                // ------------------------------------------------
+
+                const forwardDeadEnd =
+                    hasImmediateForwardDeadEnd();
+
+
+                if (
+                    forwardDeadEnd
+                ) {
+
+                    console.warn(
+                        "SMART BACKTRACK — FORWARD CHECK FAILED:",
+                        {
+
+                            depth,
+
+                            taskId:
+                                task.taskId,
+
+                            candidateIndex:
+                                candidateIndex + 1,
+
+                            searchNodes
+
+                        }
+                    );
+
+
+                    undoPlacement(
+                        placementRecord
+                    );
+
+
+                    backtrackCount++;
+
+
+                    continue;
+
+                }
+
+
+                // ------------------------------------------------
                 // RECURSIVE SEARCH
                 // ------------------------------------------------
 
@@ -18548,16 +18618,6 @@ function generateSmartTimetable(
 
                 // ------------------------------------------------
                 // BRANCH FAILED
-                // ------------------------------------------------
-                //
-                // Undo ONLY this branch.
-                //
-                // Then continue with the NEXT candidate for
-                // the SAME task.
-                //
-                // This is what prevents the old S4/S5
-                // oscillation.
-                //
                 // ------------------------------------------------
 
                 backtrackCount++;
@@ -18589,10 +18649,7 @@ function generateSmartTimetable(
 
 
                 // ------------------------------------------------
-                // The task is now back in remainingTasks.
-                //
-                // The next candidate in selection.candidates
-                // will be attempted.
+                // Continue with NEXT candidate
                 // ------------------------------------------------
 
             }
@@ -18716,13 +18773,6 @@ function generateSmartTimetable(
             remainingTasks.length
         );
 
-
-        // ----------------------------------------------------
-        // Any tasks still in remainingTasks were not placed.
-        //
-        // At this point the search has genuinely exhausted
-        // the configured search budget.
-        // ----------------------------------------------------
 
         remainingTasks.forEach(
             task => {
@@ -19142,49 +19192,50 @@ function generateSmartTimetable(
 
     }
 
-// ========================================================
-// SUCCESS TABLE
-// ========================================================
 
-if (
-    result.placedTasks.length > 0
-) {
+    // ========================================================
+    // SUCCESS TABLE
+    // ========================================================
 
-    console.table(
-        result.placedTasks.map(
-            item => ({
+    if (
+        result.placedTasks.length > 0
+    ) {
 
-                taskId:
-                    item.task?.taskId ||
-                    null,
+        console.table(
+            result.placedTasks.map(
+                item => ({
 
-                type:
-                    item.task?.taskType ||
-                    null,
+                    taskId:
+                        item.task?.taskId ||
+                        null,
 
-                requirementId:
-                    item.task?.requirementId ||
-                    null,
+                    type:
+                        item.task?.taskType ||
+                        null,
 
-                periods:
-                    item.task?.periodIds?.join(
-                        ", "
-                    ) ||
-                    "",
+                    requirementId:
+                        item.task?.requirementId ||
+                        null,
 
-                room:
-                    item.task?.roomId ||
-                    null,
+                    periods:
+                        item.task?.periodIds?.join(
+                            ", "
+                        ) ||
+                        "",
 
-                score:
-                    item.candidate?.score ??
-                    null
+                    room:
+                        item.task?.roomId ||
+                        null,
 
-            })
-        )
-    );
+                    score:
+                        item.candidate?.score ??
+                        null
 
-}
+                })
+            )
+        );
+
+    }
 
 
     // ========================================================
@@ -19274,7 +19325,6 @@ if (
     };
 
 }
-
 
 
 
