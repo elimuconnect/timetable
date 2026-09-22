@@ -15682,1440 +15682,6 @@ function releaseReservedSlot(
 
 
 
-function repairRemainingTimetableLessons(
-    result,
-    data,
-    indexes
-) {
-
-    // ========================================================
-    // VALIDATION
-    // ========================================================
-
-    if (
-        !result ||
-        !data ||
-        !indexes ||
-        !Array.isArray(result.failedTasks) ||
-        result.failedTasks.length === 0
-    ) {
-
-        return;
-
-    }
-
-
-    console.log("======================================");
-    console.log("STAGE 6F.5 — REPAIR ENGINE START");
-    console.log("======================================");
-
-
-    // ========================================================
-    // SETTINGS
-    // ========================================================
-    //
-    // 0 = direct placement only
-    // 1 = move one existing lesson
-    // 2 = move a lesson, then move another lesson
-    //
-    // This deliberately remains limited so the repair stage
-    // does not become a full expensive backtracking search.
-    //
-    // ========================================================
-
-    const MAX_REPAIR_DEPTH = 2;
-
-
-    // ========================================================
-    // HELPERS
-    // ========================================================
-
-    function getTaskId(task) {
-
-        return normalizeTimetableId(
-            task?.taskId ??
-            task?.task_id ??
-            task?.id
-        );
-
-    }
-
-
-    function getLessonId(task) {
-
-        return normalizeTimetableId(
-            task?.lessonId ??
-            task?.lesson_id
-        );
-
-    }
-
-
-    function clearTaskPlacement(task) {
-
-        if (!task) {
-            return;
-        }
-
-        task.placed = false;
-        task.periodIds = [];
-        task.roomId = null;
-
-    }
-
-
-    function getTaskPeriods(task) {
-
-        if (
-            !task ||
-            !Array.isArray(task.periodIds)
-        ) {
-
-            return [];
-
-        }
-
-
-        const periods = [];
-
-
-        task.periodIds.forEach(
-            periodId => {
-
-                const normalizedId =
-                    normalizeTimetableId(
-                        periodId
-                    );
-
-
-                if (!normalizedId) {
-                    return;
-                }
-
-
-                const period =
-                    getIndexedPeriod(
-                        indexes,
-                        normalizedId
-                    );
-
-
-                if (period) {
-                    periods.push(period);
-                }
-
-            }
-        );
-
-
-        return periods;
-
-    }
-
-
-    function getTaskRoom(task) {
-
-        const roomId =
-            normalizeTimetableId(
-                task?.roomId ??
-                task?.room_id
-            );
-
-
-        if (!roomId) {
-            return null;
-        }
-
-
-        if (
-            Array.isArray(data.rooms)
-        ) {
-
-            const foundRoom =
-                data.rooms.find(
-                    room =>
-                        normalizeTimetableId(
-                            room?.id
-                        ) === roomId
-                );
-
-
-            if (foundRoom) {
-                return foundRoom;
-            }
-
-        }
-
-
-        if (
-            Array.isArray(indexes.rooms)
-        ) {
-
-            const foundRoom =
-                indexes.rooms.find(
-                    room =>
-                        normalizeTimetableId(
-                            room?.id
-                        ) === roomId
-                );
-
-
-            if (foundRoom) {
-                return foundRoom;
-            }
-
-        }
-
-
-        return null;
-
-    }
-
-
-    function removePlacementFromResult(
-        task,
-        placementRecord
-    ) {
-
-        if (!placementRecord) {
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // REMOVE ENTRIES
-        // ----------------------------------------------------
-
-        if (
-            Array.isArray(
-                placementRecord.entries
-            )
-        ) {
-
-            const entrySet =
-                new Set(
-                    placementRecord.entries
-                );
-
-
-            result.entries =
-                result.entries.filter(
-                    entry =>
-                        !entrySet.has(
-                            entry
-                        )
-                );
-
-        }
-
-
-        // ----------------------------------------------------
-        // REMOVE PLACED TASK RECORD
-        // ----------------------------------------------------
-
-        result.placedTasks =
-            result.placedTasks.filter(
-                record => {
-
-                    if (
-                        record ===
-                        placementRecord
-                    ) {
-
-                        return false;
-
-                    }
-
-
-                    if (
-                        record?.task ===
-                        task
-                    ) {
-
-                        return false;
-
-                    }
-
-
-                    const recordTaskId =
-                        getTaskId(
-                            record?.task
-                        );
-
-
-                    const taskId =
-                        getTaskId(
-                            task
-                        );
-
-
-                    if (
-                        recordTaskId &&
-                        taskId &&
-                        recordTaskId ===
-                        taskId
-                    ) {
-
-                        return false;
-
-                    }
-
-
-                    return true;
-
-                }
-            );
-
-    }
-
-
-    function addPlacementToResult(
-        task,
-        placement
-    ) {
-
-        if (
-            !placement ||
-            !placement.placed
-        ) {
-
-            return false;
-
-        }
-
-
-        const record = {
-
-            task:
-                task,
-
-            entries:
-                Array.isArray(
-                    placement.entries
-                )
-                    ? placement.entries
-                    : [],
-
-            candidate:
-                placement.candidate ||
-                null
-
-        };
-
-
-        result.entries.push(
-            ...record.entries
-        );
-
-
-        result.placedTasks.push(
-            record
-        );
-
-
-        return true;
-
-    }
-
-
-    function getCandidateList(task) {
-
-        if (!task) {
-            return [];
-        }
-
-
-        // ----------------------------------------------------
-        // USE THE EXISTING SMART SELECTION ENGINE
-        // ----------------------------------------------------
-        //
-        // We deliberately do not duplicate the candidate rules.
-        //
-        // selectNextSmartTask() already knows how to construct
-        // and rank valid candidates.
-        //
-        // ----------------------------------------------------
-
-        let selection = null;
-
-
-        try {
-
-            selection =
-                selectNextSmartTask(
-                    [task],
-                    indexes
-                );
-
-        }
-        catch (error) {
-
-            console.warn(
-                "REPAIR — Candidate selection failed:",
-                error
-            );
-
-            return [];
-
-        }
-
-
-        if (!selection) {
-            return [];
-        }
-
-
-        // ----------------------------------------------------
-        // RANKED CANDIDATES
-        // ----------------------------------------------------
-
-        if (
-            Array.isArray(
-                selection.rankedCandidates
-            )
-        ) {
-
-            return selection.rankedCandidates;
-
-        }
-
-
-        // ----------------------------------------------------
-        // POSSIBLE ALTERNATE PROPERTY
-        // ----------------------------------------------------
-
-        if (
-            Array.isArray(
-                selection.candidates
-            )
-        ) {
-
-            return selection.candidates;
-
-        }
-
-
-        // ----------------------------------------------------
-        // SINGLE FALLBACK
-        // ----------------------------------------------------
-
-        if (
-            selection.candidate
-        ) {
-
-            return [
-                selection.candidate
-            ];
-
-        }
-
-
-        return [];
-
-    }
-
-
-    function tryPlaceTask(
-        task
-    ) {
-
-        const candidates =
-            getCandidateList(
-                task
-            );
-
-
-        if (
-            candidates.length === 0
-        ) {
-
-            return null;
-
-        }
-
-
-        let lastReason =
-            "";
-
-
-        for (
-            const candidate of candidates
-        ) {
-
-            if (!candidate) {
-                continue;
-            }
-
-
-            const placement =
-                placeSelectedSmartTask(
-                    {
-                        task:
-                            task,
-
-                        candidate:
-                            candidate
-
-                    },
-                    indexes
-                );
-
-
-            if (
-                placement &&
-                placement.placed
-            ) {
-
-                return {
-
-                    ...placement,
-
-                    candidate:
-                        candidate
-
-                };
-
-            }
-
-
-            lastReason =
-                placement?.reason ||
-                "Candidate placement failed.";
-
-        }
-
-
-        return {
-
-            placed:
-                false,
-
-            entries:
-                [],
-
-            reason:
-                lastReason
-
-        };
-
-    }
-
-
-    function releaseTaskPlacement(
-        task,
-        placementRecord
-    ) {
-
-        if (!task) {
-            return;
-        }
-
-
-        const periods =
-            getTaskPeriods(
-                task
-            );
-
-
-        const room =
-            getTaskRoom(
-                task
-            );
-
-
-        // ----------------------------------------------------
-        // RELEASE EVERY PERIOD
-        // ----------------------------------------------------
-
-        periods.forEach(
-            period => {
-
-                releaseReservedSlot(
-                    task,
-                    period,
-                    room,
-                    indexes
-                );
-
-            }
-        );
-
-
-        // ----------------------------------------------------
-        // REMOVE RESULT DATA
-        // ----------------------------------------------------
-
-        removePlacementFromResult(
-            task,
-            placementRecord
-        );
-
-
-        clearTaskPlacement(
-            task
-        );
-
-    }
-
-
-    function restoreOriginalPlacement(
-        task,
-        originalPeriods,
-        originalRoom
-    ) {
-
-        if (
-            !task ||
-            !Array.isArray(originalPeriods) ||
-            originalPeriods.length === 0
-        ) {
-
-            return null;
-
-        }
-
-
-        clearTaskPlacement(
-            task
-        );
-
-
-        // ----------------------------------------------------
-        // SINGLE
-        // ----------------------------------------------------
-
-        if (
-            originalPeriods.length === 1
-        ) {
-
-            const candidate = {
-
-                period:
-                    originalPeriods[0],
-
-                room:
-                    originalRoom ||
-                    null
-
-            };
-
-
-            const placement =
-                placeSelectedSmartTask(
-                    {
-                        task:
-                            task,
-
-                        candidate:
-                            candidate
-
-                    },
-                    indexes
-                );
-
-
-            if (
-                placement &&
-                placement.placed
-            ) {
-
-                return {
-
-                    ...placement,
-
-                    candidate:
-                        candidate
-
-                };
-
-            }
-
-
-            return null;
-
-        }
-
-
-        // ----------------------------------------------------
-        // DOUBLE
-        // ----------------------------------------------------
-
-        if (
-            originalPeriods.length === 2
-        ) {
-
-            const candidate = {
-
-                firstPeriod:
-                    originalPeriods[0],
-
-                secondPeriod:
-                    originalPeriods[1],
-
-                period:
-                    originalPeriods[0],
-
-                room:
-                    originalRoom ||
-                    null
-
-            };
-
-
-            const placement =
-                placeSelectedSmartTask(
-                    {
-                        task:
-                            task,
-
-                        candidate:
-                            candidate
-
-                    },
-                    indexes
-                );
-
-
-            if (
-                placement &&
-                placement.placed
-            ) {
-
-                return {
-
-                    ...placement,
-
-                    candidate:
-                        candidate
-
-                };
-
-            }
-
-        }
-
-
-        return null;
-
-    }
-
-
-    // ========================================================
-    // FIND CURRENT PLACEMENT RECORD
-    // ========================================================
-
-    function findPlacementRecord(
-        task
-    ) {
-
-        const taskId =
-            getTaskId(
-                task
-            );
-
-
-        const lessonId =
-            getLessonId(
-                task
-            );
-
-
-        return result.placedTasks.find(
-            record => {
-
-                if (
-                    record?.task ===
-                    task
-                ) {
-
-                    return true;
-
-                }
-
-
-                const recordTask =
-                    record?.task;
-
-
-                const recordTaskId =
-                    getTaskId(
-                        recordTask
-                    );
-
-
-                const recordLessonId =
-                    getLessonId(
-                        recordTask
-                    );
-
-
-                if (
-                    taskId &&
-                    recordTaskId &&
-                    taskId ===
-                    recordTaskId
-                ) {
-
-                    return true;
-
-                }
-
-
-                if (
-                    lessonId &&
-                    recordLessonId &&
-                    lessonId ===
-                    recordLessonId
-                ) {
-
-                    return true;
-
-                }
-
-
-                return false;
-
-            }
-        ) || null;
-
-    }
-
-
-    // ========================================================
-    // RECURSIVE REPAIR
-    // ========================================================
-
-    function repairTask(
-        task,
-        depth,
-        blockedTaskIds
-    ) {
-
-        if (!task) {
-            return false;
-        }
-
-
-        const taskId =
-            getTaskId(
-                task
-            );
-
-
-        if (
-            taskId &&
-            blockedTaskIds.has(
-                taskId
-            )
-        ) {
-
-            return false;
-
-        }
-
-
-        // ----------------------------------------------------
-        // DIRECT PLACEMENT FIRST
-        // ----------------------------------------------------
-
-        clearTaskPlacement(
-            task
-        );
-
-
-        const directPlacement =
-            tryPlaceTask(
-                task
-            );
-
-
-        if (
-            directPlacement &&
-            directPlacement.placed
-        ) {
-
-            addPlacementToResult(
-                task,
-                directPlacement
-            );
-
-
-            return {
-
-                success:
-                    true,
-
-                placement:
-                    directPlacement,
-
-                displaced:
-                    null
-
-            };
-
-        }
-
-
-        // ----------------------------------------------------
-        // DEPTH LIMIT
-        // ----------------------------------------------------
-
-        if (
-            depth >=
-            MAX_REPAIR_DEPTH
-        ) {
-
-            return false;
-
-        }
-
-
-        // ----------------------------------------------------
-        // BLOCK CURRENT TASK
-        // ----------------------------------------------------
-
-        const nextBlockedTaskIds =
-            new Set(
-                blockedTaskIds
-            );
-
-
-        if (taskId) {
-
-            nextBlockedTaskIds.add(
-                taskId
-            );
-
-        }
-
-
-        // ----------------------------------------------------
-        // SNAPSHOT CURRENT PLACED TASKS
-        // ----------------------------------------------------
-        //
-        // Only ordinary successfully placed lessons are
-        // candidates for displacement.
-        //
-        // Failed tasks are never displaced.
-        //
-        // ----------------------------------------------------
-
-        const possiblePlacements =
-            result.placedTasks.slice();
-
-
-        // ----------------------------------------------------
-        // TRY MOVING ONE EXISTING LESSON
-        // ----------------------------------------------------
-
-        for (
-            const placementRecord
-            of possiblePlacements
-        ) {
-
-            const displacedTask =
-                placementRecord?.task;
-
-
-            if (
-                !displacedTask
-            ) {
-
-                continue;
-
-            }
-
-
-            const displacedTaskId =
-                getTaskId(
-                    displacedTask
-                );
-
-
-            if (
-                displacedTaskId &&
-                nextBlockedTaskIds.has(
-                    displacedTaskId
-                )
-            ) {
-
-                continue;
-
-            }
-
-
-            // ------------------------------------------------
-            // SAVE ORIGINAL STATE
-            // ------------------------------------------------
-
-            const originalPeriods =
-                getTaskPeriods(
-                    displacedTask
-                );
-
-
-            const originalRoom =
-                getTaskRoom(
-                    displacedTask
-                );
-
-
-            if (
-                originalPeriods.length === 0
-            ) {
-
-                continue;
-
-            }
-
-
-            console.log(
-                "REPAIR — Trying displacement:",
-                {
-                    failedTask:
-                        getTaskId(task),
-
-                    displacedTask:
-                        displacedTaskId,
-
-                    depth:
-                        depth
-                }
-            );
-
-
-            // ------------------------------------------------
-            // RELEASE EXISTING LESSON
-            // ------------------------------------------------
-
-            releaseTaskPlacement(
-                displacedTask,
-                placementRecord
-            );
-
-
-            // ------------------------------------------------
-            // TRY FAILED TASK IN THE NEW SPACE
-            // ------------------------------------------------
-
-            clearTaskPlacement(
-                task
-            );
-
-
-            const failedTaskPlacement =
-                tryPlaceTask(
-                    task
-                );
-
-
-            if (
-                !failedTaskPlacement ||
-                !failedTaskPlacement.placed
-            ) {
-
-                // --------------------------------------------
-                // FAILED TASK STILL CANNOT USE THE SPACE
-                // --------------------------------------------
-                //
-                // Restore displaced task immediately.
-                //
-                restoreOriginalPlacement(
-                    displacedTask,
-                    originalPeriods,
-                    originalRoom
-                );
-
-
-                const restoredRecord =
-                    findPlacementRecord(
-                        displacedTask
-                    );
-
-
-                if (
-                    !restoredRecord &&
-                    displacedTask.placed
-                ) {
-
-                    const restoredCandidate = {
-
-                        period:
-                            originalPeriods[0],
-
-                        firstPeriod:
-                            originalPeriods[0],
-
-                        secondPeriod:
-                            originalPeriods[1] ||
-                            null,
-
-                        room:
-                            originalRoom ||
-                            null
-
-                    };
-
-
-                    result.entries.push(
-                        ...(restoredRecord?.entries || [])
-                    );
-
-                }
-
-
-                continue;
-
-            }
-
-
-            // ------------------------------------------------
-            // FAILED TASK SUCCESSFULLY MOVED IN
-            // ------------------------------------------------
-
-            addPlacementToResult(
-                task,
-                failedTaskPlacement
-            );
-
-
-            // ------------------------------------------------
-            // NOW REPAIR DISPLACED TASK
-            // ------------------------------------------------
-
-            const displacedRepair =
-                repairTask(
-                    displacedTask,
-                    depth + 1,
-                    nextBlockedTaskIds
-                );
-
-
-            if (
-                displacedRepair
-            ) {
-
-                console.log(
-                    "REPAIR — Successful displacement:",
-                    {
-                        repairedTask:
-                            getTaskId(task),
-
-                        displacedTask:
-                            displacedTaskId,
-
-                        depth:
-                            depth
-                    }
-                );
-
-
-                return {
-
-                    success:
-                        true,
-
-                    placement:
-                        failedTaskPlacement,
-
-                    displaced:
-                        displacedTask
-
-                };
-
-            }
-
-
-            // ------------------------------------------------
-            // DISPLACED TASK COULD NOT BE RELOCATED
-            // ------------------------------------------------
-            //
-            // Roll back the failed task and restore the
-            // displaced task to its original position.
-            //
-            // ------------------------------------------------
-
-            const failedTaskRecord =
-                findPlacementRecord(
-                    task
-                );
-
-
-            if (
-                failedTaskRecord
-            ) {
-
-                releaseTaskPlacement(
-                    task,
-                    failedTaskRecord
-                );
-
-            }
-            else {
-
-                clearTaskPlacement(
-                    task
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // RESTORE DISPLACED TASK
-            // ------------------------------------------------
-
-            const restoredPlacement =
-                restoreOriginalPlacement(
-                    displacedTask,
-                    originalPeriods,
-                    originalRoom
-                );
-
-
-            if (
-                restoredPlacement &&
-                restoredPlacement.placed
-            ) {
-
-                addPlacementToResult(
-                    displacedTask,
-                    restoredPlacement
-                );
-
-            }
-            else {
-
-                console.error(
-                    "REPAIR — CRITICAL: Could not restore displaced task.",
-                    displacedTask
-                );
-
-            }
-
-        }
-
-
-        return false;
-
-    }
-
-
-    // ========================================================
-    // PROCESS FAILED TASKS
-    // ========================================================
-
-    const failedTasksSnapshot =
-        result.failedTasks.slice();
-
-
-    let repairedCount =
-        0;
-
-
-    let unrepairedCount =
-        0;
-
-
-    for (
-        const failedItem
-        of failedTasksSnapshot
-    ) {
-
-        const task =
-            failedItem?.task;
-
-
-        if (!task) {
-
-            unrepairedCount++;
-
-            continue;
-
-        }
-
-
-        console.log(
-            "--------------------------------------"
-        );
-
-
-        console.log(
-            "REPAIR — Attempting:",
-            {
-                taskId:
-                    getTaskId(task),
-
-                lessonId:
-                    getLessonId(task),
-
-                subject:
-                    task.subjectName ??
-                    task.subject_name ??
-                    task.subject ??
-                    ""
-            }
-        );
-
-
-        clearTaskPlacement(
-            task
-        );
-
-
-        const repaired =
-            repairTask(
-                task,
-                0,
-                new Set()
-            );
-
-
-        if (
-            repaired
-        ) {
-
-            repairedCount++;
-
-
-            // ----------------------------------------------
-            // REMOVE FROM FAILED TASKS
-            // ----------------------------------------------
-
-            result.failedTasks =
-                result.failedTasks.filter(
-                    item =>
-                        item !==
-                        failedItem
-                );
-
-
-            // ----------------------------------------------
-            // UPDATE STATISTICS
-            // ----------------------------------------------
-
-            if (
-                result.statistics
-            ) {
-
-                result.statistics.placedTasks =
-                    Number(
-                        result.statistics.placedTasks
-                    ) + 1;
-
-
-                const duration =
-                    Number(
-                        task.duration
-                    ) || (
-                        Array.isArray(
-                            task.periodIds
-                        )
-                            ? task.periodIds.length
-                            : 1
-                    );
-
-
-                result.statistics.totalPeriodsPlaced =
-                    Number(
-                        result.statistics.totalPeriodsPlaced
-                    ) +
-                    duration;
-
-
-                result.statistics.repairedTasks =
-                    Number(
-                        result.statistics.repairedTasks
-                    ) + 1;
-
-            }
-
-
-            console.log(
-                "REPAIR — SUCCESS:",
-                getTaskId(task)
-            );
-
-        }
-        else {
-
-            unrepairedCount++;
-
-
-            // ----------------------------------------------
-            // KEEP FAILED TASK
-            // ----------------------------------------------
-
-            clearTaskPlacement(
-                task
-            );
-
-
-            console.warn(
-                "REPAIR — Could not repair:",
-                getTaskId(task)
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // FINAL REPAIR STATISTICS
-    // ========================================================
-
-    if (
-        result.statistics
-    ) {
-
-        result.statistics.failedTasks =
-            result.failedTasks.length;
-
-
-        if (
-            typeof result.statistics.repairedTasks !==
-            "number"
-        ) {
-
-            result.statistics.repairedTasks =
-                repairedCount;
-
-        }
-
-    }
-
-
-    console.log("======================================");
-    console.log("STAGE 6F.5 — REPAIR ENGINE COMPLETE");
-    console.log("======================================");
-
-
-    console.log(
-        "REPAIR SUMMARY:",
-        {
-            attempted:
-                failedTasksSnapshot.length,
-
-            repaired:
-                repairedCount,
-
-            unrepaired:
-                unrepairedCount,
-
-            remainingFailed:
-                result.failedTasks.length,
-
-            placedTasks:
-                result.placedTasks.length,
-
-            totalEntries:
-                result.entries.length
-        }
-    );
-
-}
-
-
 
 
 
@@ -27386,6 +25952,1539 @@ function moveStage7Task(
     return true;
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function repairRemainingTimetableLessons(
+    result,
+    data,
+    indexes
+) {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6F.5 — SAFE TIMETABLE REPAIR"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    if (
+        !result ||
+        !data ||
+        !indexes ||
+        !Array.isArray(result.failedTasks)
+    ) {
+
+        console.warn(
+            "STAGE 6F.5 — Invalid repair inputs."
+        );
+
+        return result;
+
+    }
+
+
+    if (
+        result.failedTasks.length === 0
+    ) {
+
+        console.log(
+            "STAGE 6F.5 — No failed lessons require repair."
+        );
+
+        return result;
+
+    }
+
+
+    // ========================================================
+    // BASIC HELPERS
+    // ========================================================
+
+    function cloneRepairValue(value) {
+
+        if (
+            value === null ||
+            value === undefined
+        ) {
+
+            return value;
+
+        }
+
+
+        if (
+            value instanceof Map
+        ) {
+
+            const cloned =
+                new Map();
+
+
+            value.forEach(
+                (
+                    mapValue,
+                    mapKey
+                ) => {
+
+                    cloned.set(
+                        mapKey,
+                        cloneRepairValue(
+                            mapValue
+                        )
+                    );
+
+                }
+            );
+
+
+            return cloned;
+
+        }
+
+
+        if (
+            value instanceof Set
+        ) {
+
+            return new Set(
+                Array.from(
+                    value,
+                    item =>
+                        cloneRepairValue(
+                            item
+                        )
+                )
+            );
+
+        }
+
+
+        if (
+            Array.isArray(value)
+        ) {
+
+            return value.map(
+                item =>
+                    cloneRepairValue(
+                        item
+                    )
+            );
+
+        }
+
+
+        if (
+            typeof value === "object"
+        ) {
+
+            const cloned =
+                {};
+
+            Object.keys(value).forEach(
+                key => {
+
+                    cloned[key] =
+                        cloneRepairValue(
+                            value[key]
+                        );
+
+                }
+            );
+
+
+            return cloned;
+
+        }
+
+
+        return value;
+
+    }
+
+
+    // ========================================================
+    // SNAPSHOT INDEXES
+    // ========================================================
+
+    function snapshotIndexes() {
+
+        const snapshot =
+            {};
+
+        Object.keys(indexes).forEach(
+            key => {
+
+                snapshot[key] =
+                    cloneRepairValue(
+                        indexes[key]
+                    );
+
+            }
+        );
+
+
+        return snapshot;
+
+    }
+
+
+    // ========================================================
+    // RESTORE INDEXES
+    // ========================================================
+
+    function restoreIndexes(
+        snapshot
+    ) {
+
+        Object.keys(indexes).forEach(
+            key => {
+
+                if (
+                    indexes[key] instanceof Map &&
+                    snapshot[key] instanceof Map
+                ) {
+
+                    indexes[key].clear();
+
+
+                    snapshot[key].forEach(
+                        (
+                            value,
+                            mapKey
+                        ) => {
+
+                            indexes[key].set(
+                                mapKey,
+                                cloneRepairValue(
+                                    value
+                                )
+                            );
+
+                        }
+                    );
+
+                }
+                else if (
+                    indexes[key] instanceof Set &&
+                    snapshot[key] instanceof Set
+                ) {
+
+                    indexes[key].clear();
+
+
+                    snapshot[key].forEach(
+                        value => {
+
+                            indexes[key].add(
+                                cloneRepairValue(
+                                    value
+                                )
+                            );
+
+                        }
+                    );
+
+                }
+                else {
+
+                    indexes[key] =
+                        cloneRepairValue(
+                            snapshot[key]
+                        );
+
+                }
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // TASK STATE SNAPSHOT
+    // ========================================================
+
+    function snapshotTaskState(
+        task
+    ) {
+
+        return {
+
+            placed:
+                task.placed,
+
+            periodIds:
+                Array.isArray(
+                    task.periodIds
+                )
+                    ? [
+                        ...task.periodIds
+                    ]
+                    : [],
+
+            roomId:
+                task.roomId ??
+                null
+
+        };
+
+    }
+
+
+    // ========================================================
+    // RESTORE TASK STATE
+    // ========================================================
+
+    function restoreTaskState(
+        task,
+        snapshot
+    ) {
+
+        if (
+            !task ||
+            !snapshot
+        ) {
+
+            return;
+
+        }
+
+
+        task.placed =
+            snapshot.placed;
+
+
+        task.periodIds =
+            Array.isArray(
+                snapshot.periodIds
+            )
+                ? [
+                    ...snapshot.periodIds
+                ]
+                : [];
+
+
+        task.roomId =
+            snapshot.roomId ??
+            null;
+
+    }
+
+
+    // ========================================================
+    // SNAPSHOT ALL PLACED TASKS
+    // ========================================================
+
+    function snapshotPlacedTaskStates() {
+
+        const snapshot =
+            new Map();
+
+
+        if (
+            !Array.isArray(
+                result.placedTasks
+            )
+        ) {
+
+            return snapshot;
+
+        }
+
+
+        result.placedTasks.forEach(
+            item => {
+
+                const task =
+                    item?.task;
+
+
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
+                const taskId =
+                    normalizeTimetableId(
+                        task.taskId
+                    );
+
+
+                if (
+                    !taskId
+                ) {
+
+                    return;
+
+                }
+
+
+                snapshot.set(
+                    taskId,
+                    {
+
+                        task,
+
+                        state:
+                            snapshotTaskState(
+                                task
+                            )
+
+                    }
+                );
+
+            }
+        );
+
+
+        return snapshot;
+
+    }
+
+
+    // ========================================================
+    // RESTORE ALL TASK STATES
+    // ========================================================
+
+    function restorePlacedTaskStates(
+        snapshot
+    ) {
+
+        snapshot.forEach(
+            item => {
+
+                restoreTaskState(
+                    item.task,
+                    item.state
+                );
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // REBUILD SUBJECT / REQUIREMENT PERIOD INDEXES
+    // ========================================================
+    //
+    // releaseReservedSlot() correctly repairs occupancy
+    // indexes, but subjectPeriod / requirementPeriod may still
+    // contain old references after a move.
+    //
+    // Rebuild these two indexes from the actual placed tasks.
+    //
+    // ========================================================
+
+    function rebuildSubjectAndRequirementIndexes() {
+
+        if (
+            indexes.subjectPeriod instanceof Map
+        ) {
+
+            indexes.subjectPeriod.clear();
+
+        }
+
+
+        if (
+            indexes.requirementPeriod instanceof Map
+        ) {
+
+            indexes.requirementPeriod.clear();
+
+        }
+
+
+        if (
+            !Array.isArray(
+                result.placedTasks
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        result.placedTasks.forEach(
+            item => {
+
+                const task =
+                    item?.task;
+
+
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
+                const subjectId =
+                    normalizeTimetableId(
+                        task.subjectId ??
+                        task.subject_id
+                    );
+
+
+                const requirementId =
+                    normalizeTimetableId(
+                        task.requirementId ??
+                        task.requirement_id
+                    );
+
+
+                const periodIds =
+                    Array.isArray(
+                        task.periodIds
+                    )
+                        ? task.periodIds
+                        : [];
+
+
+                periodIds.forEach(
+                    periodId => {
+
+                        const normalizedPeriodId =
+                            normalizeTimetableId(
+                                periodId
+                            );
+
+
+                        if (
+                            !normalizedPeriodId
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            subjectId &&
+                            indexes.subjectPeriod instanceof Map
+                        ) {
+
+                            if (
+                                !indexes.subjectPeriod.has(
+                                    subjectId
+                                )
+                            ) {
+
+                                indexes.subjectPeriod.set(
+                                    subjectId,
+                                    new Set()
+                                );
+
+                            }
+
+
+                            indexes.subjectPeriod
+                                .get(subjectId)
+                                .add(
+                                    normalizedPeriodId
+                                );
+
+                        }
+
+
+                        if (
+                            requirementId &&
+                            indexes.requirementPeriod instanceof Map
+                        ) {
+
+                            if (
+                                !indexes.requirementPeriod.has(
+                                    requirementId
+                                )
+                            ) {
+
+                                indexes.requirementPeriod.set(
+                                    requirementId,
+                                    new Set()
+                                );
+
+                            }
+
+
+                            indexes.requirementPeriod
+                                .get(requirementId)
+                                .add(
+                                    normalizedPeriodId
+                                );
+
+                        }
+
+                    }
+                );
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // REMOVE PLACED TASK FROM RESULT
+    // ========================================================
+
+    function removePlacedTaskFromResult(
+        task
+    ) {
+
+        const taskId =
+            normalizeTimetableId(
+                task?.taskId
+            );
+
+
+        if (
+            !taskId
+        ) {
+
+            return;
+
+        }
+
+
+        result.placedTasks =
+            result.placedTasks.filter(
+                item =>
+                    normalizeTimetableId(
+                        item?.task?.taskId
+                    ) !== taskId
+            );
+
+    }
+
+
+    // ========================================================
+    // REMOVE TASK ENTRIES FROM RESULT
+    // ========================================================
+
+    function removeTaskEntries(
+        task
+    ) {
+
+        const taskId =
+            normalizeTimetableId(
+                task?.taskId
+            );
+
+
+        const lessonId =
+            normalizeTimetableId(
+                task?.lessonId
+            );
+
+
+        result.entries =
+            result.entries.filter(
+                entry => {
+
+                    const entryTaskId =
+                        normalizeTimetableId(
+                            entry?.taskId ??
+                            entry?.task_id
+                        );
+
+
+                    const entryLessonId =
+                        normalizeTimetableId(
+                            entry?.lessonId ??
+                            entry?.lesson_id
+                        );
+
+
+                    if (
+                        taskId &&
+                        entryTaskId === taskId
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    if (
+                        lessonId &&
+                        entryLessonId === lessonId
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    return true;
+
+                }
+            );
+
+    }
+
+
+    // ========================================================
+    // FIND TASK
+    // ========================================================
+
+    function findTaskById(
+        taskId
+    ) {
+
+        const normalizedId =
+            normalizeTimetableId(
+                taskId
+            );
+
+
+        if (
+            !normalizedId
+        ) {
+
+            return null;
+
+        }
+
+
+        if (
+            Array.isArray(
+                data.lessonTasks
+            )
+        ) {
+
+            const found =
+                data.lessonTasks.find(
+                    task =>
+                        normalizeTimetableId(
+                            task?.taskId
+                        ) === normalizedId
+                );
+
+
+            if (
+                found
+            ) {
+
+                return found;
+
+            }
+
+        }
+
+
+        return null;
+
+    }
+
+
+    // ========================================================
+    // PLACE A TASK USING THE EXISTING PLACEMENT ENGINE
+    // ========================================================
+
+    function placeRepairTask(
+        task,
+        candidate
+    ) {
+
+        if (
+            !task ||
+            !candidate
+        ) {
+
+            return {
+
+                placed:
+                    false,
+
+                entries:
+                    [],
+
+                reason:
+                    "Invalid repair task or candidate."
+
+            };
+
+        }
+
+
+        const placement =
+            placeSelectedSmartTask(
+                {
+                    task,
+                    candidate
+                },
+                indexes
+            );
+
+
+        return placement;
+
+    }
+
+
+    // ========================================================
+    // TRY TO REPAIR ONE FAILED TASK
+    // ========================================================
+
+    function attemptSingleDisplacementRepair(
+        failedTask
+    ) {
+
+        if (
+            !failedTask
+        ) {
+
+            return false;
+
+        }
+
+
+        const failedTaskId =
+            normalizeTimetableId(
+                failedTask.taskId
+            );
+
+
+        console.log(
+            "STAGE 6F.5 — Attempting repair:",
+            failedTaskId
+        );
+
+
+        // ----------------------------------------------------
+        // Snapshot BEFORE ANY CHANGE
+        // ----------------------------------------------------
+
+        const indexesSnapshot =
+            snapshotIndexes();
+
+
+        const taskStatesSnapshot =
+            snapshotPlacedTaskStates();
+
+
+        const originalEntries =
+            cloneRepairValue(
+                result.entries
+            );
+
+
+        const originalPlacedTasks =
+            cloneRepairValue(
+                result.placedTasks
+            );
+
+
+        const originalFailedTasks =
+            cloneRepairValue(
+                result.failedTasks
+            );
+
+
+        // ----------------------------------------------------
+        // Candidate placed lessons
+        // ----------------------------------------------------
+        //
+        // Only test existing placed lessons as blockers.
+        //
+        // We do NOT recursively displace multiple lessons.
+        //
+        // ----------------------------------------------------
+
+        const placedCandidates =
+            Array.isArray(
+                result.placedTasks
+            )
+                ? [
+                    ...result.placedTasks
+                ]
+                : [];
+
+
+        for (
+            let blockerIndex = 0;
+            blockerIndex < placedCandidates.length;
+            blockerIndex++
+        ) {
+
+            const blockerRecord =
+                placedCandidates[
+                    blockerIndex
+                ];
+
+
+            const blockerTask =
+                blockerRecord?.task;
+
+
+            if (
+                !blockerTask
+            ) {
+
+                continue;
+
+            }
+
+
+            const blockerTaskId =
+                normalizeTimetableId(
+                    blockerTask.taskId
+                );
+
+
+            if (
+                !blockerTaskId ||
+                blockerTaskId ===
+                    failedTaskId
+            ) {
+
+                continue;
+
+            }
+
+
+            console.log(
+                "STAGE 6F.5 — Testing blocker:",
+                blockerTaskId,
+                "for failed task:",
+                failedTaskId
+            );
+
+
+            // =================================================
+            // RESET TO ORIGINAL STATE BEFORE EVERY ATTEMPT
+            // =================================================
+
+            restoreIndexes(
+                indexesSnapshot
+            );
+
+
+            restorePlacedTaskStates(
+                taskStatesSnapshot
+            );
+
+
+            result.entries =
+                cloneRepairValue(
+                    originalEntries
+                );
+
+
+            result.placedTasks =
+                cloneRepairValue(
+                    originalPlacedTasks
+                );
+
+
+            result.failedTasks =
+                cloneRepairValue(
+                    originalFailedTasks
+                );
+
+
+            // Reconnect task references after cloning result.
+            //
+            // The cloned result entries are only data records.
+            // The actual task objects remain in data.lessonTasks.
+            //
+            result.placedTasks =
+                originalPlacedTasks.map(
+                    item => {
+
+                        const actualTask =
+                            findTaskById(
+                                item?.task?.taskId
+                            );
+
+
+                        return {
+
+                            ...item,
+
+                            task:
+                                actualTask ||
+                                item.task
+
+                        };
+
+                    }
+                );
+
+
+            const actualBlockerTask =
+                findTaskById(
+                    blockerTaskId
+                );
+
+
+            const actualFailedTask =
+                findTaskById(
+                    failedTaskId
+                );
+
+
+            if (
+                !actualBlockerTask ||
+                !actualFailedTask
+            ) {
+
+                continue;
+
+            }
+
+
+            // =================================================
+            // RELEASE ONLY THE BLOCKER
+            // =================================================
+
+            const blockerPeriods =
+                Array.isArray(
+                    actualBlockerTask.periodIds
+                )
+                    ? [
+                        ...actualBlockerTask.periodIds
+                    ]
+                    : [];
+
+
+            if (
+                blockerPeriods.length === 0
+            ) {
+
+                continue;
+
+            }
+
+
+            let blockerReleaseSuccessful =
+                true;
+
+
+            blockerPeriods.forEach(
+                periodId => {
+
+                    if (
+                        !blockerReleaseSuccessful
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const period =
+                        indexes.periods instanceof Map
+                            ? indexes.periods.get(
+                                normalizeTimetableId(
+                                    periodId
+                                )
+                            )
+                            : null;
+
+
+                    if (
+                        !period
+                    ) {
+
+                        blockerReleaseSuccessful =
+                            false;
+
+                        return;
+
+                    }
+
+
+                    const room =
+                        actualBlockerTask.roomId
+                            ? (
+                                indexes.rooms instanceof Map
+                                    ? indexes.rooms.get(
+                                        normalizeTimetableId(
+                                            actualBlockerTask.roomId
+                                        )
+                                    )
+                                    : null
+                            )
+                            : null;
+
+
+                    const released =
+                        releaseReservedSlot(
+                            actualBlockerTask,
+                            period,
+                            room,
+                            indexes
+                        );
+
+
+                    if (
+                        !released
+                    ) {
+
+                        blockerReleaseSuccessful =
+                            false;
+
+                    }
+
+                }
+            );
+
+
+            if (
+                !blockerReleaseSuccessful
+            ) {
+
+                continue;
+
+            }
+
+
+            removePlacedTaskFromResult(
+                actualBlockerTask
+            );
+
+
+            removeTaskEntries(
+                actualBlockerTask
+            );
+
+
+            actualBlockerTask.placed =
+                false;
+
+
+            actualBlockerTask.periodIds =
+                [];
+
+
+            actualBlockerTask.roomId =
+                null;
+
+
+            rebuildSubjectAndRequirementIndexes();
+
+
+            // =================================================
+            // NOW GET REAL CANDIDATES FOR FAILED TASK
+            // =================================================
+            //
+            // IMPORTANT:
+            // The real selector is now called with its actual
+            // signature:
+            //
+            // selectNextSmartTask(
+            //     [actualFailedTask],
+            //     data,
+            //     indexes
+            // )
+            //
+            // =================================================
+
+            const failedSelection =
+                selectNextSmartTask(
+                    [
+                        actualFailedTask
+                    ],
+                    data,
+                    indexes
+                );
+
+
+            if (
+                !failedSelection ||
+                !failedSelection.candidate
+            ) {
+
+                continue;
+
+            }
+
+
+            // =================================================
+            // PLACE FAILED TASK
+            // =================================================
+
+            const failedPlacement =
+                placeRepairTask(
+                    actualFailedTask,
+                    failedSelection.candidate
+                );
+
+
+            if (
+                !failedPlacement.placed
+            ) {
+
+                continue;
+
+            }
+
+
+            result.entries.push(
+                ...failedPlacement.entries
+            );
+
+
+            result.placedTasks.push({
+
+                task:
+                    actualFailedTask,
+
+                entries:
+                    failedPlacement.entries,
+
+                candidate:
+                    failedSelection.candidate
+
+            });
+
+
+            // =================================================
+            // NOW TRY TO PLACE THE DISPLACED TASK
+            // =================================================
+
+            rebuildSubjectAndRequirementIndexes();
+
+
+            const blockerSelection =
+                selectNextSmartTask(
+                    [
+                        actualBlockerTask
+                    ],
+                    data,
+                    indexes
+                );
+
+
+            if (
+                !blockerSelection ||
+                !blockerSelection.candidate
+            ) {
+
+                console.log(
+                    "STAGE 6F.5 — Blocker could not be relocated."
+                );
+
+                continue;
+
+            }
+
+
+            const blockerPlacement =
+                placeRepairTask(
+                    actualBlockerTask,
+                    blockerSelection.candidate
+                );
+
+
+            if (
+                !blockerPlacement.placed
+            ) {
+
+                console.log(
+                    "STAGE 6F.5 — Blocker relocation failed."
+                );
+
+                continue;
+
+            }
+
+
+            result.entries.push(
+                ...blockerPlacement.entries
+            );
+
+
+            result.placedTasks.push({
+
+                task:
+                    actualBlockerTask,
+
+                entries:
+                    blockerPlacement.entries,
+
+                candidate:
+                    blockerSelection.candidate
+
+            });
+
+
+            // =================================================
+            // REPAIR SUCCESS
+            // =================================================
+
+            rebuildSubjectAndRequirementIndexes();
+
+
+            console.log(
+                "STAGE 6F.5 — REPAIR SUCCESS:",
+                {
+
+                    failedTask:
+                        failedTaskId,
+
+                    displacedTask:
+                        blockerTaskId
+
+                }
+            );
+
+
+            return true;
+
+        }
+
+
+        // ====================================================
+        // ALL ATTEMPTS FAILED
+        // ====================================================
+
+        console.log(
+            "STAGE 6F.5 — No safe repair found:",
+            failedTaskId
+        );
+
+
+        // ====================================================
+        // COMPLETE ROLLBACK
+        // ====================================================
+
+        restoreIndexes(
+            indexesSnapshot
+        );
+
+
+        restorePlacedTaskStates(
+            taskStatesSnapshot
+        );
+
+
+        result.entries =
+            originalEntries;
+
+
+        result.placedTasks =
+            originalPlacedTasks.map(
+                item => {
+
+                    const actualTask =
+                        findTaskById(
+                            item?.task?.taskId
+                        );
+
+
+                    return {
+
+                        ...item,
+
+                        task:
+                            actualTask ||
+                            item.task
+
+                    };
+
+                }
+            );
+
+
+        result.failedTasks =
+            originalFailedTasks;
+
+
+        rebuildSubjectAndRequirementIndexes();
+
+
+        return false;
+
+    }
+
+
+    // ========================================================
+    // PROCESS FAILED TASKS
+    // ========================================================
+
+    const failedTasksToRepair =
+        [
+            ...result.failedTasks
+        ];
+
+
+    let repairedCount =
+        0;
+
+
+    failedTasksToRepair.forEach(
+        failedRecord => {
+
+            const failedTask =
+                failedRecord?.task;
+
+
+            if (
+                !failedTask
+            ) {
+
+                return;
+
+            }
+
+
+            const success =
+                attemptSingleDisplacementRepair(
+                    failedTask
+                );
+
+
+            if (
+                success
+            ) {
+
+                repairedCount++;
+
+
+                // Remove from failed list.
+                result.failedTasks =
+                    result.failedTasks.filter(
+                        item =>
+                            normalizeTimetableId(
+                                item?.task?.taskId
+                            ) !==
+                            normalizeTimetableId(
+                                failedTask.taskId
+                            )
+                    );
+
+
+                failedTask.placed =
+                    true;
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // FINAL REBUILD
+    // ========================================================
+
+    rebuildSubjectAndRequirementIndexes();
+
+
+    // ========================================================
+    // FINAL STATISTICS
+    // ========================================================
+
+    if (
+        result.statistics
+    ) {
+
+        result.statistics.failedTasks =
+            result.failedTasks.length;
+
+
+        result.statistics.placedTasks =
+            Array.isArray(
+                result.placedTasks
+            )
+                ? result.placedTasks.length
+                : result.statistics.placedTasks;
+
+    }
+
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "STAGE 6F.5 — REPAIR COMPLETE"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "Original failed tasks:",
+        failedTasksToRepair.length
+    );
+
+    console.log(
+        "Successfully repaired:",
+        repairedCount
+    );
+
+    console.log(
+        "Still failed:",
+        result.failedTasks.length
+    );
+
+
+    return result;
+
+}
+
+
+
 
 
 
