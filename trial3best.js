@@ -9498,73 +9498,22 @@ function sortTasksForScheduling(
     return sortedTasks;
 
 }
-
-// ============================================================
-// STAGE 6B — SMART TASK PRIORITY
-// ============================================================
-//
-// Determines which lesson tasks should be placed first.
-//
-// The principle is:
-//
-//     MOST RESTRICTED / MOST DIFFICULT
-//                 ↓
-//             FIRST
-//
-// This prevents easy lessons from consuming slots that
-// difficult lessons need later.
-//
-// Priority factors include:
-//
-// 1. Double lesson
-// 2. Room-required lesson
-// 3. Specific room type
-// 4. Teacher restrictions
-// 5. High weekly lesson count
-// 6. Low daily limit
-//
-// IMPORTANT:
-// This function DOES NOT place anything.
-//
-// It only calculates a priority score.
-// ============================================================
-
-
-// ============================================================
-// CALCULATE TASK PRIORITY SCORE
-// ============================================================
-
 function calculateTaskPriorityScore(
     task,
-    data
+    data,
+    remainingTasks = []
 ) {
 
-    if (
-        !task ||
-        !data
-    ) {
-
-        return 0;
-
-    }
-
+    // ========================================================
+    // BASE PRIORITY
+    // ========================================================
 
     let score = 0;
 
 
-    // ========================================================
-    // 1. DOUBLE LESSON
-    // ========================================================
-    //
-    // Double lessons are harder to place because they need
-    // TWO consecutive free periods.
-    //
-    // Therefore they receive the highest base priority.
-    //
-    // ========================================================
-
+    // Double lessons are inherently more constrained
     if (
-        task.taskType === "double"
+        task.duration === 2
     ) {
 
         score += 100;
@@ -9572,14 +9521,7 @@ function calculateTaskPriorityScore(
     }
 
 
-    // ========================================================
-    // 2. ROOM REQUIRED
-    // ========================================================
-    //
-    // A lesson requiring a room has fewer possible slots.
-    //
-    // ========================================================
-
+    // Room-required lessons
     if (
         task.requiresRoom
     ) {
@@ -9589,38 +9531,18 @@ function calculateTaskPriorityScore(
     }
 
 
-    // ========================================================
-    // 3. SPECIFIC ROOM TYPE
-    // ========================================================
-    //
-    // Example:
-    //
-    // Laboratory
-    // Computer Lab
-    // Workshop
-    //
-    // A specific room type makes placement more restrictive.
-    //
-    // ========================================================
-
+    // Specific room type
     if (
-    task.roomTypeId ||
-    task.roomType
-) {
+        task.roomTypeId ||
+        task.roomType
+    ) {
 
-    score += 25;
+        score += 25;
 
-}
+    }
 
 
-    // ========================================================
-    // 4. TEACHER ASSIGNED
-    // ========================================================
-    //
-    // A teacher creates another occupancy constraint.
-    //
-    // ========================================================
-
+    // Assigned teacher
     if (
         task.teacherId
     ) {
@@ -9630,44 +9552,29 @@ function calculateTaskPriorityScore(
     }
 
 
-    // ========================================================
-    // 5. DAILY LIMIT
-    // ========================================================
-    //
-    // A low daily limit makes the task more restrictive.
-    //
-    // Example:
-    //
-    // maxPerDay = 1
-    //     → highly restrictive
-    //
-    // maxPerDay = 4
-    //     → less restrictive
-    //
-    // ========================================================
-
-    const maxPerDay =
+    // Strict daily requirement
+    if (
         Number(
             task.maxLessonsPerDay
-        ) || 0;
-
-
-    if (
-        maxPerDay === 1
+        ) === 1
     ) {
 
         score += 35;
 
     }
     else if (
-        maxPerDay === 2
+        Number(
+            task.maxLessonsPerDay
+        ) === 2
     ) {
 
         score += 20;
 
     }
     else if (
-        maxPerDay === 3
+        Number(
+            task.maxLessonsPerDay
+        ) === 3
     ) {
 
         score += 10;
@@ -9676,15 +9583,85 @@ function calculateTaskPriorityScore(
 
 
     // ========================================================
-    // 6. TASK DURATION
+    // REQUIREMENT-LEVEL URGENCY
     // ========================================================
     //
-    // Longer tasks consume more timetable space.
+    // createLessonTasks() creates one task per weekly lesson.
     //
+    // Therefore:
+    //
+    // requirement X / S1
+    // requirement X / S2
+    // requirement X / S3
+    //
+    // all share the same requirementId.
+    //
+    // Count the remaining tasks belonging to this requirement.
+    // ========================================================
+
+    const requirementId =
+        task.requirementId;
+
+
+    const remainingRequirementTasks =
+        Array.isArray(
+            remainingTasks
+        )
+            ? remainingTasks.filter(
+                remainingTask =>
+                    remainingTask &&
+                    !remainingTask.placed &&
+                    remainingTask.requirementId ===
+                        requirementId
+            )
+            : [];
+
+
+    const remainingLessons =
+        remainingRequirementTasks.length;
+
+
+    // ========================================================
+    // URGENCY
+    // ========================================================
+    //
+    // The fewer lessons remaining, the more important it is
+    // to protect the requirement's remaining opportunities.
+    //
+    // This is intentionally moderate. We do not want urgency
+    // to completely override candidate availability.
     // ========================================================
 
     if (
-        Number(task.duration) === 2
+        remainingLessons <= 1
+    ) {
+
+        score += 100;
+
+    }
+    else if (
+        remainingLessons === 2
+    ) {
+
+        score += 70;
+
+    }
+    else if (
+        remainingLessons === 3
+    ) {
+
+        score += 50;
+
+    }
+    else if (
+        remainingLessons === 4
+    ) {
+
+        score += 35;
+
+    }
+    else if (
+        remainingLessons === 5
     ) {
 
         score += 20;
@@ -9693,14 +9670,83 @@ function calculateTaskPriorityScore(
 
 
     // ========================================================
-    // FINAL SCORE
+    // STRICT DAILY LIMIT + REMAINING LESSONS
     // ========================================================
+    //
+    // A requirement with maxLessonsPerDay = 1 cannot put
+    // multiple lessons on the same day.
+    //
+    // Therefore, as its remaining lesson count approaches
+    // the number of available school days, it becomes more
+    // constrained.
+    // ========================================================
+
+    const maxPerDay =
+        Number(
+            task.maxLessonsPerDay
+        ) || 1;
+
+
+    const schoolDays =
+        5;
+
+
+    if (
+        maxPerDay === 1 &&
+        remainingLessons >= schoolDays
+    ) {
+
+        score += 45;
+
+    }
+    else if (
+        maxPerDay === 1 &&
+        remainingLessons === 4
+    ) {
+
+        score += 35;
+
+    }
+    else if (
+        maxPerDay === 1 &&
+        remainingLessons === 3
+    ) {
+
+        score += 25;
+
+    }
+
+
+    // ========================================================
+    // PARALLEL GROUP
+    // ========================================================
+
+    if (
+        task.parallelGroup
+    ) {
+
+        score += 20;
+
+    }
+
+
+    // ========================================================
+    // STABLE FINAL TIE BREAK VALUE
+    // ========================================================
+    //
+    // Do NOT use randomness here.
+    //
+    // Random ordering can make one run produce 240/240 and
+    // another run produce 237/240 even with identical data.
+    //
+    // taskId gives the scheduler a deterministic tie-break.
+    // The actual sort still uses taskId separately.
+    // ========================================================
+
 
     return score;
 
 }
-
-
 // ============================================================
 // SORT LESSON TASKS BY DIFFICULTY
 // ============================================================
@@ -9979,36 +10025,6 @@ function prepareSmartLessonTaskOrder(
     return orderedTasks;
 
 }
-// ============================================================
-// STAGE 6C — CANDIDATE SLOT SCORING
-// ============================================================
-//
-// Determines how GOOD a valid timetable slot is.
-//
-// Stage 6B asks:
-//
-//     "Which lesson should be placed first?"
-//
-// Stage 6C asks:
-//
-//     "Of all valid slots, which slot is BEST for this lesson?"
-//
-// IMPORTANT:
-//
-// This stage does NOT reserve or place lessons.
-//
-// It only:
-//
-//     1. examines candidate slots
-//     2. calculates a score
-//     3. explains the score
-//     4. returns candidates ordered from BEST → WORST
-//
-// Higher score = better slot.
-//
-// ============================================================
-
-
 
 
 
@@ -10822,13 +10838,13 @@ function getPeriodPositionScore(
 //
 // ============================================================
 
-
 function calculateCandidateSlotScore(
     task,
     period,
     room,
     data,
-    indexes
+    indexes,
+    remainingTasks = []
 ) {
 
     if (
@@ -10973,7 +10989,7 @@ function calculateCandidateSlotScore(
 
 
     // ========================================================
-    // REQUIREMENT DAILY USAGE
+    // REQUIREMENT IDENTIFICATION
     // ========================================================
 
     const requirementId =
@@ -10981,6 +10997,10 @@ function calculateCandidateSlotScore(
             task.requirementId
         );
 
+
+    // ========================================================
+    // REQUIREMENT DAILY USAGE
+    // ========================================================
 
     const requirementDailyCount =
         getDailyRequirementLessonCount(
@@ -11031,28 +11051,136 @@ function calculateCandidateSlotScore(
 
 
     // ========================================================
-    // REQUIREMENT PERIOD-POSITION DISTRIBUTION
+    // REQUIREMENT-LEVEL REMAINING LESSON PRESSURE
     // ========================================================
     //
-    // IMPORTANT:
+    // createLessonTasks() creates one task per weekly lesson.
     //
-    // requirementPeriod contains actual period IDs already
-    // used by this exact requirement during the week.
-    //
-    // We convert those period IDs into periodNumber values.
+    // Therefore all tasks belonging to the same requirement
+    // share the same requirementId.
     //
     // Example:
     //
-    // Monday    Mathematics -> Period 2
-    // Tuesday   Mathematics -> Period 2
+    // English 5/week:
     //
-    // Tuesday Period 2 will receive a strong penalty.
+    //   REQ-S1
+    //   REQ-S2
+    //   REQ-S3
+    //   REQ-S4
+    //   REQ-S5
     //
-    // Tuesday Period 4 will receive a strong preference.
+    // Count how many are still unplaced.
     //
-    // This is done using the requirement index directly,
-    // rather than scanning all student-group lessons.
-    //
+    // ========================================================
+
+    let remainingRequirementLessons =
+        0;
+
+
+    if (
+        requirementId &&
+        Array.isArray(
+            remainingTasks
+        )
+    ) {
+
+        remainingRequirementLessons =
+            remainingTasks.filter(
+                remainingTask =>
+                    remainingTask &&
+                    !remainingTask.placed &&
+                    normalizeTimetableId(
+                        remainingTask.requirementId
+                    ) ===
+                        requirementId
+            ).length;
+
+    }
+
+
+    // --------------------------------------------------------
+    // If remainingTasks is unavailable, the current task
+    // itself is still one remaining lesson.
+    // --------------------------------------------------------
+
+    if (
+        remainingRequirementLessons <= 0
+    ) {
+
+        remainingRequirementLessons =
+            1;
+
+    }
+
+
+    // ========================================================
+    // REQUIREMENT URGENCY
+    // ========================================================
+
+    if (
+        remainingRequirementLessons === 1
+    ) {
+
+        score +=
+            100;
+
+        reasons.push(
+            "This is the final remaining lesson for the requirement."
+        );
+
+    }
+    else if (
+        remainingRequirementLessons === 2
+    ) {
+
+        score +=
+            70;
+
+        reasons.push(
+            "Only two lessons remain for the requirement."
+        );
+
+    }
+    else if (
+        remainingRequirementLessons === 3
+    ) {
+
+        score +=
+            50;
+
+        reasons.push(
+            "Only three lessons remain for the requirement."
+        );
+
+    }
+    else if (
+        remainingRequirementLessons === 4
+    ) {
+
+        score +=
+            35;
+
+        reasons.push(
+            "Four lessons remain for the requirement."
+        );
+
+    }
+    else if (
+        remainingRequirementLessons === 5
+    ) {
+
+        score +=
+            20;
+
+        reasons.push(
+            "Five lessons remain for the requirement."
+        );
+
+    }
+
+
+    // ========================================================
+    // REQUIREMENT PERIOD-POSITION DISTRIBUTION
     // ========================================================
 
     const candidatePeriodNumber =
@@ -11149,13 +11277,6 @@ function calculateCandidateSlotScore(
             )
         ) {
 
-            // ------------------------------------------------
-            // Strong penalty:
-            //
-            // The exact requirement already uses this same
-            // period position on another day.
-            // ------------------------------------------------
-
             score -=
                 45;
 
@@ -11166,17 +11287,236 @@ function calculateCandidateSlotScore(
         }
         else {
 
-            // ------------------------------------------------
-            // Strong preference:
-            //
-            // Use a different period position.
-            // ------------------------------------------------
-
             score +=
                 30;
 
             reasons.push(
                 "Requirement uses a new period position for better weekly distribution."
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // FUTURE REQUIREMENT FEASIBILITY
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // This is the main new protection.
+    //
+    // Before strongly preferring a candidate, determine how
+    // many valid teaching periods remain for this requirement.
+    //
+    // If only a few valid opportunities remain, protect them.
+    //
+    // A candidate that leaves very little room for the remaining
+    // lessons receives a penalty.
+    //
+    // A candidate that preserves many future opportunities is
+    // preferred.
+    //
+    // ========================================================
+
+    if (
+        requirementId &&
+        remainingRequirementLessons > 1
+    ) {
+
+        const teachingPeriods =
+            getTeachingPeriods(
+                data.periods
+            );
+
+
+        let futureValidSlots =
+            0;
+
+
+        const candidatePeriodId =
+            normalizeTimetableId(
+                period.id
+            );
+
+
+        for (
+            const possiblePeriod of teachingPeriods
+        ) {
+
+            if (
+                !possiblePeriod ||
+                !possiblePeriod.id
+            ) {
+
+                continue;
+
+            }
+
+
+            const possiblePeriodId =
+                normalizeTimetableId(
+                    possiblePeriod.id
+                );
+
+
+            // The currently evaluated candidate is already
+            // being considered. We want the opportunities
+            // available AFTER this candidate is selected.
+            if (
+                possiblePeriodId ===
+                candidatePeriodId
+            ) {
+
+                continue;
+
+            }
+
+
+            const possibleDayNumber =
+                Number(
+                    possiblePeriod.dayNumber
+                );
+
+
+            // ------------------------------------------------
+            // Respect max lessons per day.
+            // ------------------------------------------------
+
+            const possibleDailyCount =
+                getDailyRequirementLessonCount(
+                    indexes,
+                    requirementId,
+                    possibleDayNumber
+                );
+
+
+            const maxPerDay =
+                Number(
+                    task.maxLessonsPerDay
+                ) || 1;
+
+
+            if (
+                possibleDailyCount >=
+                maxPerDay
+            ) {
+
+                continue;
+
+            }
+
+
+            // ------------------------------------------------
+            // Check the actual conflict engine.
+            //
+            // We deliberately use the same room being evaluated
+            // for room-required tasks.
+            // ------------------------------------------------
+
+            const possibleConflict =
+                checkSingleSlotConflict(
+                    task,
+                    possiblePeriod,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                possibleConflict &&
+                possibleConflict.valid
+            ) {
+
+                futureValidSlots++;
+
+            }
+
+        }
+
+
+        // ====================================================
+        // COMPARE FUTURE OPPORTUNITIES WITH LESSONS NEEDED
+        // ====================================================
+
+        const requiredFutureLessons =
+            remainingRequirementLessons -
+            1;
+
+
+        const futureSlack =
+            futureValidSlots -
+            requiredFutureLessons;
+
+
+        if (
+            futureValidSlots === 0
+        ) {
+
+            score -=
+                100000;
+
+            reasons.push(
+                "Candidate leaves no valid future slot for the remaining requirement lessons."
+            );
+
+        }
+        else if (
+            futureSlack < 0
+        ) {
+
+            score -=
+                50000;
+
+            reasons.push(
+                "Candidate leaves fewer valid future slots than the remaining lessons require."
+            );
+
+        }
+        else if (
+            futureSlack === 0
+        ) {
+
+            score +=
+                5000;
+
+            reasons.push(
+                "Candidate leaves exactly enough valid future slots for the remaining lessons."
+            );
+
+        }
+        else if (
+            futureSlack === 1
+        ) {
+
+            score +=
+                1500;
+
+            reasons.push(
+                "Candidate leaves only one spare future opportunity."
+            );
+
+        }
+        else if (
+            futureSlack === 2
+        ) {
+
+            score +=
+                500;
+
+            reasons.push(
+                "Candidate preserves a small number of future opportunities."
+            );
+
+        }
+        else {
+
+            score +=
+                100;
+
+            reasons.push(
+                "Candidate preserves sufficient future scheduling flexibility."
             );
 
         }
@@ -11357,10 +11697,6 @@ function calculateCandidateSlotScore(
     // ========================================================
     // PERIOD POSITION
     // ========================================================
-    //
-    // Earlier periods are still preferred, but only mildly.
-    //
-    // ========================================================
 
     const dayPeriods =
         data.periods.filter(
@@ -11480,7 +11816,6 @@ function calculateCandidateSlotScore(
     };
 
 }
-
 
 
 
@@ -16040,11 +16375,12 @@ function selectNextSmartTask(
             // TASK PRIORITY FROM STAGE 6B
             // ==================================================
 
-            const priority =
-                calculateTaskPriorityScore(
-                    task,
-                    data
-                );
+           const priority =
+    calculateTaskPriorityScore(
+        task,
+        data,
+        remainingTasks
+    );
 
 
             // ==================================================
