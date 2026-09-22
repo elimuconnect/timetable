@@ -16752,12 +16752,12 @@ function selectNextSmartTask(
             // TASK PRIORITY FROM STAGE 6B
             // ==================================================
 
-           const priority =
-    calculateTaskPriorityScore(
-        task,
-        data,
-        remainingTasks
-    );
+            const priority =
+                calculateTaskPriorityScore(
+                    task,
+                    data,
+                    remainingTasks
+                );
 
 
             // ==================================================
@@ -16781,12 +16781,14 @@ function selectNextSmartTask(
             }
             else {
 
-             candidates =
-    getScoredSingleLessonCandidates(
-        task,
-        data,
-        indexes
-    );
+                candidates =
+                    getScoredSingleLessonCandidates(
+                        task,
+                        data,
+                        indexes,
+                        remainingTasks
+                    );
+
             }
 
 
@@ -17057,15 +17059,6 @@ function selectNextSmartTask(
 
             // ------------------------------------------------
             // 1. ESTABLISHED PARALLEL GROUP FIRST
-            // ------------------------------------------------
-            //
-            // Once a lesson from a parallel group exists,
-            // its remaining members must be considered before
-            // unrelated tasks, regardless of day pressure.
-            //
-            // This is what keeps an already-established
-            // parallel group synchronized.
-            //
             // ------------------------------------------------
 
             if (
@@ -17344,6 +17337,7 @@ function selectNextSmartTask(
     };
 
 }
+
 
 
 
