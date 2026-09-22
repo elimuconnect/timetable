@@ -19142,51 +19142,49 @@ function generateSmartTimetable(
 
     }
 
+// ========================================================
+// SUCCESS TABLE
+// ========================================================
 
-    // ========================================================
-    // SUCCESS TABLE
-    // ========================================================
+if (
+    result.placedTasks.length > 0
+) {
 
-    if (
-        result.placedTasks.length > 0
-    ) {
+    console.table(
+        result.placedTasks.map(
+            item => ({
 
-        console.table(
-            result.placedTasks.map(
-                item => ({
+                taskId:
+                    item.task?.taskId ||
+                    null,
 
-                    taskId:
-                        item.task?.taskId ||
-                        null,
+                type:
+                    item.task?.taskType ||
+                    null,
 
-                    type:
-                        item.task?.taskType ||
-                        null,
+                requirementId:
+                    item.task?.requirementId ||
+                    null,
 
-                    requirementId:
-                        item.task?.requirementId ||
-                        null,
+                periods:
+                    item.task?.periodIds?.join(
+                        ", "
+                    ) ||
+                    "",
 
-                    periods:
-                        item.task?.periodIds?.join(
-                            ", "
-                        ) ||
-                        "",
+                room:
+                    item.task?.roomId ||
+                    null,
 
-                    room:
-                        item.task?.roomId ||
-                        null,
+                score:
+                    item.candidate?.score ??
+                    null
 
-                    score:
-                        item.candidate?.score ??
-                        null
+            })
+        )
+    );
 
-                })
-            );
-)
-        );
-
-    }
+}
 
 
     // ========================================================
