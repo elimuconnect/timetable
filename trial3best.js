@@ -17351,10 +17351,6 @@ function selectNextSmartTask(
 // ============================================================
 
 
-
-
-
-
 function generateSmartTimetable(
     data
 ) {
@@ -17401,22 +17397,6 @@ function generateSmartTimetable(
 
     // ========================================================
     // BUILD TEACHER LIMIT INDEX
-    // ========================================================
-    //
-    // The conflict functions use:
-    //
-    //     indexes.teacherLimits
-    //
-    // for:
-    //
-    //     - maxLessonsPerDay
-    //     - maxLessonsPerWeek
-    //     - maxConsecutiveLessons
-    //
-    // createOccupancyIndexes() does not need to own the
-    // normalized teacher-limit construction, so we prepare it
-    // here from the already normalized generator data.
-    //
     // ========================================================
 
     if (
@@ -17504,10 +17484,6 @@ function generateSmartTimetable(
     // ========================================================
     // COPY ACTIVE TASKS
     // ========================================================
-    //
-    // Do NOT modify the original task ordering here.
-    //
-    // ========================================================
 
     const remainingTasks =
         data.lessonTasks.filter(
@@ -17518,13 +17494,686 @@ function generateSmartTimetable(
 
 
     // ========================================================
+    // BACKTRACKING CONFIGURATION
+    // ========================================================
+    //
+    // The generator normally works greedily.
+    //
+    // If a task becomes impossible, we do NOT immediately
+    // permanently fail it.
+    //
+    // Instead we temporarily release recently placed tasks
+    // and retry.
+    //
+    // This is controlled so the generator cannot backtrack
+    // forever.
+    //
+    // ========================================================
+
+    const MAX_BACKTRACK_ATTEMPTS =
+        Math.max(
+            data.lessonTasks.length * 4,
+            200
+        );
+
+
+    const MAX_BACKTRACK_DEPTH =
+        12;
+
+
+    let backtrackAttempts =
+        0;
+
+
+    // ========================================================
+    // PLACEMENT STACK
+    // ========================================================
+    //
+    // Every successfully placed task is kept here.
+    //
+    // The stack allows us to release the most recent lessons
+    // when a later lesson reaches a dead end.
+    //
+    // ========================================================
+
+    const placementStack =
+        [];
+
+
+    // ========================================================
+    // HELPER — GET TASK ID
+    // ========================================================
+
+    const getTaskId =
+        task => {
+
+            if (
+                !task
+            ) {
+
+                return null;
+
+            }
+
+
+            return normalizeTimetableId(
+                task.taskId ??
+                task.task_id ??
+                task.id
+            );
+
+        };
+
+
+    // ========================================================
+    // HELPER — REMOVE TASK ENTRIES FROM RESULT
+    // ========================================================
+    //
+    // When a task is backtracked, its generated timetable
+    // entries must also be removed from result.entries.
+    //
+    // Otherwise an old entry could remain in the final result
+    // even though the occupancy indexes were released.
+    //
+    // ========================================================
+
+    const removeTaskEntries =
+        task => {
+
+            const taskId =
+                getTaskId(
+                    task
+                );
+
+
+            if (
+                !taskId ||
+                !Array.isArray(
+                    result.entries
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            result.entries =
+                result.entries.filter(
+                    entry => {
+
+                        if (
+                            !entry
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        const entryTaskId =
+                            normalizeTimetableId(
+                                entry.task_id ??
+                                entry.taskId
+                            );
+
+
+                        return (
+                            entryTaskId !==
+                            taskId
+                        );
+
+                    }
+                );
+
+        };
+
+
+    // ========================================================
+    // HELPER — REMOVE TASK FROM PLACED TASK RESULT
+    // ========================================================
+
+    const removeTaskFromPlacedResults =
+        task => {
+
+            const taskId =
+                getTaskId(
+                    task
+                );
+
+
+            if (
+                !taskId ||
+                !Array.isArray(
+                    result.placedTasks
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            for (
+                let i =
+                    result.placedTasks.length - 1;
+
+                i >= 0;
+
+                i--
+            ) {
+
+                const placedItem =
+                    result.placedTasks[i];
+
+
+                const placedTask =
+                    placedItem?.task ||
+                    placedItem;
+
+
+                const placedTaskId =
+                    getTaskId(
+                        placedTask
+                    );
+
+
+                if (
+                    placedTaskId ===
+                    taskId
+                ) {
+
+                    result.placedTasks.splice(
+                        i,
+                        1
+                    );
+
+                    break;
+
+                }
+
+            }
+
+        };
+
+
+    // ========================================================
+    // HELPER — RESET TASK AFTER BACKTRACK
+    // ========================================================
+
+    const resetTaskForRetry =
+        task => {
+
+            if (
+                !task
+            ) {
+
+                return;
+
+            }
+
+
+            task.placed =
+                false;
+
+
+            task.periodIds =
+                [];
+
+
+            task.roomId =
+                null;
+
+        };
+
+
+    // ========================================================
+    // HELPER — RETURN TASK TO ACTIVE QUEUE
+    // ========================================================
+
+    const returnTaskToQueue =
+        task => {
+
+            if (
+                !task
+            ) {
+
+                return;
+
+            }
+
+
+            resetTaskForRetry(
+                task
+            );
+
+
+            const alreadyQueued =
+                remainingTasks.some(
+                    existingTask =>
+                        existingTask ===
+                        task
+                );
+
+
+            if (
+                !alreadyQueued
+            ) {
+
+                remainingTasks.push(
+                    task
+                );
+
+            }
+
+        };
+
+
+    // ========================================================
+    // HELPER — BACKTRACK ONE PLACED TASK
+    // ========================================================
+    //
+    // Releases the most recently placed task.
+    //
+    // IMPORTANT:
+    // releaseReservedSlot() is used so ALL occupancy indexes
+    // are correctly restored.
+    //
+    // ========================================================
+
+    const backtrackOneTask =
+        () => {
+
+            if (
+                placementStack.length === 0
+            ) {
+
+                return {
+
+                    success:
+                        false,
+
+                    task:
+                        null,
+
+                    reason:
+                        "No previously placed task is available for backtracking."
+
+                };
+
+            }
+
+
+            const placement =
+                placementStack.pop();
+
+
+            const task =
+                placement?.task;
+
+
+            if (
+                !task
+            ) {
+
+                return {
+
+                    success:
+                        false,
+
+                    task:
+                        null,
+
+                    reason:
+                        "Backtracking stack contained an invalid task."
+
+                };
+
+            }
+
+
+            console.warn(
+                "SMART BACKTRACK — RELEASING TASK:",
+                {
+
+                    taskId:
+                        task.taskId,
+
+                    requirementId:
+                        task.requirementId,
+
+                    streamId:
+                        task.streamId,
+
+                    subjectId:
+                        task.subjectId,
+
+                    teacherId:
+                        task.teacherId,
+
+                    periods:
+                        task.periodIds
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // RELEASE ALL OCCUPANCY INDEXES
+            // ------------------------------------------------
+
+            const periodIds =
+                Array.isArray(
+                    task.periodIds
+                )
+                    ? [
+                        ...task.periodIds
+                    ]
+                    : [];
+
+
+            periodIds.forEach(
+                periodId => {
+
+                    const period =
+                        data.periods.find(
+                            candidatePeriod =>
+                                normalizeTimetableId(
+                                    candidatePeriod?.id
+                                ) ===
+                                normalizeTimetableId(
+                                    periodId
+                                )
+                        );
+
+
+                    if (
+                        !period
+                    ) {
+
+                        console.warn(
+                            "BACKTRACK — PERIOD NOT FOUND:",
+                            periodId
+                        );
+
+                        return;
+
+                    }
+
+
+                    releaseReservedSlot(
+                        task,
+                        period,
+                        task.roomId ||
+                        null,
+                        indexes
+                    );
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // REMOVE GENERATED ENTRIES
+            // ------------------------------------------------
+
+            removeTaskEntries(
+                task
+            );
+
+
+            // ------------------------------------------------
+            // REMOVE PLACED-TASK WRAPPER
+            // ------------------------------------------------
+
+            removeTaskFromPlacedResults(
+                task
+            );
+
+
+            // ------------------------------------------------
+            // UPDATE STATISTICS
+            // ------------------------------------------------
+
+            result.statistics.placedTasks =
+                Math.max(
+                    0,
+                    (
+                        result.statistics.placedTasks ||
+                        0
+                    ) - 1
+                );
+
+
+            result.statistics.totalPeriodsPlaced =
+                Math.max(
+                    0,
+                    (
+                        result.statistics.totalPeriodsPlaced ||
+                        0
+                    ) -
+                    (
+                        Number(
+                            task.duration
+                        ) || 0
+                    )
+                );
+
+
+            // ------------------------------------------------
+            // RESET TASK
+            // ------------------------------------------------
+
+            resetTaskForRetry(
+                task
+            );
+
+
+            // ------------------------------------------------
+            // RETURN TO ACTIVE QUEUE
+            // ------------------------------------------------
+
+            if (
+                !remainingTasks.includes(
+                    task
+                )
+            ) {
+
+                remainingTasks.push(
+                    task
+                );
+
+            }
+
+
+            return {
+
+                success:
+                    true,
+
+                task,
+
+                reason:
+                    "Task successfully released for backtracking."
+
+            };
+
+        };
+
+
+    // ========================================================
+    // HELPER — BACKTRACK UNTIL TARGET HAS A CANDIDATE
+    // ========================================================
+    //
+    // The target task is NOT permanently failed until we have
+    // exhausted controlled backtracking.
+    //
+    // ========================================================
+
+    const tryBacktrackingForTask =
+        targetTask => {
+
+            if (
+                !targetTask
+            ) {
+
+                return {
+
+                    success:
+                        false,
+
+                    selection:
+                        null
+
+                };
+
+            }
+
+
+            let depth =
+                0;
+
+
+            while (
+                backtrackAttempts <
+                    MAX_BACKTRACK_ATTEMPTS &&
+                depth <
+                    MAX_BACKTRACK_DEPTH &&
+                placementStack.length > 0
+            ) {
+
+                depth++;
+
+                backtrackAttempts++;
+
+
+                console.warn(
+                    "======================================"
+                );
+
+                console.warn(
+                    "SMART BACKTRACK ATTEMPT"
+                );
+
+                console.warn(
+                    "======================================"
+                );
+
+                console.warn(
+                    "Target task:",
+                    targetTask.taskId
+                );
+
+                console.warn(
+                    "Backtrack attempt:",
+                    backtrackAttempts
+                );
+
+                console.warn(
+                    "Backtrack depth:",
+                    depth
+                );
+
+
+                const released =
+                    backtrackOneTask();
+
+
+                if (
+                    !released.success
+                ) {
+
+                    break;
+
+                }
+
+
+                // ------------------------------------------------
+                // Recalculate candidates AFTER rollback.
+                //
+                // This is important because the occupancy indexes
+                // have changed.
+                // ------------------------------------------------
+
+                const retrySelection =
+                    selectNextSmartTask(
+                        [
+                            targetTask
+                        ],
+                        data,
+                        indexes
+                    );
+
+
+                if (
+                    retrySelection &&
+                    retrySelection.candidateCount > 0
+                ) {
+
+                    console.log(
+                        "SMART BACKTRACK — TARGET NOW HAS CANDIDATE:",
+                        {
+
+                            taskId:
+                                targetTask.taskId,
+
+                            candidateCount:
+                                retrySelection.candidateCount,
+
+                            depth
+
+                        }
+                    );
+
+
+                    return {
+
+                        success:
+                            true,
+
+                        selection:
+                            retrySelection
+
+                    };
+
+                }
+
+            }
+
+
+            return {
+
+                success:
+                    false,
+
+                selection:
+                    null
+
+            };
+
+        };
+
+
+    // ========================================================
     // SAFETY LIMIT
+    // ========================================================
+    //
+    // Backtracking may temporarily increase the number of
+    // placement iterations because released tasks return to
+    // remainingTasks.
+    //
+    // Therefore this is based on both task count and allowed
+    // backtracking.
+    //
     // ========================================================
 
     const maximumIterations =
         Math.max(
-            remainingTasks.length * 3,
-            100
+            (
+                data.lessonTasks.length * 5
+            ) +
+            MAX_BACKTRACK_ATTEMPTS,
+            500
         );
 
 
@@ -17548,7 +18197,7 @@ function generateSmartTimetable(
         // SELECT NEXT TASK
         // ====================================================
 
-        const selection =
+        let selection =
             selectNextSmartTask(
                 remainingTasks,
                 data,
@@ -17564,12 +18213,45 @@ function generateSmartTimetable(
             !selection
         ) {
 
+            console.warn(
+                "SMART PLACEMENT — NO TASK SELECTION."
+            );
+
+
+            // ------------------------------------------------
+            // Try to recover by releasing a recent task.
+            // ------------------------------------------------
+
+            if (
+                backtrackAttempts <
+                    MAX_BACKTRACK_ATTEMPTS &&
+                placementStack.length > 0
+            ) {
+
+                backtrackAttempts++;
+
+
+                const released =
+                    backtrackOneTask();
+
+
+                if (
+                    released.success
+                ) {
+
+                    continue;
+
+                }
+
+            }
+
+
             break;
 
         }
 
 
-        const task =
+        let task =
             selection.task;
 
 
@@ -17607,65 +18289,83 @@ function generateSmartTimetable(
             );
 
 
-            result.failedTasks.push({
-
-                task,
-
-                reason:
-                    "No valid placement candidate exists."
-
-            });
-
-
-            task.placed =
-                false;
-
-
-            task.periodIds =
-                [];
-
-
-            task.roomId =
-                null;
-
-
             // ------------------------------------------------
-            // REMOVE FROM ACTIVE TASKS
+            // FIRST TRY CONTROLLED BACKTRACKING.
             // ------------------------------------------------
 
-            const failedIndex =
-                remainingTasks.indexOf(
+            const recovery =
+                tryBacktrackingForTask(
                     task
                 );
 
 
             if (
-                failedIndex >= 0
+                recovery.success &&
+                recovery.selection
             ) {
 
-                remainingTasks.splice(
-                    failedIndex,
-                    1
-                );
+                selection =
+                    recovery.selection;
+
+                task =
+                    selection.task;
 
             }
+            else {
+
+                // --------------------------------------------
+                // No recovery was possible.
+                // --------------------------------------------
+
+                result.failedTasks.push({
+
+                    task,
+
+                    reason:
+                        "No valid placement candidate exists after controlled backtracking."
+
+                });
 
 
-            continue;
+                task.placed =
+                    false;
+
+
+                task.periodIds =
+                    [];
+
+
+                task.roomId =
+                    null;
+
+
+                const failedIndex =
+                    remainingTasks.indexOf(
+                        task
+                    );
+
+
+                if (
+                    failedIndex >= 0
+                ) {
+
+                    remainingTasks.splice(
+                        failedIndex,
+                        1
+                    );
+
+                }
+
+
+                continue;
+
+            }
 
         }
 
 
         // ====================================================
         // TRY ALL RANKED CANDIDATES
-        // ====================================================
-        //
-        // IMPORTANT:
-        //
-        // We do NOT fail the task after candidate #1 fails.
-        //
-        // We try every candidate returned by 6C / 6D.
-        //
         // ====================================================
 
         let successfulPlacement =
@@ -17784,7 +18484,7 @@ function generateSmartTimetable(
             // TRACK PLACED TASK
             // ------------------------------------------------
 
-            result.placedTasks.push({
+            const placementRecord = {
 
                 task,
 
@@ -17794,7 +18494,21 @@ function generateSmartTimetable(
                 candidate:
                     successfulCandidate
 
-            });
+            };
+
+
+            result.placedTasks.push(
+                placementRecord
+            );
+
+
+            // ------------------------------------------------
+            // ADD TO BACKTRACK STACK
+            // ------------------------------------------------
+
+            placementStack.push(
+                placementRecord
+            );
 
 
             result.statistics.placedTasks++;
@@ -17802,14 +18516,6 @@ function generateSmartTimetable(
 
             // =================================================
             // TASK DURATION IS AUTHORITATIVE
-            // =================================================
-            //
-            // Single:
-            //     duration = 1
-            //
-            // Double:
-            //     duration = 2
-            //
             // =================================================
 
             result.statistics.totalPeriodsPlaced +=
@@ -17875,6 +18581,14 @@ function generateSmartTimetable(
         // ====================================================
         // ALL CANDIDATES FAILED
         // ====================================================
+        //
+        // The candidate list may have become unusable because
+        // the task is at a constrained point in the schedule.
+        //
+        // Try controlled backtracking before permanently
+        // failing the task.
+        //
+        // ====================================================
 
         console.warn(
             "SMART PLACEMENT — ALL CANDIDATES FAILED:",
@@ -17899,12 +18613,43 @@ function generateSmartTimetable(
         );
 
 
+        const recovery =
+            tryBacktrackingForTask(
+                task
+            );
+
+
+        if (
+            recovery.success &&
+            recovery.selection
+        ) {
+
+            // ------------------------------------------------
+            // Keep task active.
+            //
+            // The task is still in remainingTasks because it
+            // was not removed above.
+            //
+            // The next iteration will recalculate everything
+            // using the restored indexes.
+            // ------------------------------------------------
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // CONTROLLED RECOVERY EXHAUSTED
+        // ====================================================
+
         result.failedTasks.push({
 
             task,
 
             reason:
-                lastFailureReason
+                lastFailureReason +
+                " Controlled backtracking was exhausted."
 
         });
 
@@ -17920,10 +18665,6 @@ function generateSmartTimetable(
         task.roomId =
             null;
 
-
-        // ----------------------------------------------------
-        // REMOVE FAILED TASK
-        // ----------------------------------------------------
 
         const failedIndex =
             remainingTasks.indexOf(
@@ -17951,9 +18692,25 @@ function generateSmartTimetable(
 
     if (
         iteration >=
-        maximumIterations &&
+            maximumIterations &&
         remainingTasks.length > 0
     ) {
+
+        console.warn(
+            "SMART PLACEMENT — SAFETY LIMIT REACHED:",
+            {
+
+                iterations:
+                    iteration,
+
+                remainingTasks:
+                    remainingTasks.length,
+
+                backtrackAttempts
+
+            }
+        );
+
 
         remainingTasks.forEach(
             task => {
@@ -17992,15 +18749,86 @@ function generateSmartTimetable(
         );
 
 
-        // ----------------------------------------------------
-        // Make sure the active queue does not retain tasks
-        // after they have been recorded as failed.
-        // ----------------------------------------------------
-
         remainingTasks.length =
             0;
 
     }
+
+
+    // ========================================================
+    // REMOVE ANY DUPLICATE FAILED TASK RECORDS
+    // ========================================================
+    //
+    // A task should appear only once in failedTasks.
+    //
+    // ========================================================
+
+    const uniqueFailedTasks =
+        new Map();
+
+
+    result.failedTasks.forEach(
+        item => {
+
+            const failedTask =
+                item?.task ||
+                item;
+
+
+            const taskId =
+                getTaskId(
+                    failedTask
+                );
+
+
+            if (
+                taskId
+            ) {
+
+                if (
+                    !uniqueFailedTasks.has(
+                        taskId
+                    )
+                ) {
+
+                    uniqueFailedTasks.set(
+                        taskId,
+                        {
+
+                            task:
+                                failedTask,
+
+                            reason:
+                                item?.reason ||
+                                "Unknown failure"
+
+                        }
+                    );
+
+                }
+
+                return;
+
+            }
+
+
+            const fallbackKey =
+                `fallback_${uniqueFailedTasks.size}`;
+
+
+            uniqueFailedTasks.set(
+                fallbackKey,
+                item
+            );
+
+        }
+    );
+
+
+    result.failedTasks =
+        [
+            ...uniqueFailedTasks.values()
+        ];
 
 
     // ========================================================
@@ -18009,6 +18837,10 @@ function generateSmartTimetable(
 
     result.statistics.failedTasks =
         result.failedTasks.length;
+
+
+    result.statistics.totalPeriodsPlaced =
+        result.entries.length;
 
 
     // ========================================================
@@ -18050,6 +18882,16 @@ function generateSmartTimetable(
     console.log(
         "Iterations:",
         iteration
+    );
+
+    console.log(
+        "Backtrack attempts:",
+        backtrackAttempts
+    );
+
+    console.log(
+        "Remaining placement stack:",
+        placementStack.length
     );
 
     console.log(
@@ -18103,186 +18945,31 @@ function generateSmartTimetable(
     }
 
 
+    // ========================================================
+    // FAILURE REASON SUMMARY
+    // ========================================================
 
-
-
-// ========================================================
-// FAILURE REASON SUMMARY
-// ========================================================
-
-const failureReasonCounts =
-    new Map();
-
-
-result.failedTasks.forEach(
-    item => {
-
-        const reason =
-            item?.reason ||
-            "Unknown failure";
-
-
-        failureReasonCounts.set(
-            reason,
-            (
-                failureReasonCounts.get(
-                    reason
-                ) ||
-                0
-            ) + 1
-        );
-
-    }
-);
-
-
-console.log(
-    "======================================"
-);
-
-console.log(
-    "STAGE 6F — FAILURE REASON SUMMARY"
-);
-
-console.log(
-    "======================================"
-);
-
-
-
-
-console.table(
-    [
-        ...failureReasonCounts.entries()
-    ]
-    .map(
-        (
-            [
-                reason,
-                count
-            ]
-        ) => ({
-
-            count,
-
-            reason
-
-        })
-    )
-    .sort(
-        (
-            a,
-            b
-        ) =>
-            b.count -
-            a.count
-    )
-);
-
-
-// ============================================================
-// STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
-// ============================================================
-//
-// Shows exactly which requirements still have unplaced tasks.
-//
-// This is especially useful when Stage 6F completes with:
-//
-//     "No valid placement candidate exists."
-//
-// ============================================================
-
-if (
-    result.failedTasks.length > 0
-) {
-
-    const failedRequirementMap =
+    const failureReasonCounts =
         new Map();
 
 
     result.failedTasks.forEach(
         item => {
 
-            const task =
-                item?.task ||
-                item;
+            const reason =
+                item?.reason ||
+                "Unknown failure";
 
 
-            if (
-                !task
-            ) {
-
-                return;
-
-            }
-
-
-            const requirementId =
-                task.requirementId ??
-                task.requirement_id ??
-                null;
-
-
-            if (
-                !requirementId
-            ) {
-
-                return;
-
-            }
-
-
-            if (
-                !failedRequirementMap.has(
-                    requirementId
-                )
-            ) {
-
-                failedRequirementMap.set(
-                    requirementId,
-                    []
-                );
-
-            }
-
-
-            failedRequirementMap
-                .get(
-                    requirementId
-                )
-                .push({
-
-                    taskId:
-                        task.taskId ??
-                        task.task_id ??
-                        task.id ??
-                        null,
-
-                    taskType:
-                        task.taskType ??
-                        task.type ??
-                        null,
-
-                    streamId:
-                        task.streamId ??
-                        task.stream_id ??
-                        null,
-
-                    subjectId:
-                        task.subjectId ??
-                        task.subject_id ??
-                        null,
-
-                    teacherId:
-                        task.teacherId ??
-                        task.teacher_id ??
-                        null,
-
-                    reason:
-                        item?.reason ||
-                        "Unknown"
-
-                });
+            failureReasonCounts.set(
+                reason,
+                (
+                    failureReasonCounts.get(
+                        reason
+                    ) ||
+                    0
+                ) + 1
+            );
 
         }
     );
@@ -18293,7 +18980,7 @@ if (
     );
 
     console.log(
-        "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        "STAGE 6F — FAILURE REASON SUMMARY"
     );
 
     console.log(
@@ -18303,142 +18990,357 @@ if (
 
     console.table(
         [
-            ...failedRequirementMap.entries()
+            ...failureReasonCounts.entries()
         ]
         .map(
             (
                 [
-                    requirementId,
-                    tasks
+                    reason,
+                    count
                 ]
             ) => ({
 
-                requirementId,
+                count,
 
-                failedTasks:
-                    tasks.length,
-
-                taskIds:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                taskTypes:
-                    tasks
-                        .map(
-                            task =>
-                                task.taskType
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                streams:
-                    tasks
-                        .map(
-                            task =>
-                                task.streamId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                subjects:
-                    tasks
-                        .map(
-                            task =>
-                                task.subjectId
-                        )
-                        .join(
-                            ", "
-                        ),
-
-                teachers:
-                    tasks
-                        .map(
-                            task =>
-                                task.teacherId
-                        )
-                        .join(
-                            ", "
-                        )
+                reason
 
             })
+        )
+        .sort(
+            (
+                a,
+                b
+            ) =>
+                b.count -
+                a.count
         )
     );
 
 
-    console.log(
-        "======================================"
+    // ============================================================
+    // STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC
+    // ============================================================
+
+    if (
+        result.failedTasks.length > 0
+    ) {
+
+        const failedRequirementMap =
+            new Map();
+
+
+        result.failedTasks.forEach(
+            item => {
+
+                const task =
+                    item?.task ||
+                    item;
+
+
+                if (
+                    !task
+                ) {
+
+                    return;
+
+                }
+
+
+                const requirementId =
+                    task.requirementId ??
+                    task.requirement_id ??
+                    null;
+
+
+                if (
+                    !requirementId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !failedRequirementMap.has(
+                        requirementId
+                    )
+                ) {
+
+                    failedRequirementMap.set(
+                        requirementId,
+                        []
+                    );
+
+                }
+
+
+                failedRequirementMap
+                    .get(
+                        requirementId
+                    )
+                    .push({
+
+                        taskId:
+                            task.taskId ??
+                            task.task_id ??
+                            task.id ??
+                            null,
+
+                        taskType:
+                            task.taskType ??
+                            task.type ??
+                            null,
+
+                        streamId:
+                            task.streamId ??
+                            task.stream_id ??
+                            null,
+
+                        subjectId:
+                            task.subjectId ??
+                            task.subject_id ??
+                            null,
+
+                        teacherId:
+                            task.teacherId ??
+                            task.teacher_id ??
+                            null,
+
+                        reason:
+                            item?.reason ||
+                            "Unknown"
+
+                    });
+
+            }
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "STAGE 6F — FAILED REQUIREMENT DIAGNOSTIC"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        console.table(
+            [
+                ...failedRequirementMap.entries()
+            ]
+            .map(
+                (
+                    [
+                        requirementId,
+                        tasks
+                    ]
+                ) => ({
+
+                    requirementId,
+
+                    failedTasks:
+                        tasks.length,
+
+                    taskIds:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    taskTypes:
+                        tasks
+                            .map(
+                                task =>
+                                    task.taskType
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    streams:
+                        tasks
+                            .map(
+                                task =>
+                                    task.streamId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    subjects:
+                        tasks
+                            .map(
+                                task =>
+                                    task.subjectId
+                            )
+                            .join(
+                                ", "
+                            ),
+
+                    teachers:
+                        tasks
+                            .map(
+                                task =>
+                                    task.teacherId
+                            )
+                            .join(
+                                ", "
+                            )
+
+                })
+            )
+        );
+
+
+        console.log(
+            "======================================"
+        );
+
+    }
+
+
+    // ========================================================
+    // SUCCESS TABLE
+    // ========================================================
+
+    if (
+        result.placedTasks.length > 0
+    ) {
+
+        console.table(
+            result.placedTasks.map(
+                item => ({
+
+                    taskId:
+                        item.task?.taskId ||
+                        null,
+
+                    type:
+                        item.task?.taskType ||
+                        null,
+
+                    requirementId:
+                        item.task?.requirementId ||
+                        null,
+
+                    periods:
+                        item.task?.periodIds?.join(
+                            ", "
+                        ) ||
+                        "",
+
+                    room:
+                        item.task?.roomId ||
+                        null,
+
+                    score:
+                        item.candidate?.score ??
+                        null
+
+                })
+            )
+        );
+
+    }
+
+
+    // ========================================================
+    // FINAL INTERNAL CONSISTENCY CHECK
+    // ========================================================
+
+    const placedTaskIds =
+        new Set();
+
+
+    result.placedTasks.forEach(
+        item => {
+
+            const task =
+                item?.task ||
+                item;
+
+
+            const taskId =
+                getTaskId(
+                    task
+                );
+
+
+            if (
+                taskId
+            ) {
+
+                placedTaskIds.add(
+                    taskId
+                );
+
+            }
+
+        }
     );
 
-}
+
+    const duplicatePlacedTaskIds =
+        result.placedTasks
+            .map(
+                item =>
+                    getTaskId(
+                        item?.task ||
+                        item
+                    )
+            )
+            .filter(
+                (
+                    taskId,
+                    index,
+                    array
+                ) =>
+                    taskId &&
+                    array.indexOf(
+                        taskId
+                    ) !== index
+            );
 
 
-// ============================================================
-// SUCCESS TABLE
-// ============================================================
+    if (
+        duplicatePlacedTaskIds.length > 0
+    ) {
 
-if (
-    result.placedTasks.length > 0
-) {
+        console.warn(
+            "STAGE 6F — DUPLICATE PLACED TASK IDS:",
+            [
+                ...new Set(
+                    duplicatePlacedTaskIds
+                )
+            ]
+        );
 
-    console.table(
-        result.placedTasks.map(
-            item => ({
-
-                taskId:
-                    item.task?.taskId ||
-                    null,
-
-                type:
-                    item.task?.taskType ||
-                    null,
-
-                requirementId:
-                    item.task?.requirementId ||
-                    null,
-
-                periods:
-                    item.task?.periodIds?.join(
-                        ", "
-                    ) ||
-                    "",
-
-                room:
-                    item.task?.roomId ||
-                    null,
-
-                score:
-                    item.candidate?.score ??
-                    null
-
-            })
-        )
-    );
-
-}
+    }
 
 
-// ============================================================
-// RETURN COMPLETE RESULT
-// ============================================================
+    // ========================================================
+    // RETURN COMPLETE RESULT
+    // ========================================================
 
-return {
+    return {
 
-    ...result,
+        ...result,
 
-    indexes
+        indexes
 
-};
+    };
 
 }
-
 
 
 
