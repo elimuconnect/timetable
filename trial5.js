@@ -16817,8 +16817,8 @@ function generateSmartTimetable(
 
     const maximumIterations =
         Math.max(
-            remainingTasks.length * 10,
-            1000
+            remainingTasks.length * 50,
+            5000
         );
 
 
