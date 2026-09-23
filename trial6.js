@@ -26122,101 +26122,51 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 2–7. LOAD ALL DISPLAY DATA IN PARALLEL
+        // 2–6. LOAD DISPLAY DATA IN PARALLEL
         // ====================================================
 
         const [
             periodsResult,
             streamsResult,
-            classesResult,
             subjectsResult,
             teachersResult,
             roomsResult
         ] = await Promise.all([
 
-            // ------------------------------------------------
-            // PERIODS
-            // ------------------------------------------------
-
             supabaseClient
-                .from(
-                    "timetable_periods"
-                )
+                .from("timetable_periods")
                 .select("*")
                 .eq(
                     "school_id",
                     timetableState.schoolId
                 ),
 
-
-            // ------------------------------------------------
-            // STREAMS
-            // ------------------------------------------------
-
             supabaseClient
-                .from(
-                    "timetable_streams"
-                )
+                .from("timetable_streams")
                 .select("*")
                 .eq(
                     "school_id",
                     timetableState.schoolId
                 ),
 
-
-            // ------------------------------------------------
-            // CLASSES
-            // ------------------------------------------------
-
             supabaseClient
-                .from(
-                    "timetable_classes"
-                )
+                .from("timetable_subjects")
                 .select("*")
                 .eq(
                     "school_id",
                     timetableState.schoolId
                 ),
 
-
-            // ------------------------------------------------
-            // SUBJECTS
-            // ------------------------------------------------
-
             supabaseClient
-                .from(
-                    "timetable_subjects"
-                )
+                .from("timetable_teachers")
                 .select("*")
                 .eq(
                     "school_id",
                     timetableState.schoolId
                 ),
 
-
-            // ------------------------------------------------
-            // TEACHERS
-            // ------------------------------------------------
-
             supabaseClient
-                .from(
-                    "timetable_teachers"
-                )
-                .select("*")
-                .eq(
-                    "school_id",
-                    timetableState.schoolId
-                ),
-
-
-            // ------------------------------------------------
-            // ROOMS
-            // ------------------------------------------------
-
-            supabaseClient
-                .from(
-                    "timetable_rooms"
-                )
+                .from("timetable_rooms")
                 .select("*")
                 .eq(
                     "school_id",
@@ -26249,18 +26199,6 @@ async function loadGeneratedTimetable() {
             throw new Error(
                 "Failed to load timetable streams: " +
                 streamsResult.error.message
-            );
-
-        }
-
-
-        if (
-            classesResult.error
-        ) {
-
-            throw new Error(
-                "Failed to load timetable classes: " +
-                classesResult.error.message
             );
 
         }
@@ -26303,8 +26241,29 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // LOG LOADED DATA
+        // 7. BUILD LOOKUP MAPS
         // ====================================================
+
+        const lookup =
+            buildTimetableLookupMaps({
+
+                periods:
+                    periodsResult.data || [],
+
+                streams:
+                    streamsResult.data || [],
+
+                subjects:
+                    subjectsResult.data || [],
+
+                teachers:
+                    teachersResult.data || [],
+
+                rooms:
+                    roomsResult.data || []
+
+            });
+
 
         console.log(
             "Display periods:",
@@ -26314,11 +26273,6 @@ async function loadGeneratedTimetable() {
         console.log(
             "Display streams:",
             streamsResult.data?.length || 0
-        );
-
-        console.log(
-            "Display classes:",
-            classesResult.data?.length || 0
         );
 
         console.log(
@@ -26338,35 +26292,7 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 8. BUILD LOOKUP MAPS
-        // ====================================================
-
-        const lookup =
-            buildTimetableLookupMaps({
-
-                periods:
-                    periodsResult.data || [],
-
-                streams:
-                    streamsResult.data || [],
-
-                classes:
-                    classesResult.data || [],
-
-                subjects:
-                    subjectsResult.data || [],
-
-                teachers:
-                    teachersResult.data || [],
-
-                rooms:
-                    roomsResult.data || []
-
-            });
-
-
-        // ====================================================
-        // 9. VALIDATE LOADED ENTRIES
+        // 8. VALIDATE LOADED ENTRIES
         // ====================================================
 
         const invalidEntries =
@@ -26400,76 +26326,7 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 10. CHECK STREAM REFERENCES
-        // ====================================================
-
-        const entriesWithMissingStreams =
-            entries.filter(
-                entry =>
-                    !lookup.streams.has(
-                        entry.stream_id
-                    )
-            );
-
-
-        if (
-            entriesWithMissingStreams.length > 0
-        ) {
-
-            console.warn(
-                "Entries referencing missing streams:",
-                entriesWithMissingStreams
-            );
-
-        }
-
-
-        // ====================================================
-        // 11. CHECK CLASS REFERENCES
-        // ====================================================
-
-        const entriesWithMissingClasses =
-            entries.filter(
-                entry => {
-
-                    const stream =
-                        lookup.streams.get(
-                            entry.stream_id
-                        );
-
-
-                    if (
-                        !stream ||
-                        !stream.class_id
-                    ) {
-
-                        return true;
-
-                    }
-
-
-                    return !lookup.classes.has(
-                        stream.class_id
-                    );
-
-                }
-            );
-
-
-        if (
-            entriesWithMissingClasses.length > 0
-        ) {
-
-            console.warn(
-                "Entries referencing streams with missing classes:",
-                entriesWithMissingClasses
-            );
-
-        }
-
-
-        // ====================================================
-        // 12. SAVE ENTRIES IN GLOBAL STATE
+        // 9. SAVE ENTRIES IN GLOBAL STATE
         // ====================================================
 
         generatedTimetableEntries =
@@ -26477,7 +26334,7 @@ async function loadGeneratedTimetable() {
 
 
         // ====================================================
-        // 13. RENDER
+        // 10. RENDER
         // ====================================================
 
         renderGeneratedTimetable(
@@ -26485,10 +26342,6 @@ async function loadGeneratedTimetable() {
             lookup
         );
 
-
-        // ====================================================
-        // 14. COMPLETE
-        // ====================================================
 
         console.log(
             "TIMETABLE DISPLAY COMPLETE"
@@ -26534,12 +26387,10 @@ async function loadGeneratedTimetable() {
 
 
 
+
 // ============================================================
 // RENDER GENERATED TIMETABLE
 // ============================================================
-
-
-
 
 function renderGeneratedTimetable(
     entries,
@@ -26593,7 +26444,6 @@ function renderGeneratedTimetable(
         !lookup ||
         !lookup.periods ||
         !lookup.streams ||
-        !lookup.classes ||
         !lookup.subjects ||
         !lookup.teachers ||
         !lookup.rooms
@@ -26625,338 +26475,126 @@ function renderGeneratedTimetable(
 
 
     console.log(
-        "Rendering Kenyan-style timetable:",
-        entries.length,
-        "entries"
+        "Rendering timetable entries:",
+        entries.length
     );
 
 
     // ========================================================
-    // HELPER: GET PERIOD ORDER
+    // SORT ENTRIES
+    // DAY → PERIOD ORDER
     // ========================================================
 
-    const getPeriodOrder =
-        period => {
+    const sortedEntries =
+        [...entries].sort(
+            (
+                a,
+                b
+            ) => {
 
-            return Number(
-                period?.period_order ??
-                period?.period_number ??
-                0
-            );
+                const periodA =
+                    lookup.periods.get(
+                        a.period_id
+                    );
 
-        };
-
-
-    // ========================================================
-    // HELPER: GET DAY NUMBER
-    // ========================================================
-
-    const getDayNumber =
-        period => {
-
-            return Number(
-                period?.day_number ??
-                0
-            );
-
-        };
+                const periodB =
+                    lookup.periods.get(
+                        b.period_id
+                    );
 
 
-    // ========================================================
-    // HELPER: GET DAY NAME
-    // ========================================================
+                const dayA =
+                    Number(
+                        periodA?.day_number || 0
+                    );
 
-    const getDayName =
-        period => {
+                const dayB =
+                    Number(
+                        periodB?.day_number || 0
+                    );
 
-            if (
-                period?.day_name
-            ) {
 
+                if (
+                    dayA !== dayB
+                ) {
+
+                    return (
+                        dayA - dayB
+                    );
+
+                }
+
+
+                const orderA =
+                    Number(
+                        periodA?.period_order ||
+                        periodA?.period_number ||
+                        0
+                    );
+
+                const orderB =
+                    Number(
+                        periodB?.period_order ||
+                        periodB?.period_number ||
+                        0
+                    );
+
+
+                if (
+                    orderA !== orderB
+                ) {
+
+                    return (
+                        orderA - orderB
+                    );
+
+                }
+
+
+                // Stable fallback
                 return String(
-                    period.day_name
+                    a.id || ""
+                ).localeCompare(
+                    String(
+                        b.id || ""
+                    )
                 );
 
             }
-
-
-            const dayNumber =
-                getDayNumber(
-                    period
-                );
-
-
-            const days = [
-                "",
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday"
-            ];
-
-
-            return (
-                days[dayNumber] ||
-                `Day ${dayNumber || ""}`
-            );
-
-        };
+        );
 
 
     // ========================================================
-    // HELPER: FORMAT TIME
+    // GROUP BY STREAM
     // ========================================================
 
-    const formatTime =
-        time => {
-
-            if (!time) {
-
-                return "";
-
-            }
-
-
-            const value =
-                String(time);
-
-
-            // PostgreSQL TIME may arrive as HH:MM:SS.
-            // Display only HH:MM.
-            if (
-                /^\d{2}:\d{2}:\d{2}$/.test(
-                    value
-                )
-            ) {
-
-                return value.substring(
-                    0,
-                    5
-                );
-
-            }
-
-
-            return value;
-
-        };
-
-
-    // ========================================================
-    // HELPER: GET PERIOD LABEL
-    // ========================================================
-
-    const getPeriodLabel =
-        period => {
-
-            if (!period) {
-
-                return "";
-
-            }
-
-
-            /*
-             * Different versions of the timetable system
-             * may use different names for the period/activity.
-             *
-             * We check common field names without changing
-             * the database structure.
-             */
-
-            const possibleNames = [
-                period.period_name,
-                period.name,
-                period.activity,
-                period.activity_name,
-                period.period_title,
-                period.title,
-                period.label
-            ];
-
-
-            const foundName =
-                possibleNames.find(
-                    value =>
-                        value !== null &&
-                        value !== undefined &&
-                        String(value).trim() !== ""
-                );
-
-
-            return foundName
-                ? String(foundName)
-                : "";
-
-        };
-
-
-    // ========================================================
-    // BUILD PERIOD COLUMN TEMPLATE
-    //
-    // timetable_periods contains one record for each
-    // day/period. We align Monday period 1 with Tuesday
-    // period 1, Wednesday period 1, etc.
-    // ========================================================
-
-    const allPeriods =
-        [...lookup.periods.values()]
-            .filter(
-                period =>
-                    period &&
-                    getDayNumber(period) >= 1 &&
-                    getDayNumber(period) <= 5
-            );
-
-
-    /*
-     * Group periods by period_order.
-     *
-     * Example:
-     *
-     * Monday    period 1
-     * Tuesday   period 1
-     * Wednesday period 1
-     *
-     * all belong to the same timetable column.
-     */
-
-    const periodColumnsMap =
+    const streamGroups =
         new Map();
 
 
-    allPeriods.forEach(
-        period => {
-
-            const order =
-                getPeriodOrder(
-                    period
-                );
-
-
-            if (
-                !periodColumnsMap.has(
-                    order
-                )
-            ) {
-
-                periodColumnsMap.set(
-                    order,
-                    []
-                );
-
-            }
-
-
-            periodColumnsMap
-                .get(order)
-                .push(period);
-
-        }
-    );
-
-
-    // ========================================================
-    // SORT PERIOD COLUMNS
-    // ========================================================
-
-    const periodColumns =
-        [...periodColumnsMap.entries()]
-            .sort(
-                (
-                    [orderA],
-                    [orderB]
-                ) =>
-                    Number(orderA) -
-                    Number(orderB)
-            );
-
-
-    // ========================================================
-    // BUILD DAY MAP
-    // ========================================================
-
-    const dayNumbers = [
-        1,
-        2,
-        3,
-        4,
-        5
-    ];
-
-
-    // ========================================================
-    // BUILD ENTRY MAP
-    //
-    // stream_id + day_number + period_order
-    //
-    // This lets us put every lesson into the correct
-    // Kenyan-style timetable cell.
-    // ========================================================
-
-    const entryMap =
-        new Map();
-
-
-    entries.forEach(
+    sortedEntries.forEach(
         entry => {
 
-            const period =
-                lookup.periods.get(
-                    entry.period_id
-                );
+            const streamId =
+                entry.stream_id;
 
-
-            if (!period) {
-
-                return;
-
-            }
-
-
-            const dayNumber =
-                getDayNumber(
-                    period
-                );
-
-
-            const periodOrder =
-                getPeriodOrder(
-                    period
-                );
-
-
-            const key =
-                [
-                    entry.stream_id,
-                    dayNumber,
-                    periodOrder
-                ].join("|");
-
-
-            /*
-             * Normally one stream has one lesson in a period.
-             *
-             * If multiple entries exist for the same stream,
-             * period and day, preserve them all so parallel/
-             * special allocations are not silently discarded.
-             */
 
             if (
-                !entryMap.has(key)
+                !streamGroups.has(
+                    streamId
+                )
             ) {
 
-                entryMap.set(
-                    key,
+                streamGroups.set(
+                    streamId,
                     []
                 );
 
             }
 
 
-            entryMap
-                .get(key)
+            streamGroups
+                .get(streamId)
                 .push(entry);
 
         }
@@ -26964,265 +26602,38 @@ function renderGeneratedTimetable(
 
 
     // ========================================================
-    // GROUP ENTRIES BY STREAM
+    // SORT STREAMS
     // ========================================================
 
-    const streamIds =
-        [...new Set(
-            entries
-                .map(
-                    entry =>
-                        entry.stream_id
-                )
-                .filter(Boolean)
-        )];
-
-
-    // ========================================================
-    // GROUP STREAMS BY CLASS/GRADE
-    //
-    // timetable_streams.class_id
-    //          ↓
-    // timetable_classes.id
-    //          ↓
-    // class_name / class_level
-    // ========================================================
-
-    const classGroups =
-        new Map();
-
-
-    streamIds.forEach(
-        streamId => {
-
-            const stream =
-                lookup.streams.get(
-                    streamId
-                );
-
-
-            if (!stream) {
-
-                return;
-
-            }
-
-
-            const classId =
-                stream.class_id;
-
-
-            const classRecord =
-                classId
-                    ? lookup.classes.get(
-                        classId
-                    )
-                    : null;
-
-
-            /*
-             * Prefer class_level, then class_name.
-             */
-
-            const className =
-                classRecord?.class_level ||
-                classRecord?.class_name ||
-                "Unknown Class";
-
-
-            if (
-                !classGroups.has(
-                    className
-                )
-            ) {
-
-                classGroups.set(
-                    className,
-                    []
-                );
-
-            }
-
-
-            classGroups
-                .get(className)
-                .push({
-                    streamId,
-                    stream,
-                    classRecord
-                });
-
-        }
-    );
-
-
-    // ========================================================
-    // SORT CLASSES / GRADES
-    //
-    // Supports:
-    // PP1
-    // PP2
-    // Grade 1
-    // Grade 2
-    // ...
-    // Grade 12
-    // Form 1
-    // Form 2
-    // ...
-    // ========================================================
-
-    const getClassSortKey =
-        className => {
-
-            const value =
-                String(
-                    className || ""
-                )
-                .trim()
-                .toLowerCase();
-
-
-            // PP1 / PP2
-            const ppMatch =
-                value.match(
-                    /^pp\s*(\d+)/
-                );
-
-
-            if (
-                ppMatch
-            ) {
-
-                return (
-                    100 +
-                    Number(
-                        ppMatch[1]
-                    )
-                );
-
-            }
-
-
-            // Grade 1 - Grade 12
-            const gradeMatch =
-                value.match(
-                    /^grade\s*(\d+)/
-                );
-
-
-            if (
-                gradeMatch
-            ) {
-
-                return (
-                    200 +
-                    Number(
-                        gradeMatch[1]
-                    )
-                );
-
-            }
-
-
-            // Form 1 - Form 4
-            const formMatch =
-                value.match(
-                    /^form\s*(\d+)/
-                );
-
-
-            if (
-                formMatch
-            ) {
-
-                return (
-                    300 +
-                    Number(
-                        formMatch[1]
-                    )
-                );
-
-            }
-
-
-            return 1000;
-
-        };
-
-
-    const sortedClassGroups =
-        [...classGroups.entries()]
+    const sortedStreamGroups =
+        [...streamGroups.entries()]
             .sort(
                 (
-                    [classA],
-                    [classB]
+                    [streamIdA],
+                    [streamIdB]
                 ) => {
 
-                    const keyA =
-                        getClassSortKey(
-                            classA
+                    const streamA =
+                        lookup.streams.get(
+                            streamIdA
                         );
 
-                    const keyB =
-                        getClassSortKey(
-                            classB
+                    const streamB =
+                        lookup.streams.get(
+                            streamIdB
                         );
 
-
-                    if (
-                        keyA !== keyB
-                    ) {
-
-                        return (
-                            keyA - keyB
-                        );
-
-                    }
-
-
-                    return String(
-                        classA
-                    ).localeCompare(
-                        String(
-                            classB
-                        ),
-                        undefined,
-                        {
-                            numeric: true,
-                            sensitivity: "base"
-                        }
-                    );
-
-                }
-            );
-
-
-    // ========================================================
-    // SORT STREAMS INSIDE EACH CLASS
-    // ========================================================
-
-    sortedClassGroups.forEach(
-        (
-            [, streams]
-        ) => {
-
-            streams.sort(
-                (
-                    a,
-                    b
-                ) => {
 
                     const nameA =
                         getTimetableStreamName(
-                            a.stream
-                        ) ||
-                        "";
+                            streamA
+                        );
+
 
                     const nameB =
                         getTimetableStreamName(
-                            b.stream
-                        ) ||
-                        "";
+                            streamB
+                        );
 
 
                     return String(
@@ -27241,12 +26652,9 @@ function renderGeneratedTimetable(
                 }
             );
 
-        }
-    );
-
 
     // ========================================================
-    // BUILD MAIN HTML
+    // BUILD HTML
     // ========================================================
 
     let html = "";
@@ -27262,7 +26670,7 @@ function renderGeneratedTimetable(
                 </h2>
 
                 <p>
-                    ${entries.length}
+                    ${sortedEntries.length}
                     lesson periods generated.
                 </p>
 
@@ -27271,556 +26679,231 @@ function renderGeneratedTimetable(
 
 
     // ========================================================
-    // RENDER EACH CLASS / GRADE
+    // RENDER EACH STREAM
     // ========================================================
 
-    sortedClassGroups.forEach(
+    sortedStreamGroups.forEach(
         (
-            [className, streams]
+            [streamId, streamEntries]
         ) => {
 
+            const stream =
+                lookup.streams.get(
+                    streamId
+                );
+
+
+            const streamName =
+                getTimetableStreamName(
+                    stream
+                ) ||
+                "Unknown Stream";
+
+
             html += `
-                <section
-                    class="timetable-grade-section"
-                >
+                <div class="timetable-stream">
 
-                    <div
-                        class="timetable-grade-title"
-                    >
+                    <div class="timetable-stream-title">
 
+                        📚
                         ${escapeHtml(
-                            String(
-                                className
-                            ).toUpperCase()
+                            streamName
                         )}
 
                     </div>
+
+                    <div class="timetable-table-wrapper">
+
+                        <table
+                            class="timetable-table"
+                        >
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Day
+                                    </th>
+
+                                    <th>
+                                        Period
+                                    </th>
+
+                                    <th>
+                                        Time
+                                    </th>
+
+                                    <th>
+                                        Subject
+                                    </th>
+
+                                    <th>
+                                        Teacher
+                                    </th>
+
+                                    <th>
+                                        Room
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
             `;
 
 
-            // =================================================
-            // RENDER EACH STREAM
-            // =================================================
+            streamEntries.forEach(
+                entry => {
 
-            streams.forEach(
-                ({
-                    streamId,
-                    stream
-                }) => {
+                    const period =
+                        lookup.periods.get(
+                            entry.period_id
+                        );
 
-                    const streamName =
-                        getTimetableStreamName(
-                            stream
+
+                    const subject =
+                        lookup.subjects.get(
+                            entry.subject_id
+                        );
+
+
+                    const teacher =
+                        lookup.teachers.get(
+                            entry.teacher_id
+                        );
+
+
+                    const room =
+                        entry.room_id
+                            ? lookup.rooms.get(
+                                entry.room_id
+                            )
+                            : null;
+
+
+                    // ------------------------------------------------
+                    // DAY
+                    // ------------------------------------------------
+
+                    const day =
+                        period?.day_name ||
+                        (
+                            period?.day_number
+                                ? `Day ${period.day_number}`
+                                : "Unknown"
+                        );
+
+
+                    // ------------------------------------------------
+                    // PERIOD
+                    // ------------------------------------------------
+
+                    const periodNumber =
+                        period?.period_number ??
+                        period?.period_order ??
+                        "-";
+
+
+                    // ------------------------------------------------
+                    // TIME
+                    // ------------------------------------------------
+
+                    const startTime =
+                        period?.start_time ||
+                        "";
+
+
+                    const endTime =
+                        period?.end_time ||
+                        "";
+
+
+                    const time =
+                        startTime &&
+                        endTime
+                            ? `${startTime} - ${endTime}`
+                            : "-";
+
+
+                    // ------------------------------------------------
+                    // DISPLAY NAMES
+                    // ------------------------------------------------
+
+                    const subjectName =
+                        getTimetableSubjectName(
+                            subject
                         ) ||
-                        "Unknown Stream";
+                        "Unknown Subject";
 
+
+                    const teacherName =
+                        getTimetableTeacherName(
+                            teacher
+                        ) ||
+                        "Unknown Teacher";
+
+
+                    const roomName =
+                        entry.room_id
+                            ? (
+                                getTimetableRoomName(
+                                    room
+                                ) ||
+                                "Unknown Room"
+                            )
+                            : "None";
+
+
+                    // ------------------------------------------------
+                    // RENDER ROW
+                    // ------------------------------------------------
 
                     html += `
-                        <div
-                            class="timetable-stream"
-                        >
+                        <tr>
 
-                            <div
-                                class="timetable-stream-title"
-                            >
+                            <td>
+                                ${escapeHtml(
+                                    String(day)
+                                )}
+                            </td>
 
-                                📚
+                            <td>
                                 ${escapeHtml(
                                     String(
-                                        streamName
+                                        periodNumber
                                     )
                                 )}
-
-                            </div>
-
-                            <div
-                                class="timetable-table-wrapper"
-                            >
-
-                                <table
-                                    class="timetable-table kenyan-timetable"
-                                >
-
-                                    <thead>
-
-                                        <tr>
-
-                                            <th
-                                                class="day-column"
-                                            >
-                                                DAY
-                                            </th>
-                    `;
-
-
-                    // =========================================
-                    // PERIOD HEADERS
-                    // =========================================
-
-                    periodColumns.forEach(
-                        (
-                            [
-                                periodOrder,
-                                periodsForColumn
-                            ]
-                        ) => {
-
-                            /*
-                             * Prefer Monday's period for the
-                             * header. If Monday does not have
-                             * that period, use the first
-                             * available day.
-                             */
-
-                            const headerPeriod =
-                                periodsForColumn
-                                    .find(
-                                        period =>
-                                            getDayNumber(
-                                                period
-                                            ) === 1
-                                    ) ||
-                                periodsForColumn[0];
-
-
-                            const periodNumber =
-                                headerPeriod?.period_number ??
-                                periodOrder ??
-                                "-";
-
-
-                            const startTime =
-                                formatTime(
-                                    headerPeriod?.start_time
-                                );
-
-
-                            const endTime =
-                                formatTime(
-                                    headerPeriod?.end_time
-                                );
-
-
-                            const time =
-                                startTime &&
-                                endTime
-                                    ? `${startTime} - ${endTime}`
-                                    : "";
-
-
-                            const periodLabel =
-                                getPeriodLabel(
-                                    headerPeriod
-                                );
-
-
-                            /*
-                             * Detect non-lesson activities
-                             * from the actual period name.
-                             */
-
-                            const labelLower =
-                                String(
-                                    periodLabel || ""
-                                ).toLowerCase();
-
-
-                            const isBreak =
-                                labelLower.includes(
-                                    "break"
-                                ) ||
-                                labelLower.includes(
-                                    "lunch"
-                                ) ||
-                                labelLower.includes(
-                                    "assembly"
-                                ) ||
-                                labelLower.includes(
-                                    "game"
-                                ) ||
-                                labelLower.includes(
-                                    "club"
-                                ) ||
-                                labelLower.includes(
-                                    "societ"
-                                );
-
-
-                            html += `
-                                <th
-                                    class="${
-                                        isBreak
-                                            ? "period-header activity-header"
-                                            : "period-header"
-                                    }"
-                                >
-
-                                    <div
-                                        class="period-number"
-                                    >
-                                        ${escapeHtml(
-                                            String(
-                                                periodNumber
-                                            )
-                                        )}
-                                    </div>
-
-                                    ${
-                                        periodLabel
-                                            ? `
-                                                <div
-                                                    class="period-label"
-                                                >
-                                                    ${escapeHtml(
-                                                        periodLabel
-                                                    )}
-                                                </div>
-                                            `
-                                            : ""
-                                    }
-
-                                    ${
-                                        time
-                                            ? `
-                                                <div
-                                                    class="period-time"
-                                                >
-                                                    ${escapeHtml(
-                                                        time
-                                                    )}
-                                                </div>
-                                            `
-                                            : ""
-                                    }
-
-                                </th>
-                            `;
-
-                        }
-                    );
-
-
-                    html += `
-                                        </tr>
-
-                                    </thead>
-
-                                    <tbody>
-                    `;
-
-
-                    // =========================================
-                    // MONDAY → FRIDAY
-                    // =========================================
-
-                    dayNumbers.forEach(
-                        dayNumber => {
-
-                            /*
-                             * Find a period belonging to this
-                             * day so we can display its proper
-                             * day name.
-                             */
-
-                            const dayPeriod =
-                                allPeriods.find(
-                                    period =>
-                                        getDayNumber(
-                                            period
-                                        ) === dayNumber
-                                );
-
-
-                            const dayName =
-                                getDayName(
-                                    dayPeriod
-                                );
-
-
-                            html += `
-                                <tr>
-
-                                    <th
-                                        class="day-cell"
-                                    >
-                                        ${escapeHtml(
-                                            dayName
-                                        )}
-                                    </th>
-                            `;
-
-
-                            // =================================
-                            // RENDER EVERY PERIOD COLUMN
-                            // =================================
-
-                            periodColumns.forEach(
-                                (
-                                    [
-                                        periodOrder,
-                                        periodsForColumn
-                                    ]
-                                ) => {
-
-                                    const currentPeriod =
-                                        periodsForColumn.find(
-                                            period =>
-                                                getDayNumber(
-                                                    period
-                                                ) ===
-                                                dayNumber
-                                        );
-
-
-                                    const key =
-                                        [
-                                            streamId,
-                                            dayNumber,
-                                            periodOrder
-                                        ].join("|");
-
-
-                                    const cellEntries =
-                                        entryMap.get(
-                                            key
-                                        ) || [];
-
-
-                                    // -----------------------------
-                                    // PERIOD ACTIVITY
-                                    // -----------------------------
-
-                                    const periodLabel =
-                                        getPeriodLabel(
-                                            currentPeriod
-                                        );
-
-
-                                    const labelLower =
-                                        String(
-                                            periodLabel || ""
-                                        ).toLowerCase();
-
-
-                                    const isActivity =
-                                        labelLower.includes(
-                                            "break"
-                                        ) ||
-                                        labelLower.includes(
-                                            "lunch"
-                                        ) ||
-                                        labelLower.includes(
-                                            "assembly"
-                                        ) ||
-                                        labelLower.includes(
-                                            "game"
-                                        ) ||
-                                        labelLower.includes(
-                                            "club"
-                                        ) ||
-                                        labelLower.includes(
-                                            "societ"
-                                        );
-
-
-                                    // -----------------------------
-                                    // ACTIVITY / BREAK CELL
-                                    // -----------------------------
-
-                                    if (
-                                        isActivity
-                                    ) {
-
-                                        html += `
-                                            <td
-                                                class="timetable-cell activity-cell"
-                                            >
-
-                                                <div
-                                                    class="activity-text"
-                                                >
-                                                    ${escapeHtml(
-                                                        periodLabel
-                                                    )}
-                                                </div>
-
-                                            </td>
-                                        `;
-
-                                        return;
-
-                                    }
-
-
-                                    // -----------------------------
-                                    // EMPTY LESSON CELL
-                                    // -----------------------------
-
-                                    if (
-                                        cellEntries.length === 0
-                                    ) {
-
-                                        html += `
-                                            <td
-                                                class="timetable-cell empty-timetable-cell"
-                                            >
-                                                &nbsp;
-                                            </td>
-                                        `;
-
-                                        return;
-
-                                    }
-
-
-                                    // -----------------------------
-                                    // LESSON CELL
-                                    // -----------------------------
-
-                                    html += `
-                                        <td
-                                            class="timetable-cell lesson-cell"
-                                        >
-                                    `;
-
-
-                                    cellEntries.forEach(
-                                        (
-                                            entry,
-                                            index
-                                        ) => {
-
-                                            const subject =
-                                                lookup.subjects.get(
-                                                    entry.subject_id
-                                                );
-
-
-                                            const teacher =
-                                                lookup.teachers.get(
-                                                    entry.teacher_id
-                                                );
-
-
-                                            const room =
-                                                entry.room_id
-                                                    ? lookup.rooms.get(
-                                                        entry.room_id
-                                                    )
-                                                    : null;
-
-
-                                            const subjectName =
-                                                getTimetableSubjectName(
-                                                    subject
-                                                ) ||
-                                                "Unknown Subject";
-
-
-                                            const teacherName =
-                                                getTimetableTeacherName(
-                                                    teacher
-                                                ) ||
-                                                "Unknown Teacher";
-
-
-                                            const roomName =
-                                                entry.room_id
-                                                    ? (
-                                                        getTimetableRoomName(
-                                                            room
-                                                        ) ||
-                                                        "Unknown Room"
-                                                    )
-                                                    : "";
-
-
-                                            /*
-                                             * Multiple entries in
-                                             * one cell are separated
-                                             * visually rather than
-                                             * discarded.
-                                             */
-
-                                            if (
-                                                index > 0
-                                            ) {
-
-                                                html += `
-                                                    <div
-                                                        class="parallel-lesson-divider"
-                                                    ></div>
-                                                `;
-
-                                            }
-
-
-                                            html += `
-                                                <div
-                                                    class="lesson-content"
-                                                >
-
-                                                    <div
-                                                        class="lesson-subject"
-                                                    >
-                                                        ${escapeHtml(
-                                                            subjectName
-                                                        )}
-                                                    </div>
-
-                                                    <div
-                                                        class="lesson-teacher"
-                                                    >
-                                                        ${escapeHtml(
-                                                            teacherName
-                                                        )}
-                                                    </div>
-
-                                                    ${
-                                                        roomName
-                                                            ? `
-                                                                <div
-                                                                    class="lesson-room"
-                                                                >
-                                                                    ${escapeHtml(
-                                                                        roomName
-                                                                    )}
-                                                                </div>
-                                                            `
-                                                            : ""
-                                                    }
-
-                                                </div>
-                                            `;
-
-                                        }
-                                    );
-
-
-                                    html += `
-                                        </td>
-                                    `;
-
-                                }
-                            );
-
-
-                            html += `
-                                </tr>
-                            `;
-
-                        }
-                    );
-
-
-                    html += `
-                                    </tbody>
-
-                                </table>
-
-                            </div>
-
-                        </div>
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    String(time)
+                                )}
+                            </td>
+
+                            <td>
+                                <strong>
+                                    ${escapeHtml(
+                                        subjectName
+                                    )}
+                                </strong>
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    teacherName
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    roomName
+                                )}
+                            </td>
+
+                        </tr>
                     `;
 
                 }
@@ -27828,7 +26911,13 @@ function renderGeneratedTimetable(
 
 
             html += `
-                </section>
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
             `;
 
         }
@@ -27852,35 +26941,25 @@ function renderGeneratedTimetable(
         html;
 
 
-    // ========================================================
-    // LOGGING
-    // ========================================================
-
     console.log(
         "Timetable rendered successfully."
     );
 
     console.log(
-        "Grades/classes rendered:",
-        sortedClassGroups.length
-    );
-
-    console.log(
         "Streams rendered:",
-        streamIds.length
+        sortedStreamGroups.length
     );
 
     console.log(
         "Entries rendered:",
-        entries.length
-    );
-
-    console.log(
-        "Period columns:",
-        periodColumns.length
+        sortedEntries.length
     );
 
 }
+
+
+
+
 
 
 
