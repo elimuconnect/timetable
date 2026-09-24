@@ -27185,18 +27185,14 @@ function renderGeneratedTimetable(entries, lookup) {
                                     : null;
 
 
-                            const subjectName =
-                                getTimetableSubjectName(
-                                    subject
-                                ) ||
-                                "Unknown Subject";
+                            const subjectCode =
+    subject?.subject_code ||
+    "Unknown Subject";
 
 
-                            const teacherName =
-                                getTimetableTeacherName(
-                                    teacher
-                                ) ||
-                                "Unknown Teacher";
+const teacherCode =
+    teacher?.teacher_code ||
+    "Unknown Teacher";
 
 
                             const roomName =
@@ -27229,17 +27225,17 @@ function renderGeneratedTimetable(entries, lookup) {
 
                                 <div class="timetable-entry">
 
-                                    <div class="lesson-subject">
-                                        ${escapeHtml(
-                                            subjectName
-                                        )}
-                                    </div>
+                                   <div class="lesson-subject">
+    ${escapeHtml(
+        subjectCode
+    )}
+</div>
 
-                                    <div class="lesson-teacher">
-                                        ${escapeHtml(
-                                            teacherName
-                                        )}
-                                    </div>
+<div class="lesson-teacher">
+    ${escapeHtml(
+        teacherCode
+    )}
+</div>
 
                                     ${
                                         roomName
@@ -27556,165 +27552,7 @@ function downloadGeneratedTimetablesPDF() {
 
 
 
-// ============================================================
-// DOWNLOAD GENERATED TIMETABLES AS EXCEL-COMPATIBLE CSV
-// ============================================================
 
-function downloadGeneratedTimetablesExcel() {
-
-    const tables =
-        document.querySelectorAll(
-            ".kenyan-timetable-table"
-        );
-
-    if (!tables.length) {
-
-        alert(
-            "No timetable is available to export."
-        );
-
-        return;
-    }
-
-
-    let csv = "";
-
-
-    tables.forEach(
-        (table, tableIndex) => {
-
-            const streamSection =
-                table.closest(
-                    ".timetable-stream"
-                );
-
-
-            const streamHeading =
-                streamSection
-                    ?.querySelector(
-                        ".timetable-stream-heading"
-                    )
-                    ?.innerText
-                    ?.trim() ||
-                `Timetable ${tableIndex + 1}`;
-
-
-            csv += `"${escapeCsvValue(
-                streamHeading
-            )}"\n\n`;
-
-
-            const rows =
-                table.querySelectorAll(
-                    "tr"
-                );
-
-
-            rows.forEach(row => {
-
-                const cells =
-                    row.querySelectorAll(
-                        "th, td"
-                    );
-
-
-                const values =
-                    [...cells].map(
-                        cell => {
-
-                            const text =
-                                cell.innerText
-                                    .replace(
-                                        /\s+/g,
-                                        " "
-                                    )
-                                    .trim();
-
-                            return `"${escapeCsvValue(
-                                text
-                            )}"`;
-
-                        }
-                    );
-
-
-                csv +=
-                    values.join(",") +
-                    "\n";
-
-            });
-
-
-            csv += "\n\n";
-
-        }
-    );
-
-
-    const blob =
-        new Blob(
-            [csv],
-            {
-                type:
-                    "text/csv;charset=utf-8;"
-            }
-        );
-
-
-    const url =
-        URL.createObjectURL(
-            blob
-        );
-
-
-    const link =
-        document.createElement(
-            "a"
-        );
-
-
-    link.href =
-        url;
-
-    link.download =
-        `school-timetables-${new Date()
-            .toISOString()
-            .slice(0, 10)}.csv`;
-
-
-    document.body.appendChild(
-        link
-    );
-
-    link.click();
-
-    document.body.removeChild(
-        link
-    );
-
-
-    URL.revokeObjectURL(
-        url
-    );
-
-}
-
-
-// ------------------------------------------------------------
-// CSV ESCAPE
-// ------------------------------------------------------------
-
-function escapeCsvValue(value) {
-
-    return String(
-        value ?? ""
-    )
-        .replace(
-            /"/g,
-            '""'
-        );
-
-}
 
 
 
