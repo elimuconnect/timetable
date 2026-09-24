@@ -1903,7 +1903,7 @@ textarea:focus-visible {
         display: block !important;
         width: 100% !important;
         text-align: center;
-        margin: 0 0 4mm 0 !important;
+        margin: 0 0 2mm 0 !important;
         padding: 0 !important;
     }
 
@@ -1964,10 +1964,14 @@ textarea:focus-visible {
        ========================================= */
 
     .timetable-period-header {
-        height: 16mm !important;
+        height: 24mm !important;
         padding: 3px 2px !important;
         vertical-align: middle !important;
         box-sizing: border-box !important;
+    }
+
+    .kenyan-timetable-table thead tr {
+        height: 24mm !important;
     }
 
     .period-time {
@@ -1981,12 +1985,20 @@ textarea:focus-visible {
     }
 
     /* =========================================
+       LESSON ROWS
+       ========================================= */
+
+    .kenyan-timetable-table tbody tr {
+        height: 28mm !important;
+    }
+
+    /* =========================================
        LESSON CELLS
        ========================================= */
 
     .timetable-cell {
-        height: 16mm !important;
-        min-height: 16mm !important;
+        height: 28mm !important;
+        min-height: 28mm !important;
         padding: 2px 3px !important;
         vertical-align: middle !important;
         box-sizing: border-box !important;
@@ -2040,8 +2052,8 @@ textarea:focus-visible {
 
     .day-name-cell {
         position: static !important;
-        height: 16mm !important;
-        min-height: 16mm !important;
+        height: 28mm !important;
+        min-height: 28mm !important;
         padding: 2px !important;
         vertical-align: middle !important;
         font-size: 8px !important;
@@ -2049,7 +2061,6 @@ textarea:focus-visible {
     }
 
 }
-
 /* =========================================================
    END — STAGE 1 CSS FOUNDATION
    ========================================================= */
