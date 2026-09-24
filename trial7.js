@@ -27517,10 +27517,14 @@ function getTimetableSchoolName() {
 
 function printGeneratedTimetables() {
 
-    if (
-        !document.querySelector(
+    const timetables =
+        document.querySelectorAll(
             ".printable-timetable"
-        )
+        );
+
+    if (
+        !timetables ||
+        timetables.length === 0
     ) {
 
         alert(
@@ -27530,10 +27534,39 @@ function printGeneratedTimetables() {
         return;
     }
 
+
+    // --------------------------------------------------------
+    // MARK PAGE FOR TIMETABLE PRINTING
+    // --------------------------------------------------------
+
+    document.body.classList.add(
+        "printing-timetable"
+    );
+
+
+    // --------------------------------------------------------
+    // PRINT
+    // --------------------------------------------------------
+
     window.print();
 
-}
 
+    // --------------------------------------------------------
+    // RESTORE NORMAL SCREEN
+    // --------------------------------------------------------
+
+    setTimeout(
+        function() {
+
+            document.body.classList.remove(
+                "printing-timetable"
+            );
+
+        },
+        1000
+    );
+
+}
 
 // ============================================================
 // DOWNLOAD PDF
@@ -27541,10 +27574,14 @@ function printGeneratedTimetables() {
 
 function downloadGeneratedTimetablesPDF() {
 
-    if (
-        !document.querySelector(
+    const timetables =
+        document.querySelectorAll(
             ".printable-timetable"
-        )
+        );
+
+    if (
+        !timetables ||
+        timetables.length === 0
     ) {
 
         alert(
@@ -27554,7 +27591,25 @@ function downloadGeneratedTimetablesPDF() {
         return;
     }
 
+
+    document.body.classList.add(
+        "printing-timetable"
+    );
+
+
     window.print();
+
+
+    setTimeout(
+        function() {
+
+            document.body.classList.remove(
+                "printing-timetable"
+            );
+
+        },
+        1000
+    );
 
 }
 
