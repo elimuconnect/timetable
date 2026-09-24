@@ -30371,28 +30371,83 @@ async function downloadGeneratedTimetablesPDF() {
 }
 
 
+// ============================================================
+// PART 9 — DOWNLOAD WORD DOCX
+// ============================================================
+
+async function downloadGeneratedTimetablesWord() {
+
+    /*
+     * ============================================================
+     * CHECK DOCX LIBRARY
+     * ============================================================
+     */
+
+    if (
+        typeof docx === "undefined" ||
+        !docx.Document ||
+        !docx.Packer
+    ) {
+
+        alert(
+            "Word export library has not loaded. Please refresh the page and try again."
+        );
+
+        return;
+    }
 
 
-function downloadGeneratedTimetablesWord() {
+    /*
+     * ============================================================
+     * CHECK GENERATED TIMETABLE
+     * ============================================================
+     */
 
     const timetables =
         document.querySelectorAll(
             ".printable-timetable"
         );
 
+
     if (
         !timetables ||
         timetables.length === 0
     ) {
+
         alert(
             "No timetable is available to download."
         );
+
         return;
     }
 
+
     /*
      * ============================================================
-     * GET SCHOOL NAME
+     * SHORTCUTS TO DOCX CLASSES
+     * ============================================================
+     */
+
+    const {
+        Document,
+        Packer,
+        Paragraph,
+        TextRun,
+        Table,
+        TableRow,
+        TableCell,
+        AlignmentType,
+        VerticalAlign,
+        WidthType,
+        BorderStyle,
+        HeightRule,
+        TableLayoutType
+    } = docx;
+
+
+    /*
+     * ============================================================
+     * SCHOOL NAME
      * ============================================================
      */
 
@@ -30404,61 +30459,1263 @@ function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * CLONE TIMETABLES
+     * ACADEMIC YEAR / TERM
      * ============================================================
      */
 
-    let timetableHTML = "";
-
-    timetables.forEach(
-        function(timetable, index) {
-
-            const clone =
-                timetable.cloneNode(true);
+    const academicYear =
+        typeof timetableState !== "undefined" &&
+        timetableState
+            ? timetableState.academicYear || new Date().getFullYear()
+            : new Date().getFullYear();
 
 
-            /*
-             * Remove elements that should not
-             * appear in the Word document.
-             */
+    const term =
+        typeof timetableState !== "undefined" &&
+        timetableState
+            ? timetableState.term || "1"
+            : "1";
 
-            clone
-                .querySelectorAll(
-                    "button, .timetable-toolbar"
+
+    /*
+     * ============================================================
+     * A4 LANDSCAPE DIMENSIONS
+     *
+     * A4:
+     * 297mm × 210mm
+     *
+     * 8mm margins on each side
+     *
+     * Printable width:
+     * 297 - 8 - 8 = 281mm
+     *
+     * DOCX uses TWIPS:
+     * 1 inch = 1440 twips
+     * 1mm ≈ 56.6929 twips
+     * ============================================================
+     */
+
+    const MM_TO_TWIPS =
+        56.6929134;
+
+
+    const mmToTwips =
+        function(mm) {
+
+            return Math.round(
+                mm * MM_TO_TWIPS
+            );
+
+        };
+
+
+    const PAGE_WIDTH =
+        mmToTwips(297);
+
+
+    const PAGE_HEIGHT =
+        mmToTwips(210);
+
+
+    const MARGIN =
+        mmToTwips(8);
+
+
+    const CONTENT_WIDTH =
+        mmToTwips(281);
+
+
+    /*
+     * ============================================================
+     * SAME COLUMN DIMENSIONS AS PRINT CSS
+     *
+     * Day column = 15mm
+     *
+     * Remaining 266mm is divided between
+     * the timetable period columns.
+     * ============================================================
+     */
+
+    const DAY_COLUMN_WIDTH =
+        mmToTwips(15);
+
+
+    /*
+     * ============================================================
+     * BORDER STYLE
+     * ============================================================
+     */
+
+    const tableBorders = {
+
+        top: {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "000000"
+        },
+
+        bottom: {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "000000"
+        },
+
+        left: {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "000000"
+        },
+
+        right: {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "000000"
+        },
+
+        insideHorizontal: {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "000000"
+        },
+
+        insideVertical: {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "000000"
+        }
+
+    };
+
+
+    /*
+     * ============================================================
+     * HELPER — CLEAN TEXT
+     * ============================================================
+     */
+
+    function cleanText(value) {
+
+        if (
+            value === null ||
+            value === undefined
+        ) {
+
+            return "";
+
+        }
+
+        return String(value)
+            .replace(/\u00a0/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+    }
+
+
+    /*
+     * ============================================================
+     * HELPER — GET CELL TEXT
+     * ============================================================
+     */
+
+    function getCellText(cell) {
+
+        return cleanText(
+            cell.innerText ||
+            cell.textContent ||
+            ""
+        );
+
+    }
+
+
+    /*
+     * ============================================================
+     * HELPER — CREATE TEXT RUN
+     * ============================================================
+     */
+
+    function createCellParagraph(
+        text,
+        options = {}
+    ) {
+
+        const fontSize =
+            options.fontSize || 8;
+
+        const bold =
+            options.bold || false;
+
+
+        return new Paragraph({
+
+            alignment:
+                options.alignment ||
+                AlignmentType.CENTER,
+
+            spacing: {
+
+                before: 0,
+
+                after: 0,
+
+                line: 100
+
+            },
+
+            children: [
+
+                new TextRun({
+
+                    text:
+                        cleanText(text),
+
+                    bold:
+                        bold,
+
+                    size:
+                        fontSize * 2,
+
+                    font:
+                        "Arial"
+
+                })
+
+            ]
+
+        });
+
+    }
+
+
+    /*
+     * ============================================================
+     * HELPER — DETERMINE CELL TYPE
+     * ============================================================
+     */
+
+    function getCellType(cell) {
+
+        if (
+            cell.classList.contains(
+                "day-name-cell"
+            )
+        ) {
+
+            return "day";
+
+        }
+
+
+        if (
+            cell.classList.contains(
+                "timetable-period-header"
+            )
+        ) {
+
+            return "period";
+
+        }
+
+
+        if (
+            cell.classList.contains(
+                "timetable-cell"
+            )
+        ) {
+
+            return "lesson";
+
+        }
+
+
+        if (
+            cell.classList.contains(
+                "special-period"
+            ) ||
+            cell.querySelector(
+                ".special-period"
+            )
+        ) {
+
+            return "special";
+
+        }
+
+
+        return "normal";
+
+    }
+
+
+    /*
+     * ============================================================
+     * HELPER — CREATE WORD TABLE CELL
+     * ============================================================
+     */
+
+    function createWordCell(cell) {
+
+        const type =
+            getCellType(cell);
+
+
+        const text =
+            getCellText(cell);
+
+
+        let fontSize = 8;
+
+        let bold = false;
+
+
+        /*
+         * DAY
+         */
+
+        if (type === "day") {
+
+            fontSize = 8;
+
+            bold = true;
+
+        }
+
+
+        /*
+         * PERIOD HEADER
+         */
+
+        else if (type === "period") {
+
+            fontSize = 6;
+
+            bold = true;
+
+        }
+
+
+        /*
+         * LESSON
+         */
+
+        else if (type === "lesson") {
+
+            fontSize = 8;
+
+            bold = false;
+
+        }
+
+
+        /*
+         * SPECIAL PERIOD
+         */
+
+        else if (type === "special") {
+
+            fontSize = 6;
+
+            bold = true;
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * PRESERVE IMPORTANT TEXT SEPARATION
+         * --------------------------------------------------------
+         *
+         * For lesson cells we build the contents from the
+         * existing timetable elements rather than flattening
+         * everything into one line.
+         */
+
+        const children = [];
+
+
+        const subject =
+            cell.querySelector(
+                ".lesson-subject"
+            );
+
+
+        const teacher =
+            cell.querySelector(
+                ".lesson-teacher"
+            );
+
+
+        const room =
+            cell.querySelector(
+                ".lesson-room"
+            );
+
+
+        const specialName =
+            cell.querySelector(
+                ".special-period-name"
+            );
+
+
+        /*
+         * LESSON CELL
+         */
+
+        if (subject) {
+
+            children.push(
+
+                createCellParagraph(
+
+                    subject.textContent,
+
+                    {
+
+                        fontSize: 10,
+
+                        bold: true,
+
+                        alignment:
+                            AlignmentType.CENTER
+
+                    }
+
                 )
-                .forEach(
-                    function(element) {
-                        element.remove();
+
+            );
+
+
+            if (teacher) {
+
+                children.push(
+
+                    createCellParagraph(
+
+                        teacher.textContent,
+
+                        {
+
+                            fontSize: 6,
+
+                            bold: false,
+
+                            alignment:
+                                AlignmentType.CENTER
+
+                        }
+
+                    )
+
+                );
+
+            }
+
+
+            if (room) {
+
+                children.push(
+
+                    createCellParagraph(
+
+                        room.textContent,
+
+                        {
+
+                            fontSize: 5,
+
+                            bold: false,
+
+                            alignment:
+                                AlignmentType.CENTER
+
+                        }
+
+                    )
+
+                );
+
+            }
+
+        }
+
+
+        /*
+         * SPECIAL PERIOD
+         */
+
+        else if (specialName) {
+
+            children.push(
+
+                createCellParagraph(
+
+                    specialName.textContent,
+
+                    {
+
+                        fontSize: 6,
+
+                        bold: true,
+
+                        alignment:
+                            AlignmentType.CENTER
+
+                    }
+
+                )
+
+            );
+
+        }
+
+
+        /*
+         * PERIOD HEADER / DAY / NORMAL CELL
+         */
+
+        else {
+
+            children.push(
+
+                createCellParagraph(
+
+                    text,
+
+                    {
+
+                        fontSize:
+                            fontSize,
+
+                        bold:
+                            bold,
+
+                        alignment:
+                            AlignmentType.CENTER
+
+                    }
+
+                )
+
+            );
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * CELL WIDTH
+         * --------------------------------------------------------
+         */
+
+        let cellWidth =
+            DAY_COLUMN_WIDTH;
+
+
+        if (type !== "day") {
+
+            cellWidth =
+                mmToTwips(266);
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * CELL
+         * --------------------------------------------------------
+         */
+
+        return new TableCell({
+
+            width: {
+
+                size:
+                    cellWidth,
+
+                type:
+                    WidthType.DXA
+
+            },
+
+            verticalAlign:
+                VerticalAlign.CENTER,
+
+            margins: {
+
+                top: 40,
+
+                bottom: 40,
+
+                left: 40,
+
+                right: 40
+
+            },
+
+            borders:
+                tableBorders,
+
+            children:
+                children
+
+        });
+
+    }
+
+
+    /*
+     * ============================================================
+     * HELPER — BUILD WORD TABLE FROM EXISTING HTML TABLE
+     * ============================================================
+     */
+
+    function buildWordTable(
+        htmlTable
+    ) {
+
+        const htmlRows =
+            htmlTable.querySelectorAll(
+                "tr"
+            );
+
+
+        if (
+            !htmlRows ||
+            htmlRows.length === 0
+        ) {
+
+            return null;
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * DETERMINE NUMBER OF COLUMNS
+         * --------------------------------------------------------
+         */
+
+        let columnCount = 0;
+
+
+        htmlRows.forEach(
+            function(row) {
+
+                let count = 0;
+
+
+                row.querySelectorAll(
+                    ":scope > th, :scope > td"
+                ).forEach(
+                    function(cell) {
+
+                        count +=
+                            parseInt(
+                                cell.getAttribute(
+                                    "colspan"
+                                ) || "1",
+                                10
+                            );
+
                     }
                 );
 
 
+                columnCount =
+                    Math.max(
+                        columnCount,
+                        count
+                    );
+
+            }
+        );
+
+
+        if (columnCount < 1) {
+
+            columnCount = 1;
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * PERIOD COLUMN WIDTH
+         * --------------------------------------------------------
+         */
+
+        const periodColumnWidth =
+            Math.floor(
+                (
+                    CONTENT_WIDTH -
+                    DAY_COLUMN_WIDTH
+                ) /
+                Math.max(
+                    1,
+                    columnCount - 1
+                )
+            );
+
+
+        /*
+         * --------------------------------------------------------
+         * CREATE ROWS
+         * --------------------------------------------------------
+         */
+
+        const wordRows = [];
+
+
+        htmlRows.forEach(
+            function(htmlRow, rowIndex) {
+
+                const htmlCells =
+                    htmlRow.querySelectorAll(
+                        ":scope > th, :scope > td"
+                    );
+
+
+                const wordCells = [];
+
+
+                htmlCells.forEach(
+                    function(htmlCell) {
+
+                        const type =
+                            getCellType(
+                                htmlCell
+                            );
+
+
+                        /*
+                         * Recreate cell content.
+                         */
+
+                        let wordCell =
+                            createWordCell(
+                                htmlCell
+                            );
+
+
+                        /*
+                         * Correct normal period
+                         * column width.
+                         */
+
+                        if (
+                            type !== "day"
+                        ) {
+
+                            /*
+                             * docx TableCell width
+                             * is represented through
+                             * its width property.
+                             */
+
+                            wordCell =
+                                new TableCell({
+
+                                    width: {
+
+                                        size:
+                                            periodColumnWidth,
+
+                                        type:
+                                            WidthType.DXA
+
+                                    },
+
+                                    verticalAlign:
+                                        VerticalAlign.CENTER,
+
+                                    margins: {
+
+                                        top: 40,
+
+                                        bottom: 40,
+
+                                        left: 40,
+
+                                        right: 40
+
+                                    },
+
+                                    borders:
+                                        tableBorders,
+
+                                    children:
+                                        wordCell.root
+                                            ? []
+                                            : wordCell
+                                                .options
+                                                ?.children ||
+                                              [
+
+                                                createCellParagraph(
+                                                    getCellText(
+                                                        htmlCell
+                                                    ),
+                                                    {
+
+                                                        fontSize:
+                                                            8,
+
+                                                        alignment:
+                                                            AlignmentType.CENTER
+
+                                                    }
+                                                )
+
+                                            ]
+
+                                });
+
+                        }
+
+
+                        wordCells.push(
+                            wordCell
+                        );
+
+                    }
+                );
+
+
+                /*
+                 * ------------------------------------------------
+                 * DETERMINE ROW HEIGHT
+                 * ------------------------------------------------
+                 */
+
+                let rowHeight =
+                    mmToTwips(28);
+
+
+                if (rowIndex === 0) {
+
+                    rowHeight =
+                        mmToTwips(24);
+
+                }
+
+
+                wordRows.push(
+
+                    new TableRow({
+
+                        height: {
+
+                            value:
+                                rowHeight,
+
+                            rule:
+                                HeightRule.EXACT
+
+                        },
+
+                        cantSplit: true,
+
+                        tableHeader:
+                            rowIndex === 0,
+
+                        children:
+                            wordCells
+
+                    })
+
+                );
+
+            }
+        );
+
+
+        /*
+         * --------------------------------------------------------
+         * WORD TABLE
+         * --------------------------------------------------------
+         */
+
+        return new Table({
+
+            rows:
+                wordRows,
+
+            width: {
+
+                size:
+                    CONTENT_WIDTH,
+
+                type:
+                    WidthType.DXA
+
+            },
+
+            columnWidths: [
+
+                DAY_COLUMN_WIDTH,
+
+                ...Array(
+                    Math.max(
+                        1,
+                        columnCount - 1
+                    )
+                ).fill(
+                    periodColumnWidth
+                )
+
+            ],
+
+            layout:
+                TableLayoutType.FIXED,
+
+            borders:
+                tableBorders,
+
+            alignment:
+                AlignmentType.CENTER
+
+        });
+
+    }
+
+
+    /*
+     * ============================================================
+     * CREATE DOCUMENT SECTIONS
+     * ============================================================
+     */
+
+    const sections = [];
+
+
+    timetables.forEach(
+        function(timetable, timetableIndex) {
+
             /*
-             * Ensure every stream starts on
-             * a new Word page except the first.
+             * ----------------------------------------------------
+             * FIND TABLE
+             * ----------------------------------------------------
              */
 
-            if (index > 0) {
+            const htmlTable =
+                timetable.querySelector(
+                    ".kenyan-timetable-table"
+                );
 
-                clone.style.pageBreakBefore =
-                    "always";
+
+            if (!htmlTable) {
+
+                return;
 
             }
 
 
             /*
-             * Keep the timetable itself at
-             * the full printable width.
+             * ----------------------------------------------------
+             * STREAM NAME
+             * ----------------------------------------------------
              */
 
-            clone.style.width = "100%";
-            clone.style.maxWidth = "100%";
-            clone.style.margin = "0";
-            clone.style.padding = "0";
+            const streamName =
+                timetable
+                    .querySelector(
+                        ".print-timetable-title"
+                    )
+                    ?.textContent
+                    ?.replace(
+                        /CLASS TIMETABLE\s*[—-]\s*/i,
+                        ""
+                    )
+                    ?.trim()
+                    ||
+                    "TIMETABLE";
 
 
-            timetableHTML +=
-                clone.outerHTML;
+            /*
+             * ----------------------------------------------------
+             * HEADER
+             * SAME CONTENT AS PRINT VERSION
+             * ----------------------------------------------------
+             */
+
+            const headerChildren = [
+
+                new Paragraph({
+
+                    alignment:
+                        AlignmentType.CENTER,
+
+                    spacing: {
+
+                        before: 0,
+
+                        after: 0
+
+                    },
+
+                    children: [
+
+                        new TextRun({
+
+                            text:
+                                schoolName
+                                    .toUpperCase(),
+
+                            bold: true,
+
+                            size:
+                                36,
+
+                            font:
+                                "Arial"
+
+                        })
+
+                    ]
+
+                }),
+
+
+                new Paragraph({
+
+                    alignment:
+                        AlignmentType.CENTER,
+
+                    spacing: {
+
+                        before: 20,
+
+                        after: 20
+
+                    },
+
+                    children: [
+
+                        new TextRun({
+
+                            text:
+                                `CLASS TIMETABLE — ${streamName}`,
+
+                            bold: true,
+
+                            size:
+                                30,
+
+                            font:
+                                "Arial"
+
+                        })
+
+                    ]
+
+                }),
+
+
+                new Paragraph({
+
+                    alignment:
+                        AlignmentType.CENTER,
+
+                    spacing: {
+
+                        before: 0,
+
+                        after: 100
+
+                    },
+
+                    children: [
+
+                        new TextRun({
+
+                            text:
+                                `Academic Year ${academicYear} • Term ${term} • Printed: ${new Date().toLocaleDateString(
+                                    "en-KE",
+                                    {
+                                        day:
+                                            "2-digit",
+
+                                        month:
+                                            "long",
+
+                                        year:
+                                            "numeric"
+                                    }
+                                )}`,
+
+                            size:
+                                20,
+
+                            font:
+                                "Arial"
+
+                        })
+
+                    ]
+
+                })
+
+            ];
+
+
+            /*
+             * ----------------------------------------------------
+             * BUILD TABLE
+             * ----------------------------------------------------
+             */
+
+            const wordTable =
+                buildWordTable(
+                    htmlTable
+                );
+
+
+            if (!wordTable) {
+
+                return;
+
+            }
+
+
+            /*
+             * ----------------------------------------------------
+             * FOOTER
+             * ----------------------------------------------------
+             */
+
+            const footerParagraph =
+                new Paragraph({
+
+                    alignment:
+                        AlignmentType.CENTER,
+
+                    spacing: {
+
+                        before:
+                            100,
+
+                        after:
+                            0
+
+                    },
+
+                    children: [
+
+                        new TextRun({
+
+                            text:
+                                "Smart Elimu Connect",
+
+                            bold:
+                                true,
+
+                            size:
+                                18,
+
+                            font:
+                                "Arial"
+
+                        })
+
+                    ]
+
+                });
+
+
+            /*
+             * ----------------------------------------------------
+             * SECTION CONTENT
+             * ----------------------------------------------------
+             */
+
+            const children = [
+
+                ...headerChildren,
+
+                wordTable,
+
+                footerParagraph
+
+            ];
+
+
+            /*
+             * ----------------------------------------------------
+             * ADD PAGE BREAK BEFORE EVERY STREAM EXCEPT FIRST
+             * ----------------------------------------------------
+             */
+
+            if (timetableIndex > 0) {
+
+                children.unshift(
+
+                    new Paragraph({
+
+                        pageBreakBefore:
+                            true,
+
+                        children: [
+
+                            new TextRun({
+                                text: ""
+                            })
+
+                        ]
+
+                    })
+
+                );
+
+            }
+
+
+            /*
+             * ----------------------------------------------------
+             * A4 LANDSCAPE SECTION
+             * ----------------------------------------------------
+             */
+
+            sections.push({
+
+                properties: {
+
+                    page: {
+
+                        size: {
+
+                            width:
+                                PAGE_WIDTH,
+
+                            height:
+                                PAGE_HEIGHT
+
+                        },
+
+                        margin: {
+
+                            top:
+                                MARGIN,
+
+                            right:
+                                MARGIN,
+
+                            bottom:
+                                MARGIN,
+
+                            left:
+                                MARGIN
+
+                        }
+
+                    }
+
+                },
+
+                children:
+                    children
+
+            });
 
         }
     );
@@ -30466,568 +31723,128 @@ function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * WORD DOCUMENT
+     * NOTHING TO EXPORT
      * ============================================================
      */
 
-    const wordDocument = `
-<!DOCTYPE html>
+    if (sections.length === 0) {
 
-<html>
+        alert(
+            "No timetable tables were found to export."
+        );
 
-<head>
+        return;
 
-<meta charset="UTF-8">
-
-<title>
-    ${schoolName} - Timetable
-</title>
-
-
-<style>
-
-/* ============================================================
-   PAGE
-   ============================================================ */
-
-@page {
-
-    size: A4 landscape;
-
-    margin: 8mm;
-
-}
-
-
-/* ============================================================
-   GENERAL
-   ============================================================ */
-
-html,
-body {
-
-    margin: 0 !important;
-
-    padding: 0 !important;
-
-    background: #ffffff !important;
-
-    font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
-
-}
-
-
-/* ============================================================
-   TIMETABLE CONTAINER
-   ============================================================ */
-
-.generated-timetable {
-
-    width: 100% !important;
-
-    max-width: 100% !important;
-
-    margin: 0 !important;
-
-    padding: 0 !important;
-
-}
-
-
-.timetable-stream {
-
-    display: block;
-
-    width: 100% !important;
-
-    max-width: 100% !important;
-
-    margin: 0 !important;
-
-    padding: 0 !important;
-
-    border: none;
-
-    box-sizing: border-box !important;
-
-    page-break-after: always;
-
-    break-after: page;
-
-}
-
-
-.timetable-stream:last-child {
-
-    page-break-after: auto;
-
-    break-after: auto;
-
-}
-
-
-/* ============================================================
-   PRINT HEADER
-   SAME DIMENSIONS AS PRINT CSS
-   ============================================================ */
-
-.print-timetable-header {
-
-    display: block !important;
-
-    width: 100% !important;
-
-    text-align: center;
-
-    margin: 0 0 2mm 0 !important;
-
-    padding: 0 !important;
-
-}
-
-
-.print-school-name {
-
-    font-size: 18px;
-
-    font-weight: 800;
-
-    text-transform: uppercase;
-
-}
-
-
-.print-timetable-title {
-
-    margin-top: 2px;
-
-    font-size: 15px;
-
-    font-weight: 700;
-
-}
-
-
-.print-timetable-meta {
-
-    margin-top: 2px;
-
-    font-size: 10px;
-
-}
-
-
-/* ============================================================
-   PRINTED DATE
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.printed-date {
-
-    font-size: 9px !important;
-
-    font-weight: 500 !important;
-
-}
-
-
-/* ============================================================
-   TABLE WRAPPER
-   ============================================================ */
-
-.timetable-table-wrapper {
-
-    width: 100% !important;
-
-    max-width: 100% !important;
-
-    overflow: visible !important;
-
-    margin: 0 !important;
-
-    padding: 0 !important;
-
-    box-sizing: border-box !important;
-
-}
-
-
-/* ============================================================
-   MAIN TABLE
-   ============================================================ */
-
-.kenyan-timetable-table {
-
-    width: 100% !important;
-
-    max-width: 100% !important;
-
-    min-width: 0 !important;
-
-    table-layout: fixed !important;
-
-    border-collapse: collapse !important;
-
-    box-sizing: border-box !important;
-
-    font-size: 8px !important;
-
-}
-
-
-/* ============================================================
-   DAY COLUMN
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.day-column-header,
-.day-name-cell {
-
-    width: 15mm !important;
-
-    min-width: 15mm !important;
-
-    max-width: 15mm !important;
-
-    box-sizing: border-box !important;
-
-}
-
-
-/* ============================================================
-   PERIOD HEADER
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.timetable-period-header {
-
-    height: 24mm !important;
-
-    padding: 3px 2px !important;
-
-    vertical-align: middle !important;
-
-    box-sizing: border-box !important;
-
-}
-
-
-.kenyan-timetable-table thead tr {
-
-    height: 24mm !important;
-
-}
-
-
-.period-time {
-
-    font-size: 7px !important;
-
-    line-height: 1.1 !important;
-
-}
-
-
-.period-name {
-
-    font-size: 6px !important;
-
-    line-height: 1.1 !important;
-
-}
-
-
-/* ============================================================
-   LESSON ROWS
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.kenyan-timetable-table tbody tr {
-
-    height: 28mm !important;
-
-}
-
-
-/* ============================================================
-   LESSON CELLS
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.timetable-cell {
-
-    height: 28mm !important;
-
-    min-height: 28mm !important;
-
-    padding: 2px 3px !important;
-
-    vertical-align: middle !important;
-
-    box-sizing: border-box !important;
-
-}
-
-
-/* ============================================================
-   SUBJECT
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.lesson-subject {
-
-    font-size: 10px !important;
-
-    font-weight: 900 !important;
-
-    line-height: 1.15 !important;
-
-    text-align: center !important;
-
-}
-
-
-/* ============================================================
-   TEACHER
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.lesson-teacher {
-
-    font-size: 6px !important;
-
-    margin-top: 1px !important;
-
-    line-height: 1.1 !important;
-
-}
-
-
-/* ============================================================
-   ROOM
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.lesson-room {
-
-    font-size: 5.5px !important;
-
-    margin-top: 1px !important;
-
-    line-height: 1.1 !important;
-
-}
-
-
-/* ============================================================
-   SPECIAL PERIODS
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.special-period {
-
-    min-height: 8mm !important;
-
-    display: flex !important;
-
-    flex-direction: column !important;
-
-    align-items: center !important;
-
-    justify-content: center !important;
-
-    gap: 1px !important;
-
-}
-
-
-/*
- * Same as print:
- * hide special-period icon
- */
-
-.special-period-icon {
-
-    display: none !important;
-
-}
-
-
-.special-period-name {
-
-    font-size: 6px !important;
-
-    font-weight: 700 !important;
-
-    text-align: center !important;
-
-    line-height: 1.1 !important;
-
-}
-
-
-/* ============================================================
-   DAY LABEL
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.day-name-cell {
-
-    position: static !important;
-
-    height: 28mm !important;
-
-    min-height: 28mm !important;
-
-    padding: 2px !important;
-
-    vertical-align: middle !important;
-
-    font-size: 8px !important;
-
-    font-weight: 700 !important;
-
-}
-
-
-/* ============================================================
-   FOOTER
-   SAME AS PRINT CSS
-   ============================================================ */
-
-.print-footer {
-
-    display: block !important;
-
-    width: 100% !important;
-
-    text-align: center !important;
-
-    margin-top: 3mm !important;
-
-    padding-top: 1mm !important;
-
-    font-size: 9px !important;
-
-    font-weight: 700 !important;
-
-    letter-spacing: 0.3px !important;
-
-}
-
-
-/* ============================================================
-   WORD TABLE COMPATIBILITY
-   ============================================================ */
-
-table {
-
-    border-collapse: collapse;
-
-    mso-table-lspace: 0pt;
-
-    mso-table-rspace: 0pt;
-
-}
-
-
-td,
-th {
-
-    mso-line-height-rule: exactly;
-
-}
-
-
-/* ============================================================
-   PREVENT CONTENT FROM CREATING EXTRA WIDTH
-   ============================================================ */
-
-* {
-
-    box-sizing: border-box;
-
-}
-
-</style>
-
-</head>
-
-
-<body>
-
-    ${timetableHTML}
-
-</body>
-
-</html>
-`;
+    }
 
 
     /*
      * ============================================================
-     * CREATE WORD FILE
+     * CREATE TRUE DOCX DOCUMENT
      * ============================================================
      */
 
-    const blob =
-        new Blob(
-            [
-                "\ufeff",
-                wordDocument
-            ],
-            {
-                type:
-                    "application/msword"
-            }
+    const document =
+        new Document({
+
+            creator:
+                "Smart Elimu Connect",
+
+            title:
+                `${schoolName} - Timetable`,
+
+            subject:
+                "School Timetable",
+
+            description:
+                "Generated by Smart Elimu Connect",
+
+            sections:
+                sections
+
+        });
+
+
+    /*
+     * ============================================================
+     * CREATE DOCX BLOB
+     * ============================================================
+     */
+
+    try {
+
+        const blob =
+            await Packer.toBlob(
+                document
+            );
+
+
+        /*
+         * --------------------------------------------------------
+         * DOWNLOAD
+         * --------------------------------------------------------
+         */
+
+        const url =
+            URL.createObjectURL(
+                blob
+            );
+
+
+        const link =
+            document.createElement(
+                "a"
+            );
+
+
+        link.href =
+            url;
+
+
+        link.download =
+            `${schoolName} - Timetable.docx`;
+
+
+        document.body.appendChild(
+            link
         );
 
 
-    /*
-     * ============================================================
-     * DOWNLOAD
-     * ============================================================
-     */
-
-    const url =
-        URL.createObjectURL(blob);
+        link.click();
 
 
-    const link =
-        document.createElement("a");
+        document.body.removeChild(
+            link
+        );
 
 
-    link.href = url;
+        setTimeout(
+            function() {
 
-    link.download =
-        `${schoolName} - Timetable.doc`;
+                URL.revokeObjectURL(
+                    url
+                );
+
+            },
+            1000
+        );
 
 
-    document.body.appendChild(link);
+    } catch (error) {
 
-    link.click();
+        console.error(
+            "DOCX generation failed:",
+            error
+        );
 
-    document.body.removeChild(link);
 
+        alert(
+            "The Word document could not be generated. Please check the browser console for details."
+        );
 
-    /*
-     * Release temporary URL
-     */
-
-    setTimeout(
-        function() {
-
-            URL.revokeObjectURL(url);
-
-        },
-        1000
-    );
+    }
 
 }
-
 
 
 
@@ -31042,7 +31859,7 @@ th {
 
 
 // ============================================================
-// DOWNLOAD GENERATED TIMETABLES AS WORD
+// WORD DOWNLOAD BUTTON
 // ============================================================
 
 const downloadTimetableWordBtn =
@@ -31050,7 +31867,15 @@ const downloadTimetableWordBtn =
         "downloadTimetableWordBtn"
     );
 
-if (downloadTimetableWordBtn) {
+
+if (
+    downloadTimetableWordBtn &&
+    !downloadTimetableWordBtn.dataset.wordListenerAttached
+) {
+
+    downloadTimetableWordBtn.dataset.wordListenerAttached =
+        "true";
+
 
     downloadTimetableWordBtn.addEventListener(
         "click",
@@ -31058,6 +31883,9 @@ if (downloadTimetableWordBtn) {
     );
 
 }
+
+
+
 // ============================================================
 // PART 9 — EVENTS
 // ============================================================
