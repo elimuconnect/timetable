@@ -27283,12 +27283,16 @@ const teacherCode =
         });
 
 
-        html += `
+                html += `
 
                         </tbody>
 
                     </table>
 
+                </div>
+
+                <div class="print-footer">
+                    Smart Elimu Connect
                 </div>
 
             </section>
