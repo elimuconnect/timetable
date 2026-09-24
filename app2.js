@@ -2217,17 +2217,17 @@ async function loadSubjects() {
 
     if (!timetableState.schoolId) {
 
-        container.innerHTML =
-            `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-            `;
+    container.innerHTML =
+        `
+        <div class="empty-message">
+            Your school has not been loaded.
+            Please log in again.
+        </div>
+        `;
 
-        return;
+    return;
 
-    }
-
+}
 
     container.innerHTML =
         `
