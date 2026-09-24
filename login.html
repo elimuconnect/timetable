@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Timetable Login</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .login-box {
+            width: 360px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 5px 25px rgba(0,0,0,.12);
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: .6;
+        }
+
+        #status {
+            margin-top: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="login-box">
+    <h2>📅 Smart Timetable</h2>
+
+    <input
+        type="email"
+        id="email"
+        placeholder="Email"
+        autocomplete="username"
+    >
+
+    <input
+        type="password"
+        id="password"
+        placeholder="Password"
+        autocomplete="current-password"
+    >
+
+    <button id="loginBtn">Login</button>
+
+    <div id="status"></div>
+</div>
+
+
+<script type="module">
+
+import { createClient } from
+"https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+
+const supabase = createClient(
+    "https://zcmzuetusvpmvubbjlmx.supabase.co",
+    "sb_publishable_-BGJLAySaH7bQ5lBIZF9zg_eohK-xEn"
+);
+
+
+const loginBtn = document.getElementById("loginBtn");
+const status = document.getElementById("status");
+
+
+loginBtn.addEventListener("click", async () => {
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!email || !password) {
+        status.textContent = "Enter email and password.";
+        return;
+    }
+
+    loginBtn.disabled = true;
+    status.textContent = "Logging in...";
+
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+    });
+
+
+    if (error) {
+        console.error(error);
+        status.textContent = error.message;
+        loginBtn.disabled = false;
+        return;
+    }
+
+
+    const user = data.user;
+
+    if (!user) {
+        status.textContent = "Login failed.";
+        loginBtn.disabled = false;
+        return;
+    }
+
+
+    // ----------------------------------------
+    // GET USER PROFILE
+    // ----------------------------------------
+
+    const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("auth_id", user.id)
+        .single();
+
+
+    if (profileError || !profile) {
+
+        console.error(profileError);
+
+        await supabase.auth.signOut();
+
+        status.textContent =
+            "Your account profile was not found.";
+
+        loginBtn.disabled = false;
+        return;
+    }
+
+
+    // ----------------------------------------
+    // CHECK ROLE
+    // ----------------------------------------
+
+    if (
+        profile.role !== "admin" &&
+        profile.role !== "superadmin"
+    ) {
+
+        await supabase.auth.signOut();
+
+        status.textContent =
+            "Access denied. Admin or Superadmin account required.";
+
+        loginBtn.disabled = false;
+        return;
+    }
+
+
+    // ----------------------------------------
+    // ADMIN
+    // ----------------------------------------
+
+    if (profile.role === "admin") {
+
+        if (!profile.school_id) {
+
+            await supabase.auth.signOut();
+
+            status.textContent =
+                "Your admin account is not assigned to a school.";
+
+            loginBtn.disabled = false;
+            return;
+        }
+
+
+        // Verify school exists in timetable_schools
+        const { data: school, error: schoolError } =
+            await supabase
+                .from("timetable_schools")
+                .select("*")
+                .eq("id", profile.school_id)
+                .single();
+
+
+        if (schoolError || !school) {
+
+            console.error(schoolError);
+
+            await supabase.auth.signOut();
+
+            status.textContent =
+                "Your assigned timetable school was not found.";
+
+            loginBtn.disabled = false;
+            return;
+        }
+
+
+        // Admin goes directly to timetable
+        window.location.href = "index.html";
+
+        return;
+    }
+
+
+    // ----------------------------------------
+    // SUPERADMIN
+    // ----------------------------------------
+
+    if (profile.role === "superadmin") {
+
+        // Change this filename to your actual
+        // superadmin page.
+        window.location.href = "superadmin.html";
+
+        return;
+    }
+
+});
+
+
+</script>
+
+</body>
+</html>
