@@ -1833,7 +1833,6 @@ textarea:focus-visible {
 
 }
 
-
 /* ============================================================
    PRINT
    ============================================================ */
@@ -1946,7 +1945,9 @@ textarea:focus-visible {
        ========================================= */
 
     .timetable-period-header {
-        padding: 2px 2px !important;
+        height: 16mm !important;
+        padding: 3px 2px !important;
+        vertical-align: middle !important;
     }
 
     .period-time {
@@ -1961,13 +1962,12 @@ textarea:focus-visible {
 
     /* =========================================
        LESSON CELLS
-       SHORTER BECAUSE CODES ARE USED
        ========================================= */
 
     .timetable-cell {
-        height: 12mm !important;
-        min-height: 12mm !important;
-        padding: 1.5px !important;
+        height: 16mm !important;
+        min-height: 16mm !important;
+        padding: 2px 3px !important;
         vertical-align: middle !important;
     }
 
@@ -2021,12 +2021,15 @@ textarea:focus-visible {
 
     .day-name-cell {
         position: static !important;
-        font-size: 7px !important;
+        height: 16mm !important;
+        min-height: 16mm !important;
+        padding: 2px !important;
+        vertical-align: middle !important;
+        font-size: 8px !important;
         font-weight: 700 !important;
     }
 
 }
-
 
 
 /* =========================================================
