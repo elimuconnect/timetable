@@ -30,9 +30,9 @@
       CBC Timetable Management
      </span>
     </div>
-    <span aria-label="Currently selected school" aria-live="polite" id="schoolName">
-     No school selected
-    </span>
+   <span aria-label="Logged in school" aria-live="polite" id="schoolName">
+    Loading school...
+</span>
    </div>
   </header>
   <main class="app-container">
@@ -139,25 +139,34 @@
        </div>
       </div>
      </div>
-     <div class="setup-card">
-      <h3>
-       ⚙️ Timetable Setup
-      </h3>
-      <p>
-       Select a school to begin configuring
-                        and generating its timetable.
-      </p>
-      <div class="form-group">
-       <label for="schoolSelect">
-        School
-       </label>
-       <select id="schoolSelect">
-        <option value="">
-         Loading schools...
-        </option>
-       </select>
-      </div>
-      <div class="form-row">
+    
+       <div class="setup-card">
+
+    <h3>
+        ⚙️ Timetable Setup
+    </h3>
+
+    <p>
+        Your school is automatically loaded from your
+        school administrator account.
+    </p>
+
+    <div class="form-group">
+
+        <label>
+            School
+        </label>
+
+        <div
+            id="adminSchoolDisplay"
+            class="school-display"
+        >
+            Loading school...
+        </div>
+
+    </div>
+
+    <div class="form-row">
        <div class="form-group">
         <label for="academicYear">
          Academic Year
