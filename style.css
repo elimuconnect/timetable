@@ -2061,6 +2061,13 @@ textarea:focus-visible {
     }
 
 }
+
+
+.printed-date {
+    font-size: 9px !important;
+    font-weight: 500 !important;
+}
+
 /* =========================================================
    END — STAGE 1 CSS FOUNDATION
    ========================================================= */
