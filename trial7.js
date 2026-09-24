@@ -29889,7 +29889,7 @@ async function regenerateTimetable() {
 // PART 8 — PRINT
 // ============================================================
 
-function printGeneratedTimetables() {
+function printGeneratedTimetable() {
 
     const timetables =
         document.querySelectorAll(
