@@ -27524,11 +27524,6 @@ function printGeneratedTimetables() {
         return;
     }
 
-    /*
-     * Create a completely separate print window.
-     * This prevents the dashboard, toolbar, buttons,
-     * filters and other screen content from being printed.
-     */
     const printWindow = window.open(
         "",
         "_blank",
@@ -27538,42 +27533,11 @@ function printGeneratedTimetables() {
     if (!printWindow) {
         alert(
             "The print window was blocked by your browser. " +
-            "Please allow pop-ups for this site and try again."
+            "Please allow pop-ups for this site."
         );
         return;
     }
 
-    /*
-     * Collect the application's stylesheets.
-     */
-    let styles = "";
-
-    document.querySelectorAll(
-        'link[rel="stylesheet"]'
-    ).forEach(function(link) {
-
-        styles += `
-            <link
-                rel="stylesheet"
-                href="${link.href}"
-            >
-        `;
-    });
-
-    /*
-     * Also copy all inline <style> blocks.
-     */
-    document.querySelectorAll("style").forEach(function(style) {
-        styles += `
-            <style>
-                ${style.innerHTML}
-            </style>
-        `;
-    });
-
-    /*
-     * Build timetable-only HTML.
-     */
     let timetableHTML = "";
 
     timetables.forEach(function(timetable) {
@@ -27581,11 +27545,10 @@ function printGeneratedTimetables() {
         const clone = timetable.cloneNode(true);
 
         /*
-         * Remove anything that should never appear
-         * inside the print document.
+         * Remove screen-only controls.
          */
         clone.querySelectorAll(
-            "button, .timetable-toolbar"
+            ".timetable-toolbar, button"
         ).forEach(function(element) {
             element.remove();
         });
@@ -27593,290 +27556,424 @@ function printGeneratedTimetables() {
         timetableHTML += clone.outerHTML;
     });
 
+
     /*
-     * Write the completely isolated print document.
+     * =========================================================
+     * BUILD PRINT WINDOW
+     * =========================================================
      */
+
     printWindow.document.open();
 
     printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
+<!DOCTYPE html>
 
-            <meta charset="UTF-8">
+<html>
 
-            <title>Timetable Print</title>
+<head>
 
-            ${styles}
+<meta charset="UTF-8">
 
-            <style>
+<title>Timetable Print</title>
 
-                @page {
-                    size: A4 landscape;
-                    margin: 8mm;
-                }
 
-                html,
-                body {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    background: #ffffff !important;
-                    width: 100% !important;
-                }
+<style>
 
-                /*
-                 * Only timetable sections exist in this document.
-                 */
-                .printable-timetable {
-                    display: block !important;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    border: none !important;
-                    border-radius: 0 !important;
-                    overflow: visible !important;
-                    box-sizing: border-box !important;
+/* ============================================================
+   PRINT
+   ============================================================ */
 
-                    page-break-after: always;
-                    break-after: page;
-                }
+@page {
+    size: A4 landscape;
+    margin: 8mm;
+}
 
-                .printable-timetable:last-child {
-                    page-break-after: auto;
-                    break-after: auto;
-                }
 
-                /*
-                 * Never show screen controls.
-                 */
-                .timetable-toolbar,
-                button,
-                .timetable-stream-heading {
-                    display: none !important;
-                }
+html,
+body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+}
 
-                /*
-                 * Make the timetable use the full printable width.
-                 */
-                .timetable-table-wrapper {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    overflow: visible !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    box-sizing: border-box !important;
-                }
 
-                .kenyan-timetable-table {
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    min-width: 0 !important;
-                    table-layout: fixed !important;
-                    border-collapse: collapse !important;
-                    box-sizing: border-box !important;
-                }
+/* =========================================================
+   TIMETABLE
+   ========================================================= */
 
-                /*
-                 * Print header.
-                 */
-                .print-timetable-header {
-                    display: block !important;
-                    width: 100% !important;
-                    text-align: center !important;
-                    margin: 0 0 2mm 0 !important;
-                    padding: 0 !important;
-                }
+.printable-timetable {
+    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
 
-                .print-school-name {
-                    font-size: 18px !important;
-                    font-weight: 800 !important;
-                    text-transform: uppercase !important;
-                }
+    margin: 0 !important;
+    padding: 0 !important;
 
-                .print-timetable-title {
-                    margin-top: 2px !important;
-                    font-size: 15px !important;
-                    font-weight: 700 !important;
-                }
+    border: none !important;
+    border-radius: 0 !important;
 
-                .print-timetable-meta {
-                    margin-top: 2px !important;
-                    font-size: 10px !important;
-                }
+    overflow: visible !important;
 
-                .printed-date {
-                    font-size: 9px !important;
-                    font-weight: 500 !important;
-                }
+    box-sizing: border-box !important;
 
-                /*
-                 * Day column.
-                 */
-                .day-column-header,
-                .day-name-cell {
-                    width: 15mm !important;
-                    min-width: 15mm !important;
-                    max-width: 15mm !important;
-                    box-sizing: border-box !important;
-                }
+    page-break-after: always;
+    break-after: page;
+}
 
-                /*
-                 * Period headers.
-                 */
-                .timetable-period-header {
-                    height: 24mm !important;
-                    padding: 3px 2px !important;
-                    vertical-align: middle !important;
-                    box-sizing: border-box !important;
-                }
 
-                .kenyan-timetable-table thead tr {
-                    height: 24mm !important;
-                }
+.printable-timetable:last-child {
+    page-break-after: auto;
+    break-after: auto;
+}
 
-                .period-time {
-                    font-size: 7px !important;
-                    line-height: 1.1 !important;
-                }
 
-                .period-name {
-                    font-size: 6px !important;
-                    line-height: 1.1 !important;
-                }
+/* =========================================================
+   SCREEN CONTROLS
+   ========================================================= */
 
-                /*
-                 * Lesson rows.
-                 */
-                .kenyan-timetable-table tbody tr {
-                    height: 28mm !important;
-                }
+.timetable-toolbar {
+    display: none !important;
+}
 
-                .timetable-cell {
-                    height: 28mm !important;
-                    min-height: 28mm !important;
-                    padding: 2px 3px !important;
-                    vertical-align: middle !important;
-                    box-sizing: border-box !important;
-                }
+button {
+    display: none !important;
+}
 
-                .lesson-subject {
-                    font-size: 10px !important;
-                    font-weight: 900 !important;
-                    line-height: 1.15 !important;
-                    text-align: center !important;
-                }
+.timetable-stream-heading {
+    display: none !important;
+}
 
-                .lesson-teacher {
-                    font-size: 6px !important;
-                    margin-top: 1px !important;
-                    line-height: 1.1 !important;
-                }
 
-                .lesson-room {
-                    font-size: 5.5px !important;
-                    margin-top: 1px !important;
-                    line-height: 1.1 !important;
-                }
+/* =========================================================
+   PRINT HEADER
+   ========================================================= */
 
-                /*
-                 * Special periods.
-                 */
-                .special-period {
-                    min-height: 8mm !important;
-                    display: flex !important;
-                    flex-direction: column !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                    gap: 1px !important;
-                }
+.print-timetable-header {
+    display: block !important;
 
-                .special-period-icon {
-                    display: none !important;
-                }
+    width: 100% !important;
 
-                .special-period-name {
-                    font-size: 6px !important;
-                    font-weight: 700 !important;
-                    text-align: center !important;
-                    line-height: 1.1 !important;
-                }
+    text-align: center;
 
-                /*
-                 * Day labels.
-                 */
-                .day-name-cell {
-                    position: static !important;
-                    height: 28mm !important;
-                    min-height: 28mm !important;
-                    padding: 2px !important;
-                    vertical-align: middle !important;
-                    font-size: 8px !important;
-                    font-weight: 700 !important;
-                }
+    margin: 0 0 2mm 0 !important;
 
-                /*
-                 * Footer.
-                 */
-                .print-footer {
-                    display: block !important;
-                    width: 100% !important;
-                    text-align: center !important;
-                    margin-top: 3mm !important;
-                    padding-top: 1mm !important;
-                    font-size: 9px !important;
-                    font-weight: 700 !important;
-                    letter-spacing: 0.3px !important;
-                }
+    padding: 0 !important;
+}
 
-            </style>
 
-        </head>
+.print-school-name {
+    font-size: 18px !important;
 
-        <body>
+    font-weight: 800 !important;
 
-            ${timetableHTML}
+    text-transform: uppercase;
+}
 
-        </body>
-        </html>
+
+.print-timetable-title {
+    margin-top: 2px;
+
+    font-size: 15px !important;
+
+    font-weight: 700 !important;
+}
+
+
+.print-timetable-meta {
+    margin-top: 2px;
+
+    font-size: 10px !important;
+}
+
+
+.printed-date {
+    font-size: 9px !important;
+
+    font-weight: 500 !important;
+}
+
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+
+.timetable-table-wrapper {
+
+    width: 100% !important;
+
+    max-width: 100% !important;
+
+    overflow: visible !important;
+
+    margin: 0 !important;
+
+    padding: 0 !important;
+
+    box-sizing: border-box !important;
+}
+
+
+.kenyan-timetable-table {
+
+    width: 100% !important;
+
+    max-width: 100% !important;
+
+    min-width: 0 !important;
+
+    table-layout: fixed !important;
+
+    border-collapse: collapse !important;
+
+    box-sizing: border-box !important;
+
+    font-size: 8px !important;
+}
+
+
+/* =========================================================
+   DAY COLUMN
+   ========================================================= */
+
+.day-column-header,
+.day-name-cell {
+
+    width: 15mm !important;
+
+    min-width: 15mm !important;
+
+    max-width: 15mm !important;
+
+    box-sizing: border-box !important;
+}
+
+
+/* =========================================================
+   TOP PERIOD HEADER
+   ========================================================= */
+
+.timetable-period-header {
+
+    height: 24mm !important;
+
+    padding: 3px 2px !important;
+
+    vertical-align: middle !important;
+
+    box-sizing: border-box !important;
+}
+
+
+.kenyan-timetable-table thead tr {
+
+    height: 24mm !important;
+}
+
+
+.period-time {
+
+    font-size: 7px !important;
+
+    line-height: 1.1 !important;
+}
+
+
+.period-name {
+
+    font-size: 6px !important;
+
+    line-height: 1.1 !important;
+}
+
+
+/* =========================================================
+   LESSON ROWS
+   ========================================================= */
+
+.kenyan-timetable-table tbody tr {
+
+    height: 28mm !important;
+}
+
+
+/* =========================================================
+   LESSON CELLS
+   ========================================================= */
+
+.timetable-cell {
+
+    height: 28mm !important;
+
+    min-height: 28mm !important;
+
+    padding: 2px 3px !important;
+
+    vertical-align: middle !important;
+
+    box-sizing: border-box !important;
+}
+
+
+.lesson-subject {
+
+    font-size: 10px !important;
+
+    font-weight: 900 !important;
+
+    line-height: 1.15 !important;
+
+    text-align: center !important;
+}
+
+
+.lesson-teacher {
+
+    font-size: 6px !important;
+
+    margin-top: 1px !important;
+
+    line-height: 1.1 !important;
+}
+
+
+.lesson-room {
+
+    font-size: 5.5px !important;
+
+    margin-top: 1px !important;
+
+    line-height: 1.1 !important;
+}
+
+
+/* =========================================================
+   SPECIAL PERIODS
+   ========================================================= */
+
+.special-period {
+
+    min-height: 8mm !important;
+
+    display: flex !important;
+
+    flex-direction: column !important;
+
+    align-items: center !important;
+
+    justify-content: center !important;
+
+    gap: 1px !important;
+}
+
+
+.special-period-icon {
+
+    display: none !important;
+}
+
+
+.special-period-name {
+
+    font-size: 6px !important;
+
+    font-weight: 700 !important;
+
+    text-align: center !important;
+
+    line-height: 1.1 !important;
+}
+
+
+/* =========================================================
+   DAY LABEL
+   ========================================================= */
+
+.day-name-cell {
+
+    position: static !important;
+
+    height: 28mm !important;
+
+    min-height: 28mm !important;
+
+    padding: 2px !important;
+
+    vertical-align: middle !important;
+
+    font-size: 8px !important;
+
+    font-weight: 700 !important;
+}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.print-footer {
+
+    display: block !important;
+
+    width: 100% !important;
+
+    text-align: center !important;
+
+    margin-top: 3mm !important;
+
+    padding-top: 1mm !important;
+
+    font-size: 9px !important;
+
+    font-weight: 700 !important;
+
+    letter-spacing: 0.3px !important;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+${timetableHTML}
+
+</body>
+
+</html>
     `);
 
     printWindow.document.close();
 
-    /*
-     * Wait until the new document and its stylesheets
-     * have finished loading before printing.
-     */
-    printWindow.onload = function() {
 
+    /*
+     * Wait for the print document to render.
+     */
+    setTimeout(function() {
+
+        printWindow.focus();
+
+        printWindow.print();
+
+
+        /*
+         * Close the temporary print window
+         * after the print dialog is completed.
+         */
         setTimeout(function() {
 
-            printWindow.focus();
+            printWindow.close();
 
-            printWindow.print();
+        }, 1000);
 
-            /*
-             * Close after printing.
-             */
-            setTimeout(function() {
-                printWindow.close();
-            }, 1000);
-
-        }, 500);
-    };
+    }, 800);
 }
+
 
 
 
 function downloadGeneratedTimetablesPDF() {
 
-    /*
-     * The browser's Print dialog allows the user to select
-     * "Save as PDF".
-     *
-     * Use the exact same isolated print document as
-     * normal printing.
-     */
     printGeneratedTimetables();
 }
 
