@@ -23,12 +23,17 @@ console.log(
 // ============================================================
 // 2. GLOBAL STATE
 // ============================================================
-
 const timetableState = {
 
     schoolId: null,
 
     schoolName: null,
+
+    userId: null,
+
+    profile: null,
+
+    role: null,
 
     academicYear:
         new Date().getFullYear(),
@@ -110,234 +115,365 @@ document
 // 4. LOAD TIMETABLE SCHOOLS
 // ============================================================
 
-async function loadSchools() {
+// ============================================================
+// 4. AUTHENTICATION + AUTOMATIC SCHOOL DETECTION
+// ============================================================
+
+async function initializeAuthenticatedUser() {
 
     console.log(
-        "Loading timetable schools..."
+        "======================================"
     );
+
+    console.log(
+        "CHECKING AUTHENTICATED USER"
+    );
+
+    console.log(
+        "======================================"
+    );
+
+
+    // --------------------------------------------------------
+    // 1. GET LOGGED-IN SUPABASE USER
+    // --------------------------------------------------------
 
     const {
-        data,
-        error
-    } = await supabaseClient
+        data: {
+            user
+        },
+        error: authError
+    } = await supabaseClient.auth.getUser();
 
-        .from("timetable_schools")
 
-        .select(
-            "id, name, status"
-        )
-
-        .order(
-            "name",
-            {
-                ascending: true
-            }
-        );
-
-    console.log(
-        "Timetable schools response:",
-        {
-            data,
-            error
-        }
-    );
-
-    if (error) {
+    if (authError) {
 
         console.error(
-            "ERROR LOADING TIMETABLE SCHOOLS:",
-            error
+            "AUTH ERROR:",
+            authError
         );
 
-        showDatabaseError(
-            "timetable_schools",
-            error
-        );
+        window.location.href = "login.html";
 
-        return;
-
+        return null;
     }
 
-    const select =
-        document.getElementById(
-            "schoolSelect"
-        );
 
-    if (!select) {
-
-        console.error(
-            "schoolSelect element was not found."
-        );
-
-        return;
-
-    }
-
-    select.innerHTML = `
-        <option value="">
-            Select school
-        </option>
-    `;
-
-    if (!data || data.length === 0) {
-
-        select.innerHTML = `
-            <option value="">
-                No schools found
-            </option>
-        `;
+    if (!user) {
 
         console.warn(
-            "No timetable schools were returned from Supabase."
+            "No authenticated user."
         );
 
-        return;
+        window.location.href = "login.html";
 
+        return null;
     }
 
-    data.forEach(
-        school => {
-
-            const option =
-                document.createElement(
-                    "option"
-                );
-
-            option.value =
-                school.id;
-
-            option.textContent =
-                school.name;
-
-            select.appendChild(
-                option
-            );
-
-        }
-    );
 
     console.log(
-        `Loaded ${data.length} timetable schools.`
+        "Authenticated user:",
+        user.id
     );
 
-}
 
-// ============================================================
-// 5. SCHOOL SELECTION
-// ============================================================
+    // --------------------------------------------------------
+    // 2. GET USER PROFILE
+    // --------------------------------------------------------
 
-const schoolSelect =
-    document.getElementById(
-        "schoolSelect"
+    const {
+        data: profile,
+        error: profileError
+    } = await supabaseClient
+
+        .from("profiles")
+
+        .select("*")
+
+        .eq("auth_id", user.id)
+
+        .single();
+
+
+    if (profileError || !profile) {
+
+        console.error(
+            "PROFILE ERROR:",
+            profileError
+        );
+
+        alert(
+            "Your user profile could not be found."
+        );
+
+        await supabaseClient.auth.signOut();
+
+        window.location.href = "login.html";
+
+        return null;
+    }
+
+
+    console.log(
+        "User profile:",
+        profile
     );
 
-if (schoolSelect) {
 
-    schoolSelect.addEventListener(
-        "change",
-        async function () {
+    // --------------------------------------------------------
+    // 3. CHECK ROLE
+    // --------------------------------------------------------
 
-            const schoolId =
-                this.value;
+    if (
+        profile.role !== "admin" &&
+        profile.role !== "superadmin"
+    ) {
 
-            // ------------------------------------------------
-            // NO SCHOOL SELECTED
-            // ------------------------------------------------
+        alert(
+            "Access denied. Admin or Superadmin access is required."
+        );
 
-            if (!schoolId) {
+        await supabaseClient.auth.signOut();
 
-                timetableState.schoolId =
-                    null;
+        window.location.href = "login.html";
 
-                timetableState.schoolName =
-                    null;
+        return null;
+    }
 
-                const schoolNameElement =
-                    document.getElementById(
-                        "schoolName"
-                    );
 
-                if (schoolNameElement) {
+    // --------------------------------------------------------
+    // 4. SAVE PROFILE IN GLOBAL STATE
+    // --------------------------------------------------------
 
-                    schoolNameElement.textContent =
-                        "No school selected";
+    timetableState.userId =
+        user.id;
 
-                }
+    timetableState.profile =
+        profile;
 
-                resetDashboardCounts();
+    timetableState.role =
+        profile.role;
 
-                return;
 
-            }
+    // ========================================================
+    // SUPERADMIN
+    // ========================================================
 
-            // ------------------------------------------------
-            // GET SELECTED SCHOOL
-            // ------------------------------------------------
+    if (
+        profile.role === "superadmin"
+    ) {
 
-            const selectedOption =
-                this.options[
-                    this.selectedIndex
-                ];
+        console.log(
+            "Logged in as SUPERADMIN."
+        );
 
-            const schoolName =
-                selectedOption.textContent;
+        console.log(
+            "Superadmin school selection remains available."
+        );
 
-            // ------------------------------------------------
-            // UPDATE GLOBAL STATE
-            // ------------------------------------------------
+        return {
+            user,
+            profile,
+            role: "superadmin"
+        };
+    }
 
-            timetableState.schoolId =
-                schoolId;
 
-            timetableState.schoolName =
-                schoolName;
+    // ========================================================
+    // SCHOOL ADMIN
+    // ========================================================
 
-            const schoolNameElement =
-                document.getElementById(
-                    "schoolName"
-                );
+    if (
+        profile.role === "admin"
+    ) {
 
-            if (schoolNameElement) {
+        console.log(
+            "Logged in as SCHOOL ADMIN."
+        );
 
-                schoolNameElement.textContent =
-                    schoolName;
 
-            }
+        // ----------------------------------------------------
+        // ADMIN MUST HAVE SCHOOL ID
+        // ----------------------------------------------------
 
-            console.log(
-                "Selected timetable school:",
-                schoolName
+        if (!profile.school_id) {
+
+            alert(
+                "Your administrator account is not assigned to a school."
             );
 
-            console.log(
-                "Selected school ID:",
-                schoolId
+            await supabaseClient.auth.signOut();
+
+            window.location.href =
+                "login.html";
+
+            return null;
+        }
+
+
+        console.log(
+            "Admin school ID:",
+            profile.school_id
+        );
+
+
+        // ----------------------------------------------------
+        // GET SCHOOL FROM timetable_schools
+        // ----------------------------------------------------
+
+        const {
+            data: school,
+            error: schoolError
+        } = await supabaseClient
+
+            .from("timetable_schools")
+
+            .select("*")
+
+            .eq(
+                "id",
+                profile.school_id
+            )
+
+            .single();
+
+
+        if (
+            schoolError ||
+            !school
+        ) {
+
+            console.error(
+                "TIMETABLE SCHOOL ERROR:",
+                schoolError
             );
 
-            // ------------------------------------------------
-            // LOAD DASHBOARD DATA
-            // ------------------------------------------------
-
-            await loadDashboardData(
-                schoolId
+            alert(
+                "Your assigned timetable school could not be found."
             );
 
-            // ------------------------------------------------
-            // LOAD TIMETABLE GENERATOR
-            // ------------------------------------------------
+            return null;
+        }
 
-            if (
-                typeof initializeTimetableGenerator ===
-                "function"
-            ) {
 
-                await initializeTimetableGenerator();
+        console.log(
+            "Admin timetable school:",
+            school
+        );
 
-            }
+
+        // ----------------------------------------------------
+        // SAVE SCHOOL IN GLOBAL STATE
+        // ----------------------------------------------------
+
+        timetableState.schoolId =
+            school.id;
+
+        timetableState.schoolName =
+            school.name;
+
+
+        // ----------------------------------------------------
+        // UPDATE SCHOOL NAME IN TOPBAR
+        // ----------------------------------------------------
+
+        const schoolNameElement =
+            document.getElementById(
+                "schoolName"
+            );
+
+
+        if (schoolNameElement) {
+
+            schoolNameElement.textContent =
+                school.name;
 
         }
-    );
 
+
+        // ----------------------------------------------------
+        // IF SCHOOL SELECT EXISTS,
+        // SET IT AUTOMATICALLY
+        // ----------------------------------------------------
+
+        const schoolSelect =
+            document.getElementById(
+                "schoolSelect"
+            );
+
+
+        if (schoolSelect) {
+
+            schoolSelect.value =
+                school.id;
+
+            // Hide it for school admins
+            schoolSelect.closest(
+                ".form-group"
+            )?.style.setProperty(
+                "display",
+                "none"
+            );
+
+        }
+
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "SCHOOL ADMIN READY"
+        );
+
+        console.log(
+            "School:",
+            school.name
+        );
+
+        console.log(
+            "School ID:",
+            school.id
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        // ----------------------------------------------------
+        // LOAD THIS SCHOOL'S DASHBOARD
+        // ----------------------------------------------------
+
+        await loadDashboardData(
+            school.id
+        );
+
+
+        // ----------------------------------------------------
+        // LOAD TIMETABLE GENERATOR
+        // ----------------------------------------------------
+
+        if (
+            typeof initializeTimetableGenerator ===
+            "function"
+        ) {
+
+            await initializeTimetableGenerator();
+
+        }
+
+
+        return {
+            user,
+            profile,
+            school,
+            role: "admin"
+        };
+    }
+
+
+    return null;
 }
 
 // ============================================================
@@ -707,6 +843,9 @@ if (termSelect) {
 // ============================================================
 // 13. INITIALIZE APPLICATION
 // ============================================================
+// ============================================================
+// 13. INITIALIZE APPLICATION
+// ============================================================
 
 async function initializeApp() {
 
@@ -722,13 +861,62 @@ async function initializeApp() {
         "======================================"
     );
 
+
     try {
 
-        await loadSchools();
+        const session =
+            await initializeAuthenticatedUser();
 
-        console.log(
-            "Application initialized successfully."
-        );
+
+        if (!session) {
+
+            console.warn(
+                "Application initialization stopped."
+            );
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // ADMIN
+        // ====================================================
+
+        if (
+            session.role === "admin"
+        ) {
+
+            console.log(
+                "School admin automatically connected to:",
+                timetableState.schoolName
+            );
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // SUPERADMIN
+        // ====================================================
+
+        if (
+            session.role === "superadmin"
+        ) {
+
+            console.log(
+                "Superadmin dashboard ready."
+            );
+
+
+            // Keep school selection for superadmin
+            await loadSchoolsForSuperadmin();
+
+            return;
+
+        }
+
 
     } catch (error) {
 
@@ -740,7 +928,6 @@ async function initializeApp() {
     }
 
 }
-
 // ============================================================
 // START APPLICATION
 // ============================================================
@@ -787,6 +974,7 @@ if (addTeacherBtn) {
     );
 
 }
+
 
 
 // ------------------------------------------------------------
