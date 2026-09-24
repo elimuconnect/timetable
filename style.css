@@ -1966,16 +1966,30 @@ textarea:focus-visible {
     }
 
     .special-period {
-        min-height: 10mm;
-    }
+    min-height: 10mm;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+}
 
-    .special-period-icon {
-        display: none;
-    }
+.special-period-icon {
+    display: block !important;
+    visibility: visible !important;
+    font-size: 12px !important;
+    line-height: 1 !important;
+    font-family:
+        "Segoe UI Emoji",
+        "Noto Color Emoji",
+        "Apple Color Emoji",
+        sans-serif !important;
+}
 
-    .special-period-name {
-        font-size: 6px !important;
-    }
+.special-period-name {
+    font-size: 6px !important;
+    text-align: center !important;
+}
 
     .day-name-cell {
         position: static !important;
@@ -1983,6 +1997,12 @@ textarea:focus-visible {
     }
 
 }
+
+
+
+
+
+
 /* =========================================================
    END — STAGE 1 CSS FOUNDATION
    ========================================================= */
