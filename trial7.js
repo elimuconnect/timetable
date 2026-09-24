@@ -26854,8 +26854,15 @@ function renderGeneratedTimetable(entries, lookup) {
                     </div>
 
                     <div class="print-timetable-meta">
-                        Academic Year • Term
-                    </div>
+    Academic Year • Term
+    <span class="printed-date">
+        • Printed: ${new Date().toLocaleDateString("en-KE", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric"
+        })}
+    </span>
+</div>
 
                 </div>
 
