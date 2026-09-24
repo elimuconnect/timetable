@@ -30373,11 +30373,6 @@ async function downloadGeneratedTimetablesPDF() {
 
 
 
-
-// ============================================================
-// DOWNLOAD GENERATED TIMETABLES AS WORD
-// ============================================================
-
 function downloadGeneratedTimetablesWord() {
 
     const timetables =
@@ -30385,23 +30380,35 @@ function downloadGeneratedTimetablesWord() {
             ".printable-timetable"
         );
 
-
     if (
         !timetables ||
         timetables.length === 0
     ) {
-
         alert(
             "No timetable is available to download."
         );
-
         return;
-
     }
 
+    /*
+     * ============================================================
+     * GET SCHOOL NAME
+     * ============================================================
+     */
+
+    const schoolName =
+        typeof getTimetableSchoolName === "function"
+            ? getTimetableSchoolName()
+            : "SCHOOL TIMETABLE";
+
+
+    /*
+     * ============================================================
+     * CLONE TIMETABLES
+     * ============================================================
+     */
 
     let timetableHTML = "";
-
 
     timetables.forEach(
         function(timetable, index) {
@@ -30410,37 +30417,44 @@ function downloadGeneratedTimetablesWord() {
                 timetable.cloneNode(true);
 
 
-            // Remove controls/buttons
+            /*
+             * Remove elements that should not
+             * appear in the Word document.
+             */
+
             clone
                 .querySelectorAll(
                     "button, .timetable-toolbar"
                 )
                 .forEach(
                     function(element) {
-
                         element.remove();
-
                     }
                 );
 
 
-            // Each stream starts on a new Word page
-            clone.style.pageBreakAfter =
-                (
-                    index <
-                    timetables.length - 1
-                )
-                    ? "always"
-                    : "auto";
+            /*
+             * Ensure every stream starts on
+             * a new Word page except the first.
+             */
+
+            if (index > 0) {
+
+                clone.style.pageBreakBefore =
+                    "always";
+
+            }
 
 
-            clone.style.breakAfter =
-                (
-                    index <
-                    timetables.length - 1
-                )
-                    ? "page"
-                    : "auto";
+            /*
+             * Keep the timetable itself at
+             * the full printable width.
+             */
+
+            clone.style.width = "100%";
+            clone.style.maxWidth = "100%";
+            clone.style.margin = "0";
+            clone.style.padding = "0";
 
 
             timetableHTML +=
@@ -30450,50 +30464,13 @@ function downloadGeneratedTimetablesWord() {
     );
 
 
-    // --------------------------------------------------------
-    // SCHOOL NAME
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * WORD DOCUMENT
+     * ============================================================
+     */
 
-    let schoolName =
-        "School Timetable";
-
-
-    if (
-        typeof getTimetableSchoolName ===
-        "function"
-    ) {
-
-        schoolName =
-            getTimetableSchoolName();
-
-    }
-
-
-    schoolName =
-        String(
-            schoolName
-        )
-        .replace(
-            /[\\/:*?"<>|]/g,
-            ""
-        )
-        .trim();
-
-
-    if (!schoolName) {
-
-        schoolName =
-            "School Timetable";
-
-    }
-
-
-    // --------------------------------------------------------
-    // WORD DOCUMENT
-    // --------------------------------------------------------
-
-    const wordHTML = `
-
+    const wordDocument = `
 <!DOCTYPE html>
 
 <html>
@@ -30503,60 +30480,78 @@ function downloadGeneratedTimetablesWord() {
 <meta charset="UTF-8">
 
 <title>
-    ${schoolName} Timetable
+    ${schoolName} - Timetable
 </title>
 
 
 <style>
 
-/* =========================================================
-   WORD PAGE
-   ========================================================= */
+/* ============================================================
+   PAGE
+   ============================================================ */
 
 @page {
 
     size: A4 landscape;
 
-    margin:
-        8mm;
+    margin: 8mm;
 
 }
 
 
+/* ============================================================
+   GENERAL
+   ============================================================ */
+
+html,
 body {
+
+    margin: 0 !important;
+
+    padding: 0 !important;
+
+    background: #ffffff !important;
 
     font-family:
         Arial,
         Helvetica,
         sans-serif;
 
-    margin: 0;
+}
 
-    padding: 0;
 
-    color: #000;
+/* ============================================================
+   TIMETABLE CONTAINER
+   ============================================================ */
 
-    background: #fff;
+.generated-timetable {
+
+    width: 100% !important;
+
+    max-width: 100% !important;
+
+    margin: 0 !important;
+
+    padding: 0 !important;
 
 }
 
 
-/* =========================================================
-   STREAM
-   ========================================================= */
-
-.printable-timetable,
 .timetable-stream {
 
-    width: 100%;
+    display: block;
 
-    max-width: 100%;
+    width: 100% !important;
 
-    margin: 0;
+    max-width: 100% !important;
 
-    padding: 0;
+    margin: 0 !important;
+
+    padding: 0 !important;
 
     border: none;
+
+    box-sizing: border-box !important;
 
     page-break-after: always;
 
@@ -30565,7 +30560,6 @@ body {
 }
 
 
-.printable-timetable:last-child,
 .timetable-stream:last-child {
 
     page-break-after: auto;
@@ -30575,374 +30569,386 @@ body {
 }
 
 
-/* =========================================================
-   HEADER
-   ========================================================= */
+/* ============================================================
+   PRINT HEADER
+   SAME DIMENSIONS AS PRINT CSS
+   ============================================================ */
 
 .print-timetable-header {
 
-    display: block;
+    display: block !important;
 
-    width: 100%;
+    width: 100% !important;
 
     text-align: center;
 
-    margin:
-        0 0 2mm 0;
+    margin: 0 0 2mm 0 !important;
 
-    padding: 0;
+    padding: 0 !important;
 
 }
 
 
 .print-school-name {
 
-    font-size:
-        18pt;
+    font-size: 18px;
 
-    font-weight:
-        800;
+    font-weight: 800;
 
-    text-transform:
-        uppercase;
+    text-transform: uppercase;
 
 }
 
 
 .print-timetable-title {
 
-    margin-top:
-        2px;
+    margin-top: 2px;
 
-    font-size:
-        15pt;
+    font-size: 15px;
 
-    font-weight:
-        700;
+    font-weight: 700;
 
 }
 
 
 .print-timetable-meta {
 
-    margin-top:
-        2px;
+    margin-top: 2px;
 
-    font-size:
-        10pt;
+    font-size: 10px;
 
 }
 
 
-/* =========================================================
-   TABLE
-   ========================================================= */
+/* ============================================================
+   PRINTED DATE
+   SAME AS PRINT CSS
+   ============================================================ */
+
+.printed-date {
+
+    font-size: 9px !important;
+
+    font-weight: 500 !important;
+
+}
+
+
+/* ============================================================
+   TABLE WRAPPER
+   ============================================================ */
 
 .timetable-table-wrapper {
 
-    width: 100%;
+    width: 100% !important;
 
-    max-width: 100%;
+    max-width: 100% !important;
 
-    overflow: visible;
+    overflow: visible !important;
 
-    margin: 0;
+    margin: 0 !important;
 
-    padding: 0;
+    padding: 0 !important;
+
+    box-sizing: border-box !important;
 
 }
 
+
+/* ============================================================
+   MAIN TABLE
+   ============================================================ */
 
 .kenyan-timetable-table {
 
-    width: 100%;
+    width: 100% !important;
 
-    max-width: 100%;
+    max-width: 100% !important;
 
-    min-width: 0;
+    min-width: 0 !important;
 
-    table-layout: fixed;
+    table-layout: fixed !important;
 
-    border-collapse:
-        collapse;
+    border-collapse: collapse !important;
 
-    box-sizing:
-        border-box;
+    box-sizing: border-box !important;
 
-    font-size:
-        8pt;
+    font-size: 8px !important;
 
 }
 
 
-/* =========================================================
+/* ============================================================
    DAY COLUMN
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .day-column-header,
 .day-name-cell {
 
-    width:
-        15mm;
+    width: 15mm !important;
 
-    min-width:
-        15mm;
+    min-width: 15mm !important;
 
-    max-width:
-        15mm;
+    max-width: 15mm !important;
+
+    box-sizing: border-box !important;
 
 }
 
 
-/* =========================================================
+/* ============================================================
    PERIOD HEADER
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .timetable-period-header {
 
-    height:
-        24mm;
+    height: 24mm !important;
 
-    padding:
-        3px 2px;
+    padding: 3px 2px !important;
 
-    vertical-align:
-        middle;
+    vertical-align: middle !important;
+
+    box-sizing: border-box !important;
 
 }
 
 
 .kenyan-timetable-table thead tr {
 
-    height:
-        24mm;
+    height: 24mm !important;
 
 }
 
 
 .period-time {
 
-    font-size:
-        7pt;
+    font-size: 7px !important;
 
-    line-height:
-        1.1;
+    line-height: 1.1 !important;
 
 }
 
 
 .period-name {
 
-    font-size:
-        6pt;
+    font-size: 6px !important;
 
-    line-height:
-        1.1;
+    line-height: 1.1 !important;
 
 }
 
 
-/* =========================================================
+/* ============================================================
    LESSON ROWS
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .kenyan-timetable-table tbody tr {
 
-    height:
-        28mm;
+    height: 28mm !important;
 
 }
 
 
-/* =========================================================
+/* ============================================================
    LESSON CELLS
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .timetable-cell {
 
-    height:
-        28mm;
+    height: 28mm !important;
 
-    min-height:
-        28mm;
+    min-height: 28mm !important;
 
-    padding:
-        2px 3px;
+    padding: 2px 3px !important;
 
-    vertical-align:
-        middle;
+    vertical-align: middle !important;
+
+    box-sizing: border-box !important;
 
 }
 
+
+/* ============================================================
+   SUBJECT
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .lesson-subject {
 
-    font-size:
-        10pt;
+    font-size: 10px !important;
 
-    font-weight:
-        900;
+    font-weight: 900 !important;
 
-    line-height:
-        1.15;
+    line-height: 1.15 !important;
 
-    text-align:
-        center;
+    text-align: center !important;
 
 }
 
+
+/* ============================================================
+   TEACHER
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .lesson-teacher {
 
-    font-size:
-        6pt;
+    font-size: 6px !important;
 
-    margin-top:
-        1px;
+    margin-top: 1px !important;
 
-    line-height:
-        1.1;
+    line-height: 1.1 !important;
 
 }
 
+
+/* ============================================================
+   ROOM
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .lesson-room {
 
-    font-size:
-        5.5pt;
+    font-size: 5.5px !important;
 
-    margin-top:
-        1px;
+    margin-top: 1px !important;
 
-    line-height:
-        1.1;
+    line-height: 1.1 !important;
 
 }
 
 
-/* =========================================================
+/* ============================================================
    SPECIAL PERIODS
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .special-period {
 
-    min-height:
-        8mm;
+    min-height: 8mm !important;
 
-    display:
-        flex;
+    display: flex !important;
 
-    flex-direction:
-        column;
+    flex-direction: column !important;
 
-    align-items:
-        center;
+    align-items: center !important;
 
-    justify-content:
-        center;
+    justify-content: center !important;
 
-    gap:
-        1px;
+    gap: 1px !important;
 
 }
 
 
+/*
+ * Same as print:
+ * hide special-period icon
+ */
+
 .special-period-icon {
 
-    display:
-        none;
+    display: none !important;
 
 }
 
 
 .special-period-name {
 
-    font-size:
-        6pt;
+    font-size: 6px !important;
 
-    font-weight:
-        700;
+    font-weight: 700 !important;
 
-    text-align:
-        center;
+    text-align: center !important;
 
-    line-height:
-        1.1;
+    line-height: 1.1 !important;
 
 }
 
 
-/* =========================================================
+/* ============================================================
    DAY LABEL
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .day-name-cell {
 
-    height:
-        28mm;
+    position: static !important;
 
-    min-height:
-        28mm;
+    height: 28mm !important;
 
-    padding:
-        2px;
+    min-height: 28mm !important;
 
-    vertical-align:
-        middle;
+    padding: 2px !important;
 
-    font-size:
-        8pt;
+    vertical-align: middle !important;
 
-    font-weight:
-        700;
+    font-size: 8px !important;
+
+    font-weight: 700 !important;
 
 }
 
 
-/* =========================================================
-   DATE
-   ========================================================= */
-
-.printed-date {
-
-    font-size:
-        9pt;
-
-    font-weight:
-        500;
-
-}
-
-
-/* =========================================================
+/* ============================================================
    FOOTER
-   ========================================================= */
+   SAME AS PRINT CSS
+   ============================================================ */
 
 .print-footer {
 
-    display:
-        block;
+    display: block !important;
 
-    width:
-        100%;
+    width: 100% !important;
 
-    text-align:
-        center;
+    text-align: center !important;
 
-    margin-top:
-        3mm;
+    margin-top: 3mm !important;
 
-    padding-top:
-        1mm;
+    padding-top: 1mm !important;
 
-    font-size:
-        9pt;
+    font-size: 9px !important;
 
-    font-weight:
-        700;
+    font-weight: 700 !important;
 
-    letter-spacing:
-        0.3px;
+    letter-spacing: 0.3px !important;
+
+}
+
+
+/* ============================================================
+   WORD TABLE COMPATIBILITY
+   ============================================================ */
+
+table {
+
+    border-collapse: collapse;
+
+    mso-table-lspace: 0pt;
+
+    mso-table-rspace: 0pt;
+
+}
+
+
+td,
+th {
+
+    mso-line-height-rule: exactly;
+
+}
+
+
+/* ============================================================
+   PREVENT CONTENT FROM CREATING EXTRA WIDTH
+   ============================================================ */
+
+* {
+
+    box-sizing: border-box;
 
 }
 
@@ -30953,24 +30959,25 @@ body {
 
 <body>
 
-${timetableHTML}
+    ${timetableHTML}
 
 </body>
 
 </html>
-
 `;
 
 
-    // --------------------------------------------------------
-    // CREATE WORD FILE
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * CREATE WORD FILE
+     * ============================================================
+     */
 
     const blob =
         new Blob(
             [
                 "\ufeff",
-                wordHTML
+                wordDocument
             ],
             {
                 type:
@@ -30979,41 +30986,44 @@ ${timetableHTML}
         );
 
 
+    /*
+     * ============================================================
+     * DOWNLOAD
+     * ============================================================
+     */
+
     const url =
-        URL.createObjectURL(
-            blob
-        );
+        URL.createObjectURL(blob);
 
 
     const link =
-        document.createElement(
-            "a"
-        );
+        document.createElement("a");
 
 
-    link.href =
-        url;
-
+    link.href = url;
 
     link.download =
         `${schoolName} - Timetable.doc`;
 
 
-    document.body.appendChild(
-        link
-    );
-
+    document.body.appendChild(link);
 
     link.click();
 
-
-    document.body.removeChild(
-        link
-    );
+    document.body.removeChild(link);
 
 
-    URL.revokeObjectURL(
-        url
+    /*
+     * Release temporary URL
+     */
+
+    setTimeout(
+        function() {
+
+            URL.revokeObjectURL(url);
+
+        },
+        1000
     );
 
 }
@@ -31021,6 +31031,19 @@ ${timetableHTML}
 
 
 
+
+
+
+
+
+
+
+
+
+
+// ============================================================
+// DOWNLOAD GENERATED TIMETABLES AS WORD
+// ============================================================
 
 const downloadTimetableWordBtn =
     document.getElementById(
@@ -31035,7 +31058,6 @@ if (downloadTimetableWordBtn) {
     );
 
 }
-
 // ============================================================
 // PART 9 — EVENTS
 // ============================================================
