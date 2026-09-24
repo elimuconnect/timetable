@@ -29939,24 +29939,435 @@ if (!window.__timetablePrintCleanupAttached) {
 
 
 
-function downloadGeneratedTimetablesPDF() {
+// ============================================================
+// DOWNLOAD GENERATED TIMETABLES AS PDF
+// ============================================================
+
+async function downloadGeneratedTimetablesPDF() {
 
     const timetables =
         document.querySelectorAll(
             ".printable-timetable"
         );
 
+
+    // --------------------------------------------------------
+    // CHECK TIMETABLE
+    // --------------------------------------------------------
+
     if (
         !timetables ||
         timetables.length === 0
     ) {
+
         alert(
-            "No timetable is available."
+            "No timetable is available to download."
         );
+
         return;
+
     }
 
-    printGeneratedTimetable();
+
+    // --------------------------------------------------------
+    // CHECK PDF LIBRARY
+    // --------------------------------------------------------
+
+    if (
+        typeof html2pdf ===
+        "undefined"
+    ) {
+
+        alert(
+            "PDF generator is not loaded. " +
+            "Please refresh the page and try again."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // CREATE PDF CONTAINER
+    // --------------------------------------------------------
+
+    const pdfContainer =
+        document.createElement(
+            "div"
+        );
+
+
+    pdfContainer.style.width =
+        "277mm";
+
+    pdfContainer.style.background =
+        "#ffffff";
+
+    pdfContainer.style.margin =
+        "0";
+
+    pdfContainer.style.padding =
+        "0";
+
+
+    // --------------------------------------------------------
+    // CLONE EACH TIMETABLE
+    // --------------------------------------------------------
+
+    timetables.forEach(
+        function(timetable, index) {
+
+            const clone =
+                timetable.cloneNode(
+                    true
+                );
+
+
+            // ------------------------------------------------
+            // REMOVE BUTTONS / TOOLBARS
+            // ------------------------------------------------
+
+            clone
+                .querySelectorAll(
+                    "button, .timetable-toolbar"
+                )
+                .forEach(
+                    function(element) {
+
+                        element.remove();
+
+                    }
+                );
+
+
+            // ------------------------------------------------
+            // PDF PAGE
+            // ------------------------------------------------
+
+            clone.style.width =
+                "277mm";
+
+            clone.style.maxWidth =
+                "277mm";
+
+            clone.style.margin =
+                "0";
+
+            clone.style.padding =
+                "0";
+
+            clone.style.border =
+                "none";
+
+            clone.style.boxSizing =
+                "border-box";
+
+            clone.style.pageBreakAfter =
+                (
+                    index <
+                    timetables.length - 1
+                )
+                    ? "always"
+                    : "auto";
+
+
+            clone.style.breakAfter =
+                (
+                    index <
+                    timetables.length - 1
+                )
+                    ? "page"
+                    : "auto";
+
+
+            // ------------------------------------------------
+            // HEADER
+            // ------------------------------------------------
+
+            const header =
+                clone.querySelector(
+                    ".print-timetable-header"
+                );
+
+            if (header) {
+
+                header.style.display =
+                    "block";
+
+                header.style.width =
+                    "100%";
+
+                header.style.textAlign =
+                    "center";
+
+                header.style.margin =
+                    "0 0 2mm 0";
+
+                header.style.padding =
+                    "0";
+
+            }
+
+
+            // ------------------------------------------------
+            // TABLE WRAPPER
+            // ------------------------------------------------
+
+            const tableWrapper =
+                clone.querySelector(
+                    ".timetable-table-wrapper"
+                );
+
+            if (tableWrapper) {
+
+                tableWrapper.style.width =
+                    "100%";
+
+                tableWrapper.style.maxWidth =
+                    "100%";
+
+                tableWrapper.style.overflow =
+                    "visible";
+
+                tableWrapper.style.margin =
+                    "0";
+
+                tableWrapper.style.padding =
+                    "0";
+
+            }
+
+
+            // ------------------------------------------------
+            // TABLE
+            // ------------------------------------------------
+
+            const table =
+                clone.querySelector(
+                    ".kenyan-timetable-table"
+                );
+
+            if (table) {
+
+                table.style.width =
+                    "100%";
+
+                table.style.maxWidth =
+                    "100%";
+
+                table.style.minWidth =
+                    "0";
+
+                table.style.tableLayout =
+                    "fixed";
+
+                table.style.borderCollapse =
+                    "collapse";
+
+                table.style.boxSizing =
+                    "border-box";
+
+                table.style.fontSize =
+                    "8px";
+
+            }
+
+
+            // ------------------------------------------------
+            // ADD TO PDF CONTAINER
+            // ------------------------------------------------
+
+            pdfContainer.appendChild(
+                clone
+            );
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // ADD TEMPORARY CONTAINER TO PAGE
+    // --------------------------------------------------------
+
+    pdfContainer.style.position =
+        "fixed";
+
+    pdfContainer.style.left =
+        "-100000px";
+
+    pdfContainer.style.top =
+        "0";
+
+    document.body.appendChild(
+        pdfContainer
+    );
+
+
+    // --------------------------------------------------------
+    // SCHOOL NAME
+    // --------------------------------------------------------
+
+    let schoolName =
+        "School";
+
+    if (
+        typeof getTimetableSchoolName ===
+        "function"
+    ) {
+
+        schoolName =
+            getTimetableSchoolName();
+
+    }
+
+
+    schoolName =
+        String(
+            schoolName
+        )
+        .replace(
+            /[\\/:*?"<>|]/g,
+            ""
+        )
+        .trim();
+
+
+    if (!schoolName) {
+
+        schoolName =
+            "School";
+
+    }
+
+
+    // --------------------------------------------------------
+    // PDF OPTIONS
+    // --------------------------------------------------------
+
+    const pdfOptions = {
+
+        margin: [
+            8,
+            8,
+            8,
+            8
+        ],
+
+        filename:
+            `${schoolName} - Timetable.pdf`,
+
+        image: {
+
+            type:
+                "jpeg",
+
+            quality:
+                0.98
+
+        },
+
+        html2canvas: {
+
+            scale:
+                2,
+
+            useCORS:
+                true,
+
+            backgroundColor:
+                "#ffffff",
+
+            logging:
+                false,
+
+            scrollX:
+                0,
+
+            scrollY:
+                0
+
+        },
+
+        jsPDF: {
+
+            unit:
+                "mm",
+
+            format:
+                "a4",
+
+            orientation:
+                "landscape",
+
+            compress:
+                true
+
+        },
+
+        pagebreak: {
+
+            mode: [
+                "css",
+                "legacy"
+            ],
+
+            before:
+                ".timetable-stream:not(:first-child)"
+
+        }
+
+    };
+
+
+    // --------------------------------------------------------
+    // GENERATE PDF
+    // --------------------------------------------------------
+
+    try {
+
+        await html2pdf()
+            .set(
+                pdfOptions
+            )
+            .from(
+                pdfContainer
+            )
+            .save();
+
+
+    } catch (error) {
+
+        console.error(
+            "PDF generation failed:",
+            error
+        );
+
+        alert(
+            "The PDF could not be generated. " +
+            "Please try again."
+        );
+
+
+    } finally {
+
+        // -----------------------------------------------
+        // REMOVE TEMPORARY CONTAINER
+        // -----------------------------------------------
+
+        if (
+            pdfContainer &&
+            pdfContainer.parentNode
+        ) {
+
+            pdfContainer.parentNode.removeChild(
+                pdfContainer
+            );
+
+        }
+
+    }
+
 }
 
 
