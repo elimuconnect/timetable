@@ -1837,7 +1837,6 @@ textarea:focus-visible {
 /* ============================================================
    PRINT
    ============================================================ */
-
 @media print {
 
     @page {
@@ -1892,10 +1891,14 @@ textarea:focus-visible {
         break-after: auto;
     }
 
+    /* =========================================
+       PRINT HEADER
+       ========================================= */
+
     .print-timetable-header {
         display: block !important;
         text-align: center;
-        margin-bottom: 5mm;
+        margin-bottom: 4mm;
     }
 
     .print-school-name {
@@ -1914,6 +1917,10 @@ textarea:focus-visible {
         margin-top: 2px;
         font-size: 10px;
     }
+
+    /* =========================================
+       TABLE
+       ========================================= */
 
     .timetable-table-wrapper {
         overflow: visible !important;
@@ -1934,72 +1941,91 @@ textarea:focus-visible {
         max-width: 11mm !important;
     }
 
+    /* =========================================
+       PERIOD HEADERS
+       ========================================= */
+
     .timetable-period-header {
-        padding: 3px 2px !important;
+        padding: 2px 2px !important;
     }
 
     .period-time {
         font-size: 7px !important;
+        line-height: 1.1 !important;
     }
 
     .period-name {
         font-size: 6px !important;
+        line-height: 1.1 !important;
     }
 
+    /* =========================================
+       LESSON CELLS
+       SHORTER BECAUSE CODES ARE USED
+       ========================================= */
+
     .timetable-cell {
-        height: 17mm !important;
-        padding: 2px !important;
+        height: 12mm !important;
+        min-height: 12mm !important;
+        padding: 1.5px !important;
+        vertical-align: middle !important;
     }
 
     .lesson-subject {
         font-size: 7px !important;
+        font-weight: 700 !important;
+        line-height: 1.1 !important;
     }
 
     .lesson-teacher {
         font-size: 6px !important;
-        margin-top: 2px;
+        margin-top: 1px !important;
+        line-height: 1.1 !important;
     }
 
     .lesson-room {
-        font-size: 6px !important;
-        margin-top: 1px;
+        font-size: 5.5px !important;
+        margin-top: 1px !important;
+        line-height: 1.1 !important;
     }
 
+    /* =========================================
+       SPECIAL PERIODS
+       ========================================= */
+
     .special-period {
-    min-height: 10mm;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 2px !important;
-}
+        min-height: 8mm !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 1px !important;
+    }
 
-.special-period-icon {
-    display: block !important;
-    visibility: visible !important;
-    font-size: 12px !important;
-    line-height: 1 !important;
-    font-family:
-        "Segoe UI Emoji",
-        "Noto Color Emoji",
-        "Apple Color Emoji",
-        sans-serif !important;
-}
+    /* No emoji required in printed timetable */
 
-.special-period-name {
-    font-size: 6px !important;
-    text-align: center !important;
-}
+    .special-period-icon {
+        display: none !important;
+    }
+
+    .special-period-name {
+        font-size: 6px !important;
+        font-weight: 700 !important;
+        text-align: center !important;
+        line-height: 1.1 !important;
+    }
+
+    /* =========================================
+       DAY LABEL
+       ========================================= */
 
     .day-name-cell {
         position: static !important;
         font-size: 7px !important;
+        font-weight: 700 !important;
     }
 
 }
-
-
-
 
 
 
