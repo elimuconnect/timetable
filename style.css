@@ -2069,6 +2069,24 @@ textarea:focus-visible {
     font-weight: 500 !important;
 }
 
+
+
+
+/* =========================================
+   SMART ELIMU CONNECT FOOTER
+   ========================================= */
+
+.print-footer {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+    margin-top: 3mm !important;
+    padding-top: 1mm !important;
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px !important;
+}
+
 /* =========================================================
    END — STAGE 1 CSS FOUNDATION
    ========================================================= */
