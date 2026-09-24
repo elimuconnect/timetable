@@ -126,61 +126,110 @@ async function initializeAuthenticatedUser() {
         error: authError
     } = await supabaseClient.auth.getUser();
 
+    // --------------------------------------------------------
+    // NO AUTHENTICATED USER
+    // --------------------------------------------------------
+
     if (authError || !user) {
-        console.warn("No authenticated user.");
-        window.location.href = "login.html";
+
+        console.warn(
+            "No authenticated user."
+        );
+
+        window.location.href =
+            "login.html";
+
         return null;
     }
 
-    console.log("Authenticated user:", user.id);
+    console.log(
+        "Authenticated user:",
+        user.id
+    );
+
+    // --------------------------------------------------------
+    // LOAD USER PROFILE
+    // --------------------------------------------------------
 
     const {
         data: profile,
         error: profileError
     } = await supabaseClient
+
         .from("profiles")
+
         .select("*")
-        .eq("auth_id", user.id)
+
+        .eq(
+            "auth_id",
+            user.id
+        )
+
         .single();
 
     if (profileError || !profile) {
-        console.error("PROFILE ERROR:", profileError);
 
-        alert("Your user profile could not be found.");
+        console.error(
+            "PROFILE ERROR:",
+            profileError
+        );
+
+        alert(
+            "Your user profile could not be found."
+        );
 
         await supabaseClient.auth.signOut();
-        window.location.href = "login.html";
+
+        window.location.href =
+            "login.html";
 
         return null;
     }
 
-    console.log("User profile:", profile);
+    console.log(
+        "User profile:",
+        profile
+    );
 
     // --------------------------------------------------------
-    // THIS FILE IS FOR SCHOOL ADMINS ONLY
+    // THIS PAGE IS FOR ADMINS ONLY
     // --------------------------------------------------------
 
     if (profile.role !== "admin") {
 
-        alert(
-            "Access denied. This timetable dashboard is for school administrators only."
-        );
-
-        // Superadmin uses the separate superadmin page
+        // Superadmin has a separate page
         if (profile.role === "superadmin") {
-            window.location.href = "superadmin.html";
+
+            window.location.href =
+                "superadmin.html";
+
             return null;
         }
 
+        alert(
+            "Access denied. School administrator access is required."
+        );
+
         await supabaseClient.auth.signOut();
-        window.location.href = "login.html";
+
+        window.location.href =
+            "login.html";
 
         return null;
     }
 
-    timetableState.userId = user.id;
-    timetableState.profile = profile;
-    timetableState.role = profile.role;
+    // --------------------------------------------------------
+    // SAVE USER INFORMATION
+    // --------------------------------------------------------
+
+    timetableState.userId =
+        user.id;
+
+    timetableState.profile =
+        profile;
+
+    timetableState.role =
+        profile.role;
 
     // --------------------------------------------------------
     // ADMIN MUST HAVE A SCHOOL
@@ -193,7 +242,9 @@ async function initializeAuthenticatedUser() {
         );
 
         await supabaseClient.auth.signOut();
-        window.location.href = "login.html";
+
+        window.location.href =
+            "login.html";
 
         return null;
     }
@@ -211,9 +262,16 @@ async function initializeAuthenticatedUser() {
         data: school,
         error: schoolError
     } = await supabaseClient
+
         .from("timetable_schools")
+
         .select("*")
-        .eq("id", profile.school_id)
+
+        .eq(
+            "id",
+            profile.school_id
+        )
+
         .single();
 
     if (schoolError || !school) {
@@ -239,63 +297,125 @@ async function initializeAuthenticatedUser() {
     // SET GLOBAL SCHOOL
     // --------------------------------------------------------
 
-    timetableState.schoolId = school.id;
-    timetableState.schoolName = school.name;
+    timetableState.schoolId =
+        school.id;
+
+    timetableState.schoolName =
+        school.name;
+
+    // --------------------------------------------------------
+    // DISPLAY SCHOOL NAME
+    // --------------------------------------------------------
 
     const schoolNameElement =
-        document.getElementById("schoolName");
+        document.getElementById(
+            "schoolName"
+        );
 
     if (schoolNameElement) {
+
         schoolNameElement.textContent =
             school.name;
     }
 
     // --------------------------------------------------------
-    // HIDE MANUAL SCHOOL SELECTION
+    // HIDE SCHOOL SELECTOR
+    // --------------------------------------------------------
+    // Admin does NOT manually select a school.
+    // The school comes from profiles.school_id.
     // --------------------------------------------------------
 
     const schoolSelect =
-        document.getElementById("schoolSelect");
+        document.getElementById(
+            "schoolSelect"
+        );
 
     if (schoolSelect) {
 
-        schoolSelect.value =
-            school.id;
-
         const formGroup =
-            schoolSelect.closest(".form-group");
+            schoolSelect.closest(
+                ".form-group"
+            );
 
         if (formGroup) {
-            formGroup.style.display = "none";
+
+            formGroup.style.display =
+                "none";
         }
     }
 
-    console.log("======================================");
-    console.log("SCHOOL ADMIN READY");
-    console.log("School:", school.name);
-    console.log("School ID:", school.id);
-    console.log("======================================");
+    // --------------------------------------------------------
+    // ADMIN READY
+    // --------------------------------------------------------
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "SCHOOL ADMIN READY"
+    );
+
+    console.log(
+        "School:",
+        school.name
+    );
+
+    console.log(
+        "School ID:",
+        school.id
+    );
+
+    console.log(
+        "======================================"
+    );
 
     // --------------------------------------------------------
-    // LOAD DASHBOARD FOR THIS SCHOOL
+    // LOAD DASHBOARD
     // --------------------------------------------------------
 
     await loadDashboardData(
         school.id
     );
 
+    // --------------------------------------------------------
+    // LOAD SCHOOL DATA
+    // --------------------------------------------------------
+    // These functions previously depended on the school
+    // selector's change event.
+    //
+    // Now the school is already known automatically.
+    // --------------------------------------------------------
+await loadTeachers();
+
+await loadSubjects();
+
+await loadRequirementOptions();
+
+await loadRequirements();
+    await loadRooms();
+    // --------------------------------------------------------
+    // INITIALIZE TIMETABLE GENERATOR
+    // --------------------------------------------------------
+
     if (
         typeof initializeTimetableGenerator ===
         "function"
     ) {
+
         await initializeTimetableGenerator();
     }
 
     return {
+
         user,
+
         profile,
+
         school,
+
         role: "admin"
+
     };
 }
 // ============================================================
@@ -648,26 +768,6 @@ if (termSelect) {
 
 }
 
-// ============================================================
-// 12. AUTOMATIC TIMETABLE GENERATOR
-// ============================================================
-//
-// IMPORTANT:
-// The actual generator is now in:
-//
-// appgen.js
-//
-// Do NOT put the large generator here.
-//
-// appgen.js is loaded after app.js.
-// ============================================================
-
-// ============================================================
-// 13. INITIALIZE APPLICATION
-// ============================================================
-// ============================================================
-// 13. INITIALIZE APPLICATION
-// ============================================================
 
 // ============================================================
 // 13. INITIALIZE APPLICATION
@@ -726,17 +826,15 @@ if (addTeacherBtn) {
         "click",
         () => {
 
-            if (!timetableState.schoolId) {
+           if (!timetableState.schoolId) {
 
-                alert(
-                    "Please select a school first."
-                );
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-                return;
+    return;
 
-            }
-
-
+}
             openTeacherForm();
 
         }
@@ -931,17 +1029,16 @@ async function saveTeacher() {
     // CHECK SCHOOL
     // -----------------------------------------
 
-    if (!timetableState.schoolId) {
+  
+if (!timetableState.schoolId) {
 
-        alert(
-            "Please select a school first."
-        );
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-        return;
+    return;
 
-    }
-
-
+}
     // -----------------------------------------
     // GET FORM VALUES
     // -----------------------------------------
@@ -1198,18 +1295,19 @@ async function loadTeachers() {
     if (!container) return;
 
 
-    if (!timetableState.schoolId) {
+   if (!timetableState.schoolId) {
 
-        container.innerHTML =
-            `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-            `;
+    container.innerHTML =
+        `
+        <div class="empty-message">
+            Your school has not been loaded.
+            Please log in again.
+        </div>
+        `;
 
-        return;
+    return;
 
-    }
+}
 
 
     container.innerHTML =
@@ -1411,15 +1509,15 @@ window.editTeacher =
 window.deleteTeacher =
     async function (teacherId) {
 
-        if (!timetableState.schoolId) {
+      if (!timetableState.schoolId) {
 
-            alert(
-                "Please select a school."
-            );
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-            return;
+    return;
 
-        }
+}
 
 
         const confirmed =
@@ -1535,10 +1633,6 @@ function escapeHtml(value) {
 
 }
 
-// ============================================================
-// 16. SUBJECT MANAGEMENT
-// ============================================================
-
 
 // ------------------------------------------------------------
 // OPEN ADD SUBJECT FORM
@@ -1555,11 +1649,13 @@ if (addSubjectBtn) {
 
             if (!timetableState.schoolId) {
 
-                alert("Please select a school first.");
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-                return;
+    return;
 
-            }
+}
 
             openSubjectForm();
 
@@ -1723,11 +1819,13 @@ async function saveSubject() {
 
     if (!timetableState.schoolId) {
 
-        alert("Please select a school first.");
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-        return;
+    return;
 
-    }
+}
 
 
     // -----------------------------------------
@@ -1961,18 +2059,19 @@ async function loadSubjects() {
     if (!container) return;
 
 
-    if (!timetableState.schoolId) {
+   if (!timetableState.schoolId) {
 
-        container.innerHTML =
-            `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-            `;
+    container.innerHTML =
+        `
+        <div class="empty-message">
+            Your school has not been loaded.
+            Please log in again.
+        </div>
+        `;
 
-        return;
+    return;
 
-    }
+}
 
 
     container.innerHTML =
@@ -2176,15 +2275,15 @@ window.editSubject =
 window.deleteSubject =
     async function(subjectId) {
 
-        if (!timetableState.schoolId) {
+       if (!timetableState.schoolId) {
 
-            alert(
-                "Please select a school."
-            );
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-            return;
+    return;
 
-        }
+}
 
 
         const confirmed =
@@ -2251,51 +2350,11 @@ window.deleteSubject =
     };
 
 
-// ------------------------------------------------------------
-// LOAD SUBJECTS WHEN SCHOOL CHANGES
-// ------------------------------------------------------------
-
-if (schoolSelect) {
-
-    schoolSelect.addEventListener(
-        "change",
-        async function() {
-
-            if (
-                timetableState.schoolId
-            ) {
-
-                await loadSubjects();
-
-            }
-
-        }
-    );
-
-}
-
-// ============================================================
-// 17. ROOM MANAGEMENT
-// ============================================================
-
-
-
-// ============================================================
-// ROOM MANAGEMENT
-// GLOBAL ROOM TYPES + SCHOOL ROOMS
-// ============================================================
-
-
 // ============================================================
 // ROOM TYPE CACHE
 // ============================================================
 
 let timetableRoomTypes = [];
-
-
-// ============================================================
-// LOAD GLOBAL ROOM TYPES
-// ============================================================
 
 
 // ============================================================
@@ -2515,17 +2574,17 @@ if (addRoomBtn) {
         "click",
         async function() {
 
-            if (
-                !timetableState.schoolId
-            ) {
+           if (
+    !timetableState.schoolId
+) {
 
-                alert(
-                    "Please select a school first."
-                );
+    alert(
+        "Your school has not been loaded. Please log in again."
+    );
 
-                return;
+    return;
 
-            }
+}
 
 
             // =================================================
@@ -2944,10 +3003,9 @@ async function saveRoom() {
         !timetableState.schoolId
     ) {
 
-        alert(
-            "Please select a school first."
-        );
-
+       alert(
+    "Your school has not been loaded. Please log in again."
+);
         return;
 
     }
@@ -3211,12 +3269,11 @@ async function loadRooms() {
         !timetableState.schoolId
     ) {
 
-        container.innerHTML = `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-        `;
-
+       container.innerHTML = `
+    <div class="empty-message">
+        Your school has not been loaded. Please log in again.
+    </div>
+`;
         return;
 
     }
@@ -3495,9 +3552,9 @@ window.deleteRoom =
             !timetableState.schoolId
         ) {
 
-            alert(
-                "Please select a school."
-            );
+           alert(
+    "Your school has not been loaded. Please log in again."
+);
 
             return;
 
@@ -3572,30 +3629,6 @@ window.deleteRoom =
     };
 
 
-// ============================================================
-// LOAD ROOMS WHEN SCHOOL CHANGES
-// ============================================================
-
-if (schoolSelect) {
-
-    schoolSelect.addEventListener(
-        "change",
-        async function() {
-
-            if (
-                timetableState.schoolId
-            ) {
-
-                await loadRoomTypes();
-
-                await loadRooms();
-
-            }
-
-        }
-    );
-
-}
 
 
 // ============================================================
@@ -4076,9 +4109,8 @@ async function saveRequirement() {
     if (!timetableState.schoolId) {
 
         alert(
-            "Please select a school first."
-        );
-
+    "Your school has not been loaded. Please log in again."
+);
         return;
 
     }
@@ -4549,8 +4581,8 @@ window.editRequirement =
         if (!timetableState.schoolId) {
 
             alert(
-                "Please select a school first."
-            );
+    "Your school has not been loaded. Please log in again."
+);
 
             return;
 
@@ -4937,6 +4969,11 @@ window.editRequirement =
         // SAVE BUTTON
         // ====================================================
 
+const saveRequirementBtn =
+    document.getElementById(
+        "saveRequirementBtn"
+    );
+        
         if (saveRequirementBtn) {
 
             saveRequirementBtn.innerHTML =
@@ -5052,6 +5089,13 @@ function cancelRequirementEdit() {
     // RESET BUTTON
     // ========================================================
 
+const saveRequirementBtn =
+    document.getElementById(
+        "saveRequirementBtn"
+    );
+
+
+    
     if (saveRequirementBtn) {
 
         saveRequirementBtn.innerHTML =
@@ -5223,12 +5267,10 @@ async function loadRequirements() {
     if (!timetableState.schoolId) {
 
         container.innerHTML = `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-        `;
-
-        return;
+    <div class="empty-message">
+        Your school has not been loaded. Please log in again.
+    </div>
+`;
 
     }
 
@@ -5724,9 +5766,9 @@ window.deleteRequirement =
 
         if (!timetableState.schoolId) {
 
-            alert(
-                "Please select a school first."
-            );
+           alert(
+    "Your school has not been loaded. Please log in again."
+);
 
             return;
 
@@ -6195,10 +6237,9 @@ async function savePeriod() {
 
     if (!timetableState.schoolId) {
 
-        alert(
-            "Please select a school first."
-        );
-
+      alert(
+    "Your school has not been loaded. Please log in again."
+);
         return;
 
     }
@@ -6602,15 +6643,15 @@ async function loadPeriods() {
 
     if (!timetableState.schoolId) {
 
-        container.innerHTML = `
+       container.innerHTML = `
 
-            <div class="empty-message">
+    <div class="empty-message">
 
-                Please select a school first.
+        Your school has not been loaded. Please log in again.
 
-            </div>
+    </div>
 
-        `;
+`;
 
         return;
 
@@ -7093,10 +7134,9 @@ async function loadStandardPeriods() {
         !timetableState.schoolId
     ) {
 
-        alert(
-            "Please select a school first."
-        );
-
+       alert(
+    "Your school has not been loaded. Please log in again."
+);
         return;
 
     }
@@ -8151,40 +8191,6 @@ function disablePeriodCreationUI() {
 }
 
 
-// ============================================================
-// LOAD PERIODS WHEN SCHOOL CHANGES
-// ============================================================
-//
-// IMPORTANT:
-// timetableState.schoolId must already be set by your
-// school-selection code before loadPeriods() runs.
-// ============================================================
-
-if (typeof schoolSelect !== "undefined" && schoolSelect) {
-
-    schoolSelect.addEventListener(
-        "change",
-        async function() {
-
-            // ------------------------------------------------
-            // Do not load until the existing school-selection
-            // code has updated timetableState.schoolId.
-            // ------------------------------------------------
-
-            if (
-                timetableState &&
-                timetableState.schoolId
-            ) {
-
-                await loadPeriods();
-
-            }
-
-        }
-    );
-
-}
-
 
 // ============================================================
 // MANUAL CALL AVAILABLE
@@ -8356,10 +8362,10 @@ async function loadStreamClasses() {
     if (!timetableState.schoolId) {
 
         classSelect.innerHTML = `
-            <option value="">
-                Please select a school first
-            </option>
-        `;
+    <option value="">
+        Your school has not been loaded. Please log in again.
+    </option>
+`;
 
         return;
 
@@ -8540,10 +8546,10 @@ async function loadStreams() {
     if (!timetableState.schoolId) {
 
         container.innerHTML = `
-            <div class="empty-message">
-                Please select a school first.
-            </div>
-        `;
+    <div class="empty-message">
+        Your school has not been loaded. Please log in again.
+    </div>
+`;
 
         return;
 
@@ -8883,9 +8889,9 @@ if (addStreamBtn) {
 
             if (!timetableState.schoolId) {
 
-                alert(
-                    "Please select a school first."
-                );
+              alert(
+    "Your school has not been loaded. Please log in again."
+);
 
                 return;
 
@@ -9203,9 +9209,9 @@ async function saveStream() {
 
     if (!timetableState.schoolId) {
 
-        alert(
-            "Please select a school first."
-        );
+     alert(
+    "Your school has not been loaded. Please log in again."
+);
 
         return;
 
@@ -9570,9 +9576,8 @@ window.editStream =
         if (!timetableState.schoolId) {
 
             alert(
-                "Please select a school first."
-            );
-
+    "Your school has not been loaded. Please log in again."
+);
             return;
 
         }
@@ -9610,9 +9615,8 @@ window.deleteStream =
         if (!timetableState.schoolId) {
 
             alert(
-                "Please select a school first."
-            );
-
+    "Your school has not been loaded. Please log in again."
+);
             return;
 
         }
@@ -9710,230 +9714,6 @@ window.deleteStream =
         await loadStreams();
 
     };
-
-
-// ============================================================
-// LOAD STREAMS WHEN SCHOOL CHANGES
-// ============================================================
-
-
-
-if (schoolSelect) {
-
-    schoolSelect.addEventListener(
-        "change",
-        async function () {
-
-            const schoolId =
-                this.value;
-
-
-            // =================================================
-            // NO SCHOOL SELECTED
-            // =================================================
-
-            if (!schoolId) {
-
-                timetableState.schoolId =
-                    null;
-
-                timetableState.schoolName =
-                    null;
-
-
-                const schoolNameElement =
-                    document.getElementById(
-                        "schoolName"
-                    );
-
-
-                if (schoolNameElement) {
-
-                    schoolNameElement.textContent =
-                        "No school selected";
-
-                }
-
-
-                resetDashboardCounts();
-
-
-                generatedTimetableEntries =
-                    [];
-
-
-                hideTimetableGenerationStatus();
-
-
-                const summary =
-                    document.getElementById(
-                        "timetableSummary"
-                    );
-
-
-                if (summary) {
-
-                    summary.style.display =
-                        "none";
-
-                }
-
-
-                const conflicts =
-                    document.getElementById(
-                        "timetableConflicts"
-                    );
-
-
-                if (conflicts) {
-
-                    conflicts.style.display =
-                        "none";
-
-                }
-
-
-                await loadGeneratedTimetable();
-
-
-                return;
-
-            }
-
-
-            // =================================================
-            // SAVE SELECTED SCHOOL
-            // =================================================
-
-            const selectedOption =
-                this.options[
-                    this.selectedIndex
-                ];
-
-
-            const schoolName =
-                selectedOption
-                    ? selectedOption.textContent
-                    : "Unknown School";
-
-
-            timetableState.schoolId =
-                schoolId;
-
-
-            timetableState.schoolName =
-                schoolName;
-
-
-            const schoolNameElement =
-                document.getElementById(
-                    "schoolName"
-                );
-
-
-            if (schoolNameElement) {
-
-                schoolNameElement.textContent =
-                    schoolName;
-
-            }
-
-
-            console.log(
-                "Selected timetable school:",
-                schoolName
-            );
-
-
-            console.log(
-                "Selected school ID:",
-                schoolId
-            );
-
-
-            // =================================================
-            // DASHBOARD
-            // =================================================
-
-            await loadDashboardData(
-                schoolId
-            );
-
-             await loadStreams();
-
-            
-            // =================================================
-            // GENERATED TIMETABLE
-            // =================================================
-
-            generatedTimetableEntries =
-                [];
-
-
-            hideTimetableGenerationStatus();
-
-
-            const summary =
-                document.getElementById(
-                    "timetableSummary"
-                );
-
-
-            if (summary) {
-
-                summary.style.display =
-                    "none";
-
-            }
-
-
-            const conflicts =
-                document.getElementById(
-                    "timetableConflicts"
-                );
-
-
-            if (conflicts) {
-
-                conflicts.style.display =
-                    "none";
-
-            }
-
-
-            // =================================================
-            // LOAD GENERATOR DATA
-            // =================================================
-
-            try {
-
-                await loadTimetableFilters();
-
-                await loadGeneratedTimetable();
-
-            }
-
-            catch (error) {
-
-                console.error(
-                    "Failed to load timetable generator:",
-                    error
-                );
-
-            }
-
-        }
-    );
-
-}
-
-
-
-
-
-
-
-
 
 
 
