@@ -29884,6 +29884,7 @@ async function regenerateTimetable() {
 
 }
 
+ 
 
 // ============================================================
 // PART 8 — PRINT
@@ -29955,7 +29956,7 @@ function downloadGeneratedTimetablesPDF() {
         return;
     }
 
-    printGeneratedTimetables();
+    printGeneratedTimetable();
 }
 
 
