@@ -26763,57 +26763,28 @@ function renderGeneratedTimetable(entries, lookup) {
     // 8. BUILD MAIN HEADER
     // ========================================================
 
-    let html = `
+  let html = `
 
-        <div class="generated-timetable">
+    <div class="generated-timetable">
 
-            <div class="timetable-toolbar">
+        <div class="timetable-toolbar">
 
-                <div class="timetable-toolbar-title">
+            <div class="timetable-toolbar-title">
 
-                    <div class="timetable-main-title">
-                        📅 Generated Timetable
-                    </div>
-
-                    <div class="timetable-subtitle">
-                        ${entries.length}
-                        lesson periods generated
-                    </div>
-
+                <div class="timetable-main-title">
+                    📅 Generated Timetable
                 </div>
 
-                <div class="timetable-toolbar-actions">
-
-                    <button
-                        type="button"
-                        class="timetable-action-btn"
-                        onclick="printGeneratedTimetables()"
-                    >
-                        🖨 Print
-                    </button>
-
-                    <button
-                        type="button"
-                        class="timetable-action-btn"
-                        onclick="downloadGeneratedTimetablesPDF()"
-                    >
-                        📄 PDF
-                    </button>
-
-                    <button
-                        type="button"
-                        class="timetable-action-btn"
-                        onclick="downloadGeneratedTimetablesExcel()"
-                    >
-                        📊 Excel
-                    </button>
-
+                <div class="timetable-subtitle">
+                    ${entries.length}
+                    lesson periods generated
                 </div>
 
             </div>
 
-    `;
+        </div>
 
+`;
 
     // ========================================================
     // 9. RENDER EACH STREAM
