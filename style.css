@@ -1833,6 +1833,7 @@ textarea:focus-visible {
 
 }
 
+
 /* ============================================================
    PRINT
    ============================================================ */
@@ -1864,6 +1865,7 @@ textarea:focus-visible {
         left: 0;
         top: 0;
         width: 100%;
+        max-width: 100%;
     }
 
     .timetable-toolbar {
@@ -1876,13 +1878,16 @@ textarea:focus-visible {
 
     .timetable-stream {
         display: block;
-        width: 100%;
-        margin: 0 0 12mm 0;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
         border: none;
         border-radius: 0;
         overflow: visible;
         page-break-after: always;
         break-after: page;
+        box-sizing: border-box !important;
     }
 
     .timetable-stream:last-child {
@@ -1896,8 +1901,10 @@ textarea:focus-visible {
 
     .print-timetable-header {
         display: block !important;
+        width: 100% !important;
         text-align: center;
-        margin-bottom: 4mm;
+        margin: 0 0 4mm 0 !important;
+        padding: 0 !important;
     }
 
     .print-school-name {
@@ -1922,32 +1929,45 @@ textarea:focus-visible {
        ========================================= */
 
     .timetable-table-wrapper {
-        overflow: visible !important;
         width: 100% !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
     }
 
     .kenyan-timetable-table {
         width: 100% !important;
+        max-width: 100% !important;
         min-width: 0 !important;
         table-layout: fixed !important;
+        border-collapse: collapse !important;
+        box-sizing: border-box !important;
         font-size: 8px !important;
     }
 
+    /* =========================================
+       DAY COLUMN
+       ========================================= */
+
     .day-column-header,
     .day-name-cell {
-        width: 11mm !important;
-        min-width: 11mm !important;
-        max-width: 11mm !important;
+        width: 15mm !important;
+        min-width: 15mm !important;
+        max-width: 15mm !important;
+        box-sizing: border-box !important;
     }
 
     /* =========================================
-       PERIOD HEADERS
+       TOP PERIOD HEADER
        ========================================= */
 
     .timetable-period-header {
         height: 16mm !important;
         padding: 3px 2px !important;
         vertical-align: middle !important;
+        box-sizing: border-box !important;
     }
 
     .period-time {
@@ -1969,6 +1989,7 @@ textarea:focus-visible {
         min-height: 16mm !important;
         padding: 2px 3px !important;
         vertical-align: middle !important;
+        box-sizing: border-box !important;
     }
 
     .lesson-subject {
@@ -2002,8 +2023,6 @@ textarea:focus-visible {
         gap: 1px !important;
     }
 
-    /* No emoji required in printed timetable */
-
     .special-period-icon {
         display: none !important;
     }
@@ -2030,7 +2049,6 @@ textarea:focus-visible {
     }
 
 }
-
 
 /* =========================================================
    END — STAGE 1 CSS FOUNDATION
