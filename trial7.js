@@ -29945,15 +29945,33 @@ if (!window.__timetablePrintCleanupAttached) {
 
 async function downloadGeneratedTimetablesPDF() {
 
+    /*
+     * ============================================================
+     * CHECK PDF LIBRARY
+     * ============================================================
+     */
+
+    if (typeof html2pdf === "undefined") {
+
+        alert(
+            "PDF export library has not loaded. Please refresh the page and try again."
+        );
+
+        return;
+    }
+
+
+    /*
+     * ============================================================
+     * FIND TIMETABLES
+     * ============================================================
+     */
+
     const timetables =
         document.querySelectorAll(
             ".printable-timetable"
         );
 
-
-    // --------------------------------------------------------
-    // CHECK TIMETABLE
-    // --------------------------------------------------------
 
     if (
         !timetables ||
@@ -29965,68 +29983,86 @@ async function downloadGeneratedTimetablesPDF() {
         );
 
         return;
-
     }
 
 
-    // --------------------------------------------------------
-    // CHECK PDF LIBRARY
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * SCHOOL NAME
+     * ============================================================
+     */
 
-    if (
-        typeof html2pdf ===
-        "undefined"
-    ) {
-
-        alert(
-            "PDF generator is not loaded. " +
-            "Please refresh the page and try again."
-        );
-
-        return;
-
-    }
+    const schoolName =
+        typeof getTimetableSchoolName === "function"
+            ? getTimetableSchoolName()
+            : "SCHOOL TIMETABLE";
 
 
-    // --------------------------------------------------------
-    // CREATE PDF CONTAINER
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * TEMPORARY PDF CONTAINER
+     *
+     * IMPORTANT:
+     * Keep it inside the visible page area so html2canvas
+     * can correctly render it.
+     * ============================================================
+     */
 
-    const pdfContainer =
-        document.createElement(
-            "div"
-        );
+    const container =
+        document.createElement("div");
 
 
-    pdfContainer.style.width =
-        "277mm";
+    container.id =
+        "temporaryTimetablePdfContainer";
 
-    pdfContainer.style.background =
+
+    container.style.position =
+        "fixed";
+
+    container.style.left =
+        "0";
+
+    container.style.top =
+        "0";
+
+    container.style.width =
+        "281mm";
+
+    container.style.background =
         "#ffffff";
 
-    pdfContainer.style.margin =
+    container.style.zIndex =
+        "-999999";
+
+    container.style.opacity =
+        "1";
+
+    container.style.pointerEvents =
+        "none";
+
+    container.style.padding =
         "0";
 
-    pdfContainer.style.padding =
+    container.style.margin =
         "0";
 
 
-    // --------------------------------------------------------
-    // CLONE EACH TIMETABLE
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * ADD CLONED TIMETABLES
+     * ============================================================
+     */
 
     timetables.forEach(
         function(timetable, index) {
 
             const clone =
-                timetable.cloneNode(
-                    true
-                );
+                timetable.cloneNode(true);
 
 
-            // ------------------------------------------------
-            // REMOVE BUTTONS / TOOLBARS
-            // ------------------------------------------------
+            /*
+             * Remove interactive controls
+             */
 
             clone
                 .querySelectorAll(
@@ -30041,15 +30077,20 @@ async function downloadGeneratedTimetablesPDF() {
                 );
 
 
-            // ------------------------------------------------
-            // PDF PAGE
-            // ------------------------------------------------
+            /*
+             * ====================================================
+             * EXACT PRINT WIDTH
+             * ====================================================
+             */
 
             clone.style.width =
-                "277mm";
+                "281mm";
 
             clone.style.maxWidth =
-                "277mm";
+                "281mm";
+
+            clone.style.minWidth =
+                "281mm";
 
             clone.style.margin =
                 "0";
@@ -30057,128 +30098,31 @@ async function downloadGeneratedTimetablesPDF() {
             clone.style.padding =
                 "0";
 
-            clone.style.border =
-                "none";
+            clone.style.background =
+                "#ffffff";
 
             clone.style.boxSizing =
                 "border-box";
 
-            clone.style.pageBreakAfter =
-                (
-                    index <
-                    timetables.length - 1
-                )
-                    ? "always"
-                    : "auto";
 
+            /*
+             * ====================================================
+             * PAGE BREAK BETWEEN STREAMS
+             * ====================================================
+             */
 
-            clone.style.breakAfter =
-                (
-                    index <
-                    timetables.length - 1
-                )
-                    ? "page"
-                    : "auto";
+            if (index > 0) {
 
+                clone.style.pageBreakBefore =
+                    "always";
 
-            // ------------------------------------------------
-            // HEADER
-            // ------------------------------------------------
-
-            const header =
-                clone.querySelector(
-                    ".print-timetable-header"
-                );
-
-            if (header) {
-
-                header.style.display =
-                    "block";
-
-                header.style.width =
-                    "100%";
-
-                header.style.textAlign =
-                    "center";
-
-                header.style.margin =
-                    "0 0 2mm 0";
-
-                header.style.padding =
-                    "0";
+                clone.style.breakBefore =
+                    "page";
 
             }
 
 
-            // ------------------------------------------------
-            // TABLE WRAPPER
-            // ------------------------------------------------
-
-            const tableWrapper =
-                clone.querySelector(
-                    ".timetable-table-wrapper"
-                );
-
-            if (tableWrapper) {
-
-                tableWrapper.style.width =
-                    "100%";
-
-                tableWrapper.style.maxWidth =
-                    "100%";
-
-                tableWrapper.style.overflow =
-                    "visible";
-
-                tableWrapper.style.margin =
-                    "0";
-
-                tableWrapper.style.padding =
-                    "0";
-
-            }
-
-
-            // ------------------------------------------------
-            // TABLE
-            // ------------------------------------------------
-
-            const table =
-                clone.querySelector(
-                    ".kenyan-timetable-table"
-                );
-
-            if (table) {
-
-                table.style.width =
-                    "100%";
-
-                table.style.maxWidth =
-                    "100%";
-
-                table.style.minWidth =
-                    "0";
-
-                table.style.tableLayout =
-                    "fixed";
-
-                table.style.borderCollapse =
-                    "collapse";
-
-                table.style.boxSizing =
-                    "border-box";
-
-                table.style.fontSize =
-                    "8px";
-
-            }
-
-
-            // ------------------------------------------------
-            // ADD TO PDF CONTAINER
-            // ------------------------------------------------
-
-            pdfContainer.appendChild(
+            container.appendChild(
                 clone
             );
 
@@ -30186,64 +30130,45 @@ async function downloadGeneratedTimetablesPDF() {
     );
 
 
-    // --------------------------------------------------------
-    // ADD TEMPORARY CONTAINER TO PAGE
-    // --------------------------------------------------------
-
-    pdfContainer.style.position =
-        "fixed";
-
-    pdfContainer.style.left =
-        "-100000px";
-
-    pdfContainer.style.top =
-        "0";
+    /*
+     * ============================================================
+     * ADD TO DOCUMENT
+     * ============================================================
+     */
 
     document.body.appendChild(
-        pdfContainer
+        container
     );
 
 
-    // --------------------------------------------------------
-    // SCHOOL NAME
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * WAIT FOR BROWSER TO FINISH RENDERING
+     * ============================================================
+     */
 
-    let schoolName =
-        "School";
+    await new Promise(
+        function(resolve) {
 
-    if (
-        typeof getTimetableSchoolName ===
-        "function"
-    ) {
+            requestAnimationFrame(
+                function() {
 
-        schoolName =
-            getTimetableSchoolName();
+                    requestAnimationFrame(
+                        resolve
+                    );
 
-    }
+                }
+            );
 
-
-    schoolName =
-        String(
-            schoolName
-        )
-        .replace(
-            /[\\/:*?"<>|]/g,
-            ""
-        )
-        .trim();
+        }
+    );
 
 
-    if (!schoolName) {
-
-        schoolName =
-            "School";
-
-    }
-
-
-    // --------------------------------------------------------
-    // PDF OPTIONS
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * PDF OPTIONS
+     * ============================================================
+     */
 
     const pdfOptions = {
 
@@ -30275,6 +30200,9 @@ async function downloadGeneratedTimetablesPDF() {
             useCORS:
                 true,
 
+            allowTaint:
+                true,
+
             backgroundColor:
                 "#ffffff",
 
@@ -30285,7 +30213,13 @@ async function downloadGeneratedTimetablesPDF() {
                 0,
 
             scrollY:
-                0
+                0,
+
+            windowWidth:
+                container.scrollWidth,
+
+            windowHeight:
+                container.scrollHeight
 
         },
 
@@ -30310,29 +30244,24 @@ async function downloadGeneratedTimetablesPDF() {
             mode: [
                 "css",
                 "legacy"
-            ],
-
-            before:
-                ".timetable-stream:not(:first-child)"
+            ]
 
         }
 
     };
 
 
-    // --------------------------------------------------------
-    // GENERATE PDF
-    // --------------------------------------------------------
+    /*
+     * ============================================================
+     * GENERATE PDF
+     * ============================================================
+     */
 
     try {
 
         await html2pdf()
-            .set(
-                pdfOptions
-            )
-            .from(
-                pdfContainer
-            )
+            .set(pdfOptions)
+            .from(container)
             .save();
 
 
@@ -30343,25 +30272,27 @@ async function downloadGeneratedTimetablesPDF() {
             error
         );
 
+
         alert(
-            "The PDF could not be generated. " +
-            "Please try again."
+            "The PDF could not be generated. Please check the browser console."
         );
 
 
     } finally {
 
-        // -----------------------------------------------
-        // REMOVE TEMPORARY CONTAINER
-        // -----------------------------------------------
+        /*
+         * ========================================================
+         * CLEAN UP
+         * ========================================================
+         */
 
         if (
-            pdfContainer &&
-            pdfContainer.parentNode
+            container &&
+            container.parentNode
         ) {
 
-            pdfContainer.parentNode.removeChild(
-                pdfContainer
+            container.parentNode.removeChild(
+                container
             );
 
         }
@@ -30369,7 +30300,6 @@ async function downloadGeneratedTimetablesPDF() {
     }
 
 }
-
 
 // ============================================================
 // PART 9 — DOWNLOAD WORD DOCX
