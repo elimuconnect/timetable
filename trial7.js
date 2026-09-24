@@ -29889,297 +29889,73 @@ async function regenerateTimetable() {
 // PART 8 — PRINT
 // ============================================================
 
+function printGeneratedTimetables() {
 
-// ============================================================
-// PRINT GENERATED TIMETABLE
-// ============================================================
-
-function printGeneratedTimetable() {
-
-    const timetableContent =
-        document.getElementById(
-            "timetableContent"
+    const timetables =
+        document.querySelectorAll(
+            ".printable-timetable"
         );
-
 
     if (
-        !timetableContent
+        !timetables ||
+        timetables.length === 0
     ) {
-
         alert(
-            "Timetable display was not found."
+            "No timetable is available to print."
         );
-
         return;
-
     }
 
-
-    if (
-        !generatedTimetableEntries ||
-        !Array.isArray(
-            generatedTimetableEntries
-        ) ||
-        generatedTimetableEntries.length === 0
-    ) {
-
-        alert(
-            "There is no generated timetable to print."
-        );
-
-        return;
-
-    }
-
-
-    const printWindow =
-        window.open(
-            "",
-            "_blank"
-        );
-
-
-    if (!printWindow) {
-
-        alert(
-            "Please allow pop-ups to print the timetable."
-        );
-
-        return;
-
-    }
-
-
-    printWindow.document.open();
-
-
-    printWindow.document.write(`
-
-        <!DOCTYPE html>
-
-        <html>
-
-        <head>
-
-            <meta charset="UTF-8">
-
-            <title>
-                School Timetable
-            </title>
-
-            <style>
-
-                * {
-                    box-sizing: border-box;
-                }
-
-                body {
-
-                    font-family:
-                        Arial,
-                        Helvetica,
-                        sans-serif;
-
-                    margin: 0;
-
-                    padding: 20px;
-
-                    color: #000;
-
-                    background: #fff;
-
-                }
-
-
-                h1 {
-
-                    text-align: center;
-
-                    margin:
-                        0 0 25px 0;
-
-                    font-size: 24px;
-
-                }
-
-
-                h2,
-                h3 {
-
-                    margin-top: 20px;
-
-                    margin-bottom: 12px;
-
-                }
-
-
-                .generated-timetable {
-
-                    width: 100%;
-
-                }
-
-
-                .timetable-stream-block,
-                .timetable-stream {
-
-                    margin-bottom: 30px;
-
-                    page-break-inside:
-                        avoid;
-
-                }
-
-
-                .table-responsive,
-                .timetable-table-wrapper {
-
-                    width: 100%;
-
-                    overflow: visible;
-
-                }
-
-
-                table {
-
-                    width: 100%;
-
-                    border-collapse:
-                        collapse;
-
-                    margin-bottom: 25px;
-
-                }
-
-
-                thead {
-
-                    display: table-header-group;
-
-                }
-
-
-                tr {
-
-                    page-break-inside:
-                        avoid;
-
-                }
-
-
-                th,
-                td {
-
-                    border:
-                        1px solid #333;
-
-                    padding:
-                        7px;
-
-                    text-align:
-                        left;
-
-                    vertical-align:
-                        middle;
-
-                    font-size:
-                        11px;
-
-                }
-
-
-                th {
-
-                    font-weight:
-                        bold;
-
-                    background:
-                        #f2f2f2;
-
-                }
-
-
-                strong {
-
-                    font-weight:
-                        bold;
-
-                }
-
-
-                @page {
-
-                    size:
-                        A4 landscape;
-
-                    margin:
-                        10mm;
-
-                }
-
-
-                @media print {
-
-                    body {
-
-                        padding: 0;
-
-                    }
-
-
-                    h1 {
-
-                        margin-bottom:
-                            15px;
-
-                    }
-
-                    .timetable-stream-block,
-                    .timetable-stream {
-
-                        page-break-inside:
-                            avoid;
-
-                    }
-
-                }
-
-            </style>
-
-        </head>
-
-
-        <body>
-
-            <h1>
-                School Timetable
-            </h1>
-
-            ${timetableContent.innerHTML}
-
-        </body>
-
-        </html>
-
-    `);
-
-
-    printWindow.document.close();
-
-
-    printWindow.focus();
-
-
-    setTimeout(
-        () => {
-
-            printWindow.print();
-
-        },
-        500
+    document.body.classList.add(
+        "printing-timetable"
     );
 
+    setTimeout(function() {
+
+        window.print();
+
+    }, 100);
+}
+
+
+if (!window.__timetablePrintCleanupAttached) {
+
+    window.__timetablePrintCleanupAttached = true;
+
+    window.addEventListener(
+        "afterprint",
+        function() {
+
+            document.body.classList.remove(
+                "printing-timetable"
+            );
+
+        }
+    );
+
+}
+
+
+
+
+function downloadGeneratedTimetablesPDF() {
+
+    const timetables =
+        document.querySelectorAll(
+            ".printable-timetable"
+        );
+
+    if (
+        !timetables ||
+        timetables.length === 0
+    ) {
+        alert(
+            "No timetable is available."
+        );
+        return;
+    }
+
+    printGeneratedTimetables();
 }
 
 
