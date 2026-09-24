@@ -1526,6 +1526,463 @@ textarea:focus-visible {
 }
 
 
+
+
+
+/* ============================================================
+   KENYAN SCHOOL TIMETABLE
+   ============================================================ */
+
+.generated-timetable {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+
+/* ============================================================
+   TOOLBAR
+   ============================================================ */
+
+.timetable-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px;
+    padding: 16px 18px;
+    border: 1px solid #d9e0e7;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.timetable-main-title {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.timetable-subtitle {
+    margin-top: 4px;
+    color: #667085;
+    font-size: 14px;
+}
+
+.timetable-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.timetable-action-btn {
+    border: 1px solid #cfd6df;
+    background: #ffffff;
+    padding: 9px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.timetable-action-btn:hover {
+    background: #f3f6f9;
+}
+
+
+/* ============================================================
+   STREAM
+   ============================================================ */
+
+.timetable-stream {
+    margin-bottom: 35px;
+    background: #ffffff;
+    border: 1px solid #d7dde5;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.timetable-stream-heading {
+    padding: 12px 16px;
+    font-size: 18px;
+    font-weight: 700;
+    border-bottom: 1px solid #d7dde5;
+    background: #f7f9fb;
+}
+
+.stream-icon {
+    margin-right: 6px;
+}
+
+
+/* ============================================================
+   PRINT HEADER
+   ============================================================ */
+
+.print-timetable-header {
+    display: none;
+}
+
+
+/* ============================================================
+   TABLE WRAPPER
+   ============================================================ */
+
+.timetable-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+
+.kenyan-timetable-table {
+    width: 100%;
+    min-width: 1250px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+}
+
+
+/* ============================================================
+   DAY COLUMN
+   ============================================================ */
+
+.day-column-header,
+.day-name-cell {
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
+}
+
+.day-column-header {
+    background: #26384a;
+    color: #ffffff;
+    text-align: center;
+    font-size: 12px;
+    padding: 10px 6px;
+    border: 1px solid #c8d0d9;
+}
+
+.day-name-cell {
+    background: #eef2f6;
+    color: #1f2937;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 8px;
+    border: 1px solid #c8d0d9;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+}
+
+
+/* ============================================================
+   PERIOD HEADER
+   ============================================================ */
+
+.timetable-period-header {
+    min-width: 90px;
+    padding: 7px 5px;
+    text-align: center;
+    border: 1px solid #c8d0d9;
+    vertical-align: middle;
+}
+
+.period-time {
+    font-weight: 700;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.period-name {
+    margin-top: 3px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+
+/* ============================================================
+   PERIOD TYPES
+   ============================================================ */
+
+.period-lesson {
+    background: #eaf1f8;
+}
+
+.period-assembly {
+    background: #e8edf2;
+}
+
+.period-break {
+    background: #f5f0df;
+}
+
+.period-lunch {
+    background: #eee8dd;
+}
+
+.period-activity {
+    background: #e8efe8;
+}
+
+
+/* ============================================================
+   CELLS
+   ============================================================ */
+
+.timetable-cell {
+    height: 78px;
+    padding: 7px;
+    border: 1px solid #c8d0d9;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.lesson-cell {
+    background: #ffffff;
+}
+
+.lesson-cell:hover {
+    background: #f7fafc;
+}
+
+.lesson-subject {
+    font-weight: 800;
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.lesson-teacher {
+    margin-top: 5px;
+    font-size: 10px;
+    line-height: 1.2;
+    color: #4b5563;
+}
+
+.lesson-room {
+    margin-top: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #667085;
+}
+
+
+/* ============================================================
+   SPECIAL PERIOD CELLS
+   ============================================================ */
+
+.non-teaching-cell {
+    font-weight: 700;
+    text-align: center;
+}
+
+.special-period {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+}
+
+.special-period-icon {
+    font-size: 17px;
+    margin-bottom: 4px;
+}
+
+.special-period-name {
+    font-size: 10px;
+    line-height: 1.25;
+}
+
+.period-break,
+.period-lunch {
+    opacity: 0.95;
+}
+
+.empty-lesson-cell {
+    background: #fafafa;
+}
+
+.empty-lesson {
+    color: #b0b8c2;
+    font-size: 18px;
+}
+
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 800px) {
+
+    .timetable-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .timetable-toolbar-actions {
+        width: 100%;
+    }
+
+    .timetable-action-btn {
+        flex: 1;
+    }
+
+}
+
+
+/* ============================================================
+   PRINT
+   ============================================================ */
+
+@media print {
+
+    @page {
+        size: A4 landscape;
+        margin: 8mm;
+    }
+
+    html,
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+
+    body * {
+        visibility: hidden;
+    }
+
+    .generated-timetable,
+    .generated-timetable * {
+        visibility: visible;
+    }
+
+    .generated-timetable {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+
+    .timetable-toolbar {
+        display: none !important;
+    }
+
+    .timetable-stream-heading {
+        display: none !important;
+    }
+
+    .timetable-stream {
+        display: block;
+        width: 100%;
+        margin: 0 0 12mm 0;
+        border: none;
+        border-radius: 0;
+        overflow: visible;
+        page-break-after: always;
+        break-after: page;
+    }
+
+    .timetable-stream:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+
+    .print-timetable-header {
+        display: block !important;
+        text-align: center;
+        margin-bottom: 5mm;
+    }
+
+    .print-school-name {
+        font-size: 18px;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .print-timetable-title {
+        margin-top: 2px;
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .print-timetable-meta {
+        margin-top: 2px;
+        font-size: 10px;
+    }
+
+    .timetable-table-wrapper {
+        overflow: visible !important;
+        width: 100% !important;
+    }
+
+    .kenyan-timetable-table {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+        font-size: 8px !important;
+    }
+
+    .day-column-header,
+    .day-name-cell {
+        width: 11mm !important;
+        min-width: 11mm !important;
+        max-width: 11mm !important;
+    }
+
+    .timetable-period-header {
+        padding: 3px 2px !important;
+    }
+
+    .period-time {
+        font-size: 7px !important;
+    }
+
+    .period-name {
+        font-size: 6px !important;
+    }
+
+    .timetable-cell {
+        height: 17mm !important;
+        padding: 2px !important;
+    }
+
+    .lesson-subject {
+        font-size: 7px !important;
+    }
+
+    .lesson-teacher {
+        font-size: 6px !important;
+        margin-top: 2px;
+    }
+
+    .lesson-room {
+        font-size: 6px !important;
+        margin-top: 1px;
+    }
+
+    .special-period {
+        min-height: 10mm;
+    }
+
+    .special-period-icon {
+        display: none;
+    }
+
+    .special-period-name {
+        font-size: 6px !important;
+    }
+
+    .day-name-cell {
+        position: static !important;
+        font-size: 7px !important;
+    }
+
+}
 /* =========================================================
    END — STAGE 1 CSS FOUNDATION
    ========================================================= */
