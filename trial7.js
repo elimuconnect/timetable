@@ -30371,6 +30371,671 @@ async function downloadGeneratedTimetablesPDF() {
 }
 
 
+
+
+
+// ============================================================
+// DOWNLOAD GENERATED TIMETABLES AS WORD
+// ============================================================
+
+function downloadGeneratedTimetablesWord() {
+
+    const timetables =
+        document.querySelectorAll(
+            ".printable-timetable"
+        );
+
+
+    if (
+        !timetables ||
+        timetables.length === 0
+    ) {
+
+        alert(
+            "No timetable is available to download."
+        );
+
+        return;
+
+    }
+
+
+    let timetableHTML = "";
+
+
+    timetables.forEach(
+        function(timetable, index) {
+
+            const clone =
+                timetable.cloneNode(true);
+
+
+            // Remove controls/buttons
+            clone
+                .querySelectorAll(
+                    "button, .timetable-toolbar"
+                )
+                .forEach(
+                    function(element) {
+
+                        element.remove();
+
+                    }
+                );
+
+
+            // Each stream starts on a new Word page
+            clone.style.pageBreakAfter =
+                (
+                    index <
+                    timetables.length - 1
+                )
+                    ? "always"
+                    : "auto";
+
+
+            clone.style.breakAfter =
+                (
+                    index <
+                    timetables.length - 1
+                )
+                    ? "page"
+                    : "auto";
+
+
+            timetableHTML +=
+                clone.outerHTML;
+
+        }
+    );
+
+
+    // --------------------------------------------------------
+    // SCHOOL NAME
+    // --------------------------------------------------------
+
+    let schoolName =
+        "School Timetable";
+
+
+    if (
+        typeof getTimetableSchoolName ===
+        "function"
+    ) {
+
+        schoolName =
+            getTimetableSchoolName();
+
+    }
+
+
+    schoolName =
+        String(
+            schoolName
+        )
+        .replace(
+            /[\\/:*?"<>|]/g,
+            ""
+        )
+        .trim();
+
+
+    if (!schoolName) {
+
+        schoolName =
+            "School Timetable";
+
+    }
+
+
+    // --------------------------------------------------------
+    // WORD DOCUMENT
+    // --------------------------------------------------------
+
+    const wordHTML = `
+
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>
+    ${schoolName} Timetable
+</title>
+
+
+<style>
+
+/* =========================================================
+   WORD PAGE
+   ========================================================= */
+
+@page {
+
+    size: A4 landscape;
+
+    margin:
+        8mm;
+
+}
+
+
+body {
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    margin: 0;
+
+    padding: 0;
+
+    color: #000;
+
+    background: #fff;
+
+}
+
+
+/* =========================================================
+   STREAM
+   ========================================================= */
+
+.printable-timetable,
+.timetable-stream {
+
+    width: 100%;
+
+    max-width: 100%;
+
+    margin: 0;
+
+    padding: 0;
+
+    border: none;
+
+    page-break-after: always;
+
+    break-after: page;
+
+}
+
+
+.printable-timetable:last-child,
+.timetable-stream:last-child {
+
+    page-break-after: auto;
+
+    break-after: auto;
+
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.print-timetable-header {
+
+    display: block;
+
+    width: 100%;
+
+    text-align: center;
+
+    margin:
+        0 0 2mm 0;
+
+    padding: 0;
+
+}
+
+
+.print-school-name {
+
+    font-size:
+        18pt;
+
+    font-weight:
+        800;
+
+    text-transform:
+        uppercase;
+
+}
+
+
+.print-timetable-title {
+
+    margin-top:
+        2px;
+
+    font-size:
+        15pt;
+
+    font-weight:
+        700;
+
+}
+
+
+.print-timetable-meta {
+
+    margin-top:
+        2px;
+
+    font-size:
+        10pt;
+
+}
+
+
+/* =========================================================
+   TABLE
+   ========================================================= */
+
+.timetable-table-wrapper {
+
+    width: 100%;
+
+    max-width: 100%;
+
+    overflow: visible;
+
+    margin: 0;
+
+    padding: 0;
+
+}
+
+
+.kenyan-timetable-table {
+
+    width: 100%;
+
+    max-width: 100%;
+
+    min-width: 0;
+
+    table-layout: fixed;
+
+    border-collapse:
+        collapse;
+
+    box-sizing:
+        border-box;
+
+    font-size:
+        8pt;
+
+}
+
+
+/* =========================================================
+   DAY COLUMN
+   ========================================================= */
+
+.day-column-header,
+.day-name-cell {
+
+    width:
+        15mm;
+
+    min-width:
+        15mm;
+
+    max-width:
+        15mm;
+
+}
+
+
+/* =========================================================
+   PERIOD HEADER
+   ========================================================= */
+
+.timetable-period-header {
+
+    height:
+        24mm;
+
+    padding:
+        3px 2px;
+
+    vertical-align:
+        middle;
+
+}
+
+
+.kenyan-timetable-table thead tr {
+
+    height:
+        24mm;
+
+}
+
+
+.period-time {
+
+    font-size:
+        7pt;
+
+    line-height:
+        1.1;
+
+}
+
+
+.period-name {
+
+    font-size:
+        6pt;
+
+    line-height:
+        1.1;
+
+}
+
+
+/* =========================================================
+   LESSON ROWS
+   ========================================================= */
+
+.kenyan-timetable-table tbody tr {
+
+    height:
+        28mm;
+
+}
+
+
+/* =========================================================
+   LESSON CELLS
+   ========================================================= */
+
+.timetable-cell {
+
+    height:
+        28mm;
+
+    min-height:
+        28mm;
+
+    padding:
+        2px 3px;
+
+    vertical-align:
+        middle;
+
+}
+
+
+.lesson-subject {
+
+    font-size:
+        10pt;
+
+    font-weight:
+        900;
+
+    line-height:
+        1.15;
+
+    text-align:
+        center;
+
+}
+
+
+.lesson-teacher {
+
+    font-size:
+        6pt;
+
+    margin-top:
+        1px;
+
+    line-height:
+        1.1;
+
+}
+
+
+.lesson-room {
+
+    font-size:
+        5.5pt;
+
+    margin-top:
+        1px;
+
+    line-height:
+        1.1;
+
+}
+
+
+/* =========================================================
+   SPECIAL PERIODS
+   ========================================================= */
+
+.special-period {
+
+    min-height:
+        8mm;
+
+    display:
+        flex;
+
+    flex-direction:
+        column;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    gap:
+        1px;
+
+}
+
+
+.special-period-icon {
+
+    display:
+        none;
+
+}
+
+
+.special-period-name {
+
+    font-size:
+        6pt;
+
+    font-weight:
+        700;
+
+    text-align:
+        center;
+
+    line-height:
+        1.1;
+
+}
+
+
+/* =========================================================
+   DAY LABEL
+   ========================================================= */
+
+.day-name-cell {
+
+    height:
+        28mm;
+
+    min-height:
+        28mm;
+
+    padding:
+        2px;
+
+    vertical-align:
+        middle;
+
+    font-size:
+        8pt;
+
+    font-weight:
+        700;
+
+}
+
+
+/* =========================================================
+   DATE
+   ========================================================= */
+
+.printed-date {
+
+    font-size:
+        9pt;
+
+    font-weight:
+        500;
+
+}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.print-footer {
+
+    display:
+        block;
+
+    width:
+        100%;
+
+    text-align:
+        center;
+
+    margin-top:
+        3mm;
+
+    padding-top:
+        1mm;
+
+    font-size:
+        9pt;
+
+    font-weight:
+        700;
+
+    letter-spacing:
+        0.3px;
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+${timetableHTML}
+
+</body>
+
+</html>
+
+`;
+
+
+    // --------------------------------------------------------
+    // CREATE WORD FILE
+    // --------------------------------------------------------
+
+    const blob =
+        new Blob(
+            [
+                "\ufeff",
+                wordHTML
+            ],
+            {
+                type:
+                    "application/msword"
+            }
+        );
+
+
+    const url =
+        URL.createObjectURL(
+            blob
+        );
+
+
+    const link =
+        document.createElement(
+            "a"
+        );
+
+
+    link.href =
+        url;
+
+
+    link.download =
+        `${schoolName} - Timetable.doc`;
+
+
+    document.body.appendChild(
+        link
+    );
+
+
+    link.click();
+
+
+    document.body.removeChild(
+        link
+    );
+
+
+    URL.revokeObjectURL(
+        url
+    );
+
+}
+
+
+
+
+
+const downloadTimetableWordBtn =
+    document.getElementById(
+        "downloadTimetableWordBtn"
+    );
+
+if (downloadTimetableWordBtn) {
+
+    downloadTimetableWordBtn.addEventListener(
+        "click",
+        downloadGeneratedTimetablesWord
+    );
+
+}
+
 // ============================================================
 // PART 9 — EVENTS
 // ============================================================
