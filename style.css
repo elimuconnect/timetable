@@ -2004,11 +2004,12 @@ textarea:focus-visible {
         box-sizing: border-box !important;
     }
 
-    .lesson-subject {
-        font-size: 7px !important;
-        font-weight: 700 !important;
-        line-height: 1.1 !important;
-    }
+  .lesson-subject {
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    line-height: 1.15 !important;
+    text-align: center !important;
+}
 
     .lesson-teacher {
         font-size: 6px !important;
