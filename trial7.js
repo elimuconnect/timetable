@@ -31886,6 +31886,26 @@ if (
 
 
 
+
+
+const downloadTimetablePdfBtn =
+    document.getElementById(
+        "downloadTimetablePdfBtn"
+    );
+
+if (downloadTimetablePdfBtn) {
+
+    downloadTimetablePdfBtn.addEventListener(
+        "click",
+        downloadGeneratedTimetablesPDF
+    );
+
+}
+
+
+
+
+
 // ============================================================
 // PART 9 — EVENTS
 // ============================================================
