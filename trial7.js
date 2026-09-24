@@ -27526,46 +27526,26 @@ function printGeneratedTimetables() {
         !timetables ||
         timetables.length === 0
     ) {
-
         alert(
             "No timetable is available to print."
         );
-
         return;
     }
-
-
-    // --------------------------------------------------------
-    // MARK PAGE FOR TIMETABLE PRINTING
-    // --------------------------------------------------------
 
     document.body.classList.add(
         "printing-timetable"
     );
 
-
-    // --------------------------------------------------------
-    // PRINT
-    // --------------------------------------------------------
-
     window.print();
-
-
-    // --------------------------------------------------------
-    // RESTORE NORMAL SCREEN
-    // --------------------------------------------------------
 
     setTimeout(
         function() {
-
             document.body.classList.remove(
                 "printing-timetable"
             );
-
         },
         1000
     );
-
 }
 
 // ============================================================
@@ -27583,37 +27563,27 @@ function downloadGeneratedTimetablesPDF() {
         !timetables ||
         timetables.length === 0
     ) {
-
         alert(
             "No timetable is available."
         );
-
         return;
     }
-
 
     document.body.classList.add(
         "printing-timetable"
     );
 
-
     window.print();
-
 
     setTimeout(
         function() {
-
             document.body.classList.remove(
                 "printing-timetable"
             );
-
         },
         1000
     );
-
 }
-
-
 
 
 
