@@ -30301,35 +30301,323 @@ async function downloadGeneratedTimetablesPDF() {
 
 }
 
+
+
 // ============================================================
-// PART 9 — DOWNLOAD WORD DOCX
+// PART 9 — DOWNLOAD TIMETABLE AS WORD DOCX
+// Smart Elimu Connect
+// ============================================================
+
+
+// ============================================================
+// DOCX LIBRARY LOADER
+// Loads docx.js only when Word export is requested.
+// ============================================================
+
+function loadDocxLibrary() {
+
+    return new Promise(function(resolve, reject) {
+
+        /*
+         * --------------------------------------------------------
+         * ALREADY LOADED
+         * --------------------------------------------------------
+         */
+
+        if (
+            window.docx &&
+            window.docx.Document &&
+            window.docx.Packer
+        ) {
+
+            resolve(window.docx);
+
+            return;
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * CHECK FOR AN EXISTING LOADING SCRIPT
+         * --------------------------------------------------------
+         */
+
+        const existingScript =
+            document.querySelector(
+                'script[data-smart-elimu-docx="true"]'
+            );
+
+
+        if (existingScript) {
+
+            /*
+             * If the script is already loaded but the
+             * global was not available, reject.
+             */
+
+            if (
+                existingScript.dataset.loaded === "true"
+            ) {
+
+                if (
+                    window.docx &&
+                    window.docx.Document &&
+                    window.docx.Packer
+                ) {
+
+                    resolve(window.docx);
+
+                } else {
+
+                    reject(
+                        new Error(
+                            "DOCX library loaded but window.docx is unavailable."
+                        )
+                    );
+
+                }
+
+                return;
+
+            }
+
+
+            /*
+             * Wait for existing script.
+             */
+
+            existingScript.addEventListener(
+                "load",
+                function() {
+
+                    if (
+                        window.docx &&
+                        window.docx.Document &&
+                        window.docx.Packer
+                    ) {
+
+                        existingScript.dataset.loaded =
+                            "true";
+
+                        resolve(window.docx);
+
+                    } else {
+
+                        reject(
+                            new Error(
+                                "DOCX script loaded but window.docx is unavailable."
+                            )
+                        );
+
+                    }
+
+                },
+                {
+                    once: true
+                }
+            );
+
+
+            existingScript.addEventListener(
+                "error",
+                function() {
+
+                    reject(
+                        new Error(
+                            "DOCX library failed to load."
+                        )
+                    );
+
+                },
+                {
+                    once: true
+                }
+            );
+
+
+            return;
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * CREATE SCRIPT
+         * --------------------------------------------------------
+         */
+
+        const script =
+            document.createElement("script");
+
+
+        script.src =
+            "https://cdn.jsdelivr.net/npm/docx@9.7.2/build/index.umd.js";
+
+
+        script.async = true;
+
+
+        script.dataset.smartElimuDocx =
+            "true";
+
+
+        /*
+         * --------------------------------------------------------
+         * SUCCESS
+         * --------------------------------------------------------
+         */
+
+        script.onload =
+            function() {
+
+                script.dataset.loaded =
+                    "true";
+
+
+                console.log(
+                    "Smart Elimu Connect: DOCX library loaded."
+                );
+
+
+                console.log(
+                    "DOCX library:",
+                    window.docx
+                );
+
+
+                if (
+                    window.docx &&
+                    window.docx.Document &&
+                    window.docx.Packer
+                ) {
+
+                    resolve(
+                        window.docx
+                    );
+
+                } else {
+
+                    reject(
+                        new Error(
+                            "DOCX library loaded, but window.docx was not created."
+                        )
+                    );
+
+                }
+
+            };
+
+
+        /*
+         * --------------------------------------------------------
+         * FAILURE
+         * --------------------------------------------------------
+         */
+
+        script.onerror =
+            function() {
+
+                reject(
+                    new Error(
+                        "Could not load the DOCX library from the CDN."
+                    )
+                );
+
+            };
+
+
+        /*
+         * --------------------------------------------------------
+         * ADD SCRIPT TO DOCUMENT
+         * --------------------------------------------------------
+         */
+
+        document.head.appendChild(
+            script
+        );
+
+    });
+
+}
+
+
+
+// ============================================================
+// MAIN WORD EXPORT FUNCTION
 // ============================================================
 
 async function downloadGeneratedTimetablesWord() {
 
+    console.log(
+        "Starting Smart Elimu Connect Word export..."
+    );
+
+
     /*
      * ============================================================
-     * CHECK DOCX LIBRARY
+     * LOAD DOCX LIBRARY
      * ============================================================
      */
 
-    if (
-        typeof docx === "undefined" ||
-        !docx.Document ||
-        !docx.Packer
-    ) {
+    let docxLib;
 
-        alert(
-            "Word export library has not loaded. Please refresh the page and try again."
+
+    try {
+
+        docxLib =
+            await loadDocxLibrary();
+
+    } catch (error) {
+
+        console.error(
+            "DOCX library loading failed:",
+            error
         );
 
+
+        alert(
+            "Word export could not load the required library.\n\n" +
+            "Please check your internet connection and try again."
+        );
+
+
         return;
+
     }
 
 
     /*
      * ============================================================
-     * CHECK GENERATED TIMETABLE
+     * VERIFY DOCX LIBRARY
+     * ============================================================
+     */
+
+    if (
+        !docxLib ||
+        !docxLib.Document ||
+        !docxLib.Packer
+    ) {
+
+        console.error(
+            "Invalid DOCX library:",
+            docxLib
+        );
+
+
+        alert(
+            "The Word export library loaded incorrectly."
+        );
+
+
+        return;
+
+    }
+
+
+    /*
+     * ============================================================
+     * GET GENERATED TIMETABLES
      * ============================================================
      */
 
@@ -30348,13 +30636,21 @@ async function downloadGeneratedTimetablesWord() {
             "No timetable is available to download."
         );
 
+
         return;
+
     }
+
+
+    console.log(
+        "Timetables found:",
+        timetables.length
+    );
 
 
     /*
      * ============================================================
-     * SHORTCUTS TO DOCX CLASSES
+     * DOCX CLASSES
      * ============================================================
      */
 
@@ -30372,7 +30668,7 @@ async function downloadGeneratedTimetablesWord() {
         BorderStyle,
         HeightRule,
         TableLayoutType
-    } = docx;
+    } = docxLib;
 
 
     /*
@@ -30384,44 +30680,67 @@ async function downloadGeneratedTimetablesWord() {
     const schoolName =
         typeof getTimetableSchoolName === "function"
             ? getTimetableSchoolName()
-            : "SCHOOL TIMETABLE";
+            : (
+                typeof timetableState !== "undefined" &&
+                timetableState &&
+                timetableState.schoolName
+                    ? timetableState.schoolName
+                    : "SCHOOL TIMETABLE"
+            );
 
 
     /*
      * ============================================================
-     * ACADEMIC YEAR / TERM
+     * ACADEMIC YEAR
      * ============================================================
      */
 
     const academicYear =
         typeof timetableState !== "undefined" &&
-        timetableState
-            ? timetableState.academicYear || new Date().getFullYear()
+        timetableState &&
+        timetableState.academicYear
+            ? timetableState.academicYear
             : new Date().getFullYear();
 
 
+    /*
+     * ============================================================
+     * TERM
+     * ============================================================
+     */
+
     const term =
         typeof timetableState !== "undefined" &&
-        timetableState
-            ? timetableState.term || "1"
+        timetableState &&
+        timetableState.term
+            ? timetableState.term
             : "1";
 
 
     /*
      * ============================================================
-     * A4 LANDSCAPE DIMENSIONS
+     * PRINT DATE
+     * ============================================================
+     */
+
+    const printedDate =
+        new Date().toLocaleDateString(
+            "en-KE",
+            {
+                day: "2-digit",
+                month: "long",
+                year: "numeric"
+            }
+        );
+
+
+    /*
+     * ============================================================
+     * A4 LANDSCAPE
      *
-     * A4:
-     * 297mm × 210mm
+     * DOCX measurements are in twips.
      *
-     * 8mm margins on each side
-     *
-     * Printable width:
-     * 297 - 8 - 8 = 281mm
-     *
-     * DOCX uses TWIPS:
-     * 1 inch = 1440 twips
-     * 1mm ≈ 56.6929 twips
+     * 1mm = approximately 56.6929 twips
      * ============================================================
      */
 
@@ -30429,14 +30748,13 @@ async function downloadGeneratedTimetablesWord() {
         56.6929134;
 
 
-    const mmToTwips =
-        function(mm) {
+    function mmToTwips(mm) {
 
-            return Math.round(
-                mm * MM_TO_TWIPS
-            );
+        return Math.round(
+            mm * MM_TO_TWIPS
+        );
 
-        };
+    }
 
 
     const PAGE_WIDTH =
@@ -30447,7 +30765,7 @@ async function downloadGeneratedTimetablesWord() {
         mmToTwips(210);
 
 
-    const MARGIN =
+    const PAGE_MARGIN =
         mmToTwips(8);
 
 
@@ -30457,12 +30775,7 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * SAME COLUMN DIMENSIONS AS PRINT CSS
-     *
-     * Day column = 15mm
-     *
-     * Remaining 266mm is divided between
-     * the timetable period columns.
+     * TABLE DIMENSIONS
      * ============================================================
      */
 
@@ -30472,46 +30785,88 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * BORDER STYLE
+     * TABLE BORDERS
      * ============================================================
      */
 
     const tableBorders = {
 
         top: {
-            style: BorderStyle.SINGLE,
-            size: 4,
-            color: "000000"
+
+            style:
+                BorderStyle.SINGLE,
+
+            size:
+                4,
+
+            color:
+                "000000"
+
         },
 
         bottom: {
-            style: BorderStyle.SINGLE,
-            size: 4,
-            color: "000000"
+
+            style:
+                BorderStyle.SINGLE,
+
+            size:
+                4,
+
+            color:
+                "000000"
+
         },
 
         left: {
-            style: BorderStyle.SINGLE,
-            size: 4,
-            color: "000000"
+
+            style:
+                BorderStyle.SINGLE,
+
+            size:
+                4,
+
+            color:
+                "000000"
+
         },
 
         right: {
-            style: BorderStyle.SINGLE,
-            size: 4,
-            color: "000000"
+
+            style:
+                BorderStyle.SINGLE,
+
+            size:
+                4,
+
+            color:
+                "000000"
+
         },
 
         insideHorizontal: {
-            style: BorderStyle.SINGLE,
-            size: 4,
-            color: "000000"
+
+            style:
+                BorderStyle.SINGLE,
+
+            size:
+                4,
+
+            color:
+                "000000"
+
         },
 
         insideVertical: {
-            style: BorderStyle.SINGLE,
-            size: 4,
-            color: "000000"
+
+            style:
+                BorderStyle.SINGLE,
+
+            size:
+                4,
+
+            color:
+                "000000"
+
         }
 
     };
@@ -30519,7 +30874,7 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * HELPER — CLEAN TEXT
+     * TEXT CLEANER
      * ============================================================
      */
 
@@ -30534,6 +30889,7 @@ async function downloadGeneratedTimetablesWord() {
 
         }
 
+
         return String(value)
             .replace(/\u00a0/g, " ")
             .replace(/\s+/g, " ")
@@ -30544,7 +30900,7 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * HELPER — GET CELL TEXT
+     * GET CELL TEXT
      * ============================================================
      */
 
@@ -30561,11 +30917,11 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * HELPER — CREATE TEXT RUN
+     * CREATE WORD PARAGRAPH
      * ============================================================
      */
 
-    function createCellParagraph(
+    function createWordParagraph(
         text,
         options = {}
     ) {
@@ -30573,23 +30929,31 @@ async function downloadGeneratedTimetablesWord() {
         const fontSize =
             options.fontSize || 8;
 
+
         const bold =
-            options.bold || false;
+            options.bold === true;
+
+
+        const alignment =
+            options.alignment ||
+            AlignmentType.CENTER;
 
 
         return new Paragraph({
 
             alignment:
-                options.alignment ||
-                AlignmentType.CENTER,
+                alignment,
 
             spacing: {
 
-                before: 0,
+                before:
+                    0,
 
-                after: 0,
+                after:
+                    0,
 
-                line: 100
+                line:
+                    100
 
             },
 
@@ -30620,7 +30984,7 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * HELPER — DETERMINE CELL TYPE
+     * IDENTIFY CELL TYPE
      * ============================================================
      */
 
@@ -30680,89 +31044,20 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * HELPER — CREATE WORD TABLE CELL
+     * CREATE LESSON CELL CONTENT
      * ============================================================
      */
 
-    function createWordCell(cell) {
+    function getCellParagraphs(cell) {
 
-        const type =
-            getCellType(cell);
-
-
-        const text =
-            getCellText(cell);
-
-
-        let fontSize = 8;
-
-        let bold = false;
+        const paragraphs = [];
 
 
         /*
-         * DAY
-         */
-
-        if (type === "day") {
-
-            fontSize = 8;
-
-            bold = true;
-
-        }
-
-
-        /*
-         * PERIOD HEADER
-         */
-
-        else if (type === "period") {
-
-            fontSize = 6;
-
-            bold = true;
-
-        }
-
-
-        /*
+         * --------------------------------------------------------
          * LESSON
-         */
-
-        else if (type === "lesson") {
-
-            fontSize = 8;
-
-            bold = false;
-
-        }
-
-
-        /*
-         * SPECIAL PERIOD
-         */
-
-        else if (type === "special") {
-
-            fontSize = 6;
-
-            bold = true;
-
-        }
-
-
-        /*
          * --------------------------------------------------------
-         * PRESERVE IMPORTANT TEXT SEPARATION
-         * --------------------------------------------------------
-         *
-         * For lesson cells we build the contents from the
-         * existing timetable elements rather than flattening
-         * everything into one line.
          */
-
-        const children = [];
-
 
         const subject =
             cell.querySelector(
@@ -30782,29 +31077,21 @@ async function downloadGeneratedTimetablesWord() {
             );
 
 
-        const specialName =
-            cell.querySelector(
-                ".special-period-name"
-            );
-
-
-        /*
-         * LESSON CELL
-         */
-
         if (subject) {
 
-            children.push(
+            paragraphs.push(
 
-                createCellParagraph(
+                createWordParagraph(
 
                     subject.textContent,
 
                     {
 
-                        fontSize: 10,
+                        fontSize:
+                            10,
 
-                        bold: true,
+                        bold:
+                            true,
 
                         alignment:
                             AlignmentType.CENTER
@@ -30818,17 +31105,19 @@ async function downloadGeneratedTimetablesWord() {
 
             if (teacher) {
 
-                children.push(
+                paragraphs.push(
 
-                    createCellParagraph(
+                    createWordParagraph(
 
                         teacher.textContent,
 
                         {
 
-                            fontSize: 6,
+                            fontSize:
+                                6,
 
-                            bold: false,
+                            bold:
+                                false,
 
                             alignment:
                                 AlignmentType.CENTER
@@ -30844,17 +31133,19 @@ async function downloadGeneratedTimetablesWord() {
 
             if (room) {
 
-                children.push(
+                paragraphs.push(
 
-                    createCellParagraph(
+                    createWordParagraph(
 
                         room.textContent,
 
                         {
 
-                            fontSize: 5,
+                            fontSize:
+                                5,
 
-                            bold: false,
+                            bold:
+                                false,
 
                             alignment:
                                 AlignmentType.CENTER
@@ -30867,58 +31158,39 @@ async function downloadGeneratedTimetablesWord() {
 
             }
 
+
+            return paragraphs;
+
         }
 
 
         /*
+         * --------------------------------------------------------
          * SPECIAL PERIOD
+         * --------------------------------------------------------
          */
 
-        else if (specialName) {
+        const specialName =
+            cell.querySelector(
+                ".special-period-name"
+            );
 
-            children.push(
 
-                createCellParagraph(
+        if (specialName) {
+
+            paragraphs.push(
+
+                createWordParagraph(
 
                     specialName.textContent,
 
                     {
 
-                        fontSize: 6,
-
-                        bold: true,
-
-                        alignment:
-                            AlignmentType.CENTER
-
-                    }
-
-                )
-
-            );
-
-        }
-
-
-        /*
-         * PERIOD HEADER / DAY / NORMAL CELL
-         */
-
-        else {
-
-            children.push(
-
-                createCellParagraph(
-
-                    text,
-
-                    {
-
                         fontSize:
-                            fontSize,
+                            6,
 
                         bold:
-                            bold,
+                            true,
 
                         alignment:
                             AlignmentType.CENTER
@@ -30929,39 +31201,124 @@ async function downloadGeneratedTimetablesWord() {
 
             );
 
-        }
 
-
-        /*
-         * --------------------------------------------------------
-         * CELL WIDTH
-         * --------------------------------------------------------
-         */
-
-        let cellWidth =
-            DAY_COLUMN_WIDTH;
-
-
-        if (type !== "day") {
-
-            cellWidth =
-                mmToTwips(266);
+            return paragraphs;
 
         }
 
 
         /*
          * --------------------------------------------------------
-         * CELL
+         * NORMAL / HEADER / DAY
          * --------------------------------------------------------
          */
 
-        return new TableCell({
+        const type =
+            getCellType(cell);
+
+
+        let fontSize = 8;
+
+        let bold = false;
+
+
+        if (type === "day") {
+
+            fontSize = 8;
+
+            bold = true;
+
+        }
+
+
+        else if (type === "period") {
+
+            fontSize = 6;
+
+            bold = true;
+
+        }
+
+
+        else if (type === "special") {
+
+            fontSize = 6;
+
+            bold = true;
+
+        }
+
+
+        paragraphs.push(
+
+            createWordParagraph(
+
+                getCellText(cell),
+
+                {
+
+                    fontSize:
+                        fontSize,
+
+                    bold:
+                        bold,
+
+                    alignment:
+                        AlignmentType.CENTER
+
+                }
+
+            )
+
+        );
+
+
+        return paragraphs;
+
+    }
+
+
+    /*
+     * ============================================================
+     * CREATE WORD TABLE CELL
+     * ============================================================
+     */
+
+    function createWordTableCell(
+        htmlCell,
+        width
+    ) {
+
+        const paragraphs =
+            getCellParagraphs(
+                htmlCell
+            );
+
+
+        const colspan =
+            parseInt(
+                htmlCell.getAttribute(
+                    "colspan"
+                ) || "1",
+                10
+            );
+
+
+        const rowspan =
+            parseInt(
+                htmlCell.getAttribute(
+                    "rowspan"
+                ) || "1",
+                10
+            );
+
+
+        const options = {
 
             width: {
 
                 size:
-                    cellWidth,
+                    width,
 
                 type:
                     WidthType.DXA
@@ -30973,13 +31330,17 @@ async function downloadGeneratedTimetablesWord() {
 
             margins: {
 
-                top: 40,
+                top:
+                    40,
 
-                bottom: 40,
+                bottom:
+                    40,
 
-                left: 40,
+                left:
+                    40,
 
-                right: 40
+                right:
+                    40
 
             },
 
@@ -30987,16 +31348,48 @@ async function downloadGeneratedTimetablesWord() {
                 tableBorders,
 
             children:
-                children
+                paragraphs
 
-        });
+        };
+
+
+        /*
+         * --------------------------------------------------------
+         * COLUMN SPAN
+         * --------------------------------------------------------
+         */
+
+        if (
+            colspan > 1
+        ) {
+
+            options.columnSpan =
+                colspan;
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * ROW SPAN
+         * --------------------------------------------------------
+         *
+         * We intentionally avoid manually setting
+         * verticalMerge here because the HTML renderer
+         * may already represent special periods differently.
+         * --------------------------------------------------------
+         */
+
+        return new TableCell(
+            options
+        );
 
     }
 
 
     /*
      * ============================================================
-     * HELPER — BUILD WORD TABLE FROM EXISTING HTML TABLE
+     * BUILD WORD TABLE
      * ============================================================
      */
 
@@ -31005,13 +31398,39 @@ async function downloadGeneratedTimetablesWord() {
     ) {
 
         const htmlRows =
-            htmlTable.querySelectorAll(
-                "tr"
+            Array.from(
+                htmlTable.querySelectorAll(
+                    ":scope > thead > tr, :scope > tbody > tr, :scope > tr"
+                )
             );
 
 
+        /*
+         * --------------------------------------------------------
+         * FALLBACK
+         * --------------------------------------------------------
+         */
+
         if (
-            !htmlRows ||
+            htmlRows.length === 0
+        ) {
+
+            const allRows =
+                Array.from(
+                    htmlTable.querySelectorAll(
+                        "tr"
+                    )
+                );
+
+
+            htmlRows.push(
+                ...allRows
+            );
+
+        }
+
+
+        if (
             htmlRows.length === 0
         ) {
 
@@ -31022,7 +31441,7 @@ async function downloadGeneratedTimetablesWord() {
 
         /*
          * --------------------------------------------------------
-         * DETERMINE NUMBER OF COLUMNS
+         * DETERMINE COLUMN COUNT
          * --------------------------------------------------------
          */
 
@@ -31032,21 +31451,38 @@ async function downloadGeneratedTimetablesWord() {
         htmlRows.forEach(
             function(row) {
 
-                let count = 0;
+                let rowColumns = 0;
 
 
-                row.querySelectorAll(
-                    ":scope > th, :scope > td"
-                ).forEach(
+                const cells =
+                    Array.from(
+                        row.children
+                    ).filter(
+                        function(element) {
+
+                            return (
+                                element.tagName === "TD" ||
+                                element.tagName === "TH"
+                            );
+
+                        }
+                    );
+
+
+                cells.forEach(
                     function(cell) {
 
-                        count +=
+                        const colspan =
                             parseInt(
                                 cell.getAttribute(
                                     "colspan"
                                 ) || "1",
                                 10
                             );
+
+
+                        rowColumns +=
+                            colspan;
 
                     }
                 );
@@ -31055,16 +31491,23 @@ async function downloadGeneratedTimetablesWord() {
                 columnCount =
                     Math.max(
                         columnCount,
-                        count
+                        rowColumns
                     );
 
             }
         );
 
 
-        if (columnCount < 1) {
+        /*
+         * Minimum two columns:
+         * Day + at least one period.
+         */
 
-            columnCount = 1;
+        if (
+            columnCount < 2
+        ) {
+
+            columnCount = 2;
 
         }
 
@@ -31075,22 +31518,23 @@ async function downloadGeneratedTimetablesWord() {
          * --------------------------------------------------------
          */
 
+        const periodColumnCount =
+            columnCount - 1;
+
+
         const periodColumnWidth =
             Math.floor(
                 (
                     CONTENT_WIDTH -
                     DAY_COLUMN_WIDTH
                 ) /
-                Math.max(
-                    1,
-                    columnCount - 1
-                )
+                periodColumnCount
             );
 
 
         /*
          * --------------------------------------------------------
-         * CREATE ROWS
+         * CREATE WORD ROWS
          * --------------------------------------------------------
          */
 
@@ -31098,11 +31542,23 @@ async function downloadGeneratedTimetablesWord() {
 
 
         htmlRows.forEach(
-            function(htmlRow, rowIndex) {
+            function(
+                htmlRow,
+                rowIndex
+            ) {
 
                 const htmlCells =
-                    htmlRow.querySelectorAll(
-                        ":scope > th, :scope > td"
+                    Array.from(
+                        htmlRow.children
+                    ).filter(
+                        function(element) {
+
+                            return (
+                                element.tagName === "TD" ||
+                                element.tagName === "TH"
+                            );
+
+                        }
                     );
 
 
@@ -31118,90 +31574,29 @@ async function downloadGeneratedTimetablesWord() {
                             );
 
 
-                        /*
-                         * Recreate cell content.
-                         */
+                        let cellWidth;
 
-                        let wordCell =
-                            createWordCell(
-                                htmlCell
-                            );
-
-
-                        /*
-                         * Correct normal period
-                         * column width.
-                         */
 
                         if (
-                            type !== "day"
+                            type === "day"
                         ) {
 
-                            /*
-                             * docx TableCell width
-                             * is represented through
-                             * its width property.
-                             */
+                            cellWidth =
+                                DAY_COLUMN_WIDTH;
 
-                            wordCell =
-                                new TableCell({
+                        } else {
 
-                                    width: {
-
-                                        size:
-                                            periodColumnWidth,
-
-                                        type:
-                                            WidthType.DXA
-
-                                    },
-
-                                    verticalAlign:
-                                        VerticalAlign.CENTER,
-
-                                    margins: {
-
-                                        top: 40,
-
-                                        bottom: 40,
-
-                                        left: 40,
-
-                                        right: 40
-
-                                    },
-
-                                    borders:
-                                        tableBorders,
-
-                                    children:
-                                        wordCell.root
-                                            ? []
-                                            : wordCell
-                                                .options
-                                                ?.children ||
-                                              [
-
-                                                createCellParagraph(
-                                                    getCellText(
-                                                        htmlCell
-                                                    ),
-                                                    {
-
-                                                        fontSize:
-                                                            8,
-
-                                                        alignment:
-                                                            AlignmentType.CENTER
-
-                                                    }
-                                                )
-
-                                            ]
-
-                                });
+                            cellWidth =
+                                periodColumnWidth;
 
                         }
+
+
+                        const wordCell =
+                            createWordTableCell(
+                                htmlCell,
+                                cellWidth
+                            );
 
 
                         wordCells.push(
@@ -31214,7 +31609,7 @@ async function downloadGeneratedTimetablesWord() {
 
                 /*
                  * ------------------------------------------------
-                 * DETERMINE ROW HEIGHT
+                 * ROW HEIGHT
                  * ------------------------------------------------
                  */
 
@@ -31222,7 +31617,13 @@ async function downloadGeneratedTimetablesWord() {
                     mmToTwips(28);
 
 
-                if (rowIndex === 0) {
+                /*
+                 * First row = period header
+                 */
+
+                if (
+                    rowIndex === 0
+                ) {
 
                     rowHeight =
                         mmToTwips(24);
@@ -31244,7 +31645,8 @@ async function downloadGeneratedTimetablesWord() {
 
                         },
 
-                        cantSplit: true,
+                        cantSplit:
+                            true,
 
                         tableHeader:
                             rowIndex === 0,
@@ -31262,7 +31664,33 @@ async function downloadGeneratedTimetablesWord() {
 
         /*
          * --------------------------------------------------------
-         * WORD TABLE
+         * COLUMN WIDTHS
+         * --------------------------------------------------------
+         */
+
+        const columnWidths = [
+
+            DAY_COLUMN_WIDTH
+
+        ];
+
+
+        for (
+            let i = 0;
+            i < periodColumnCount;
+            i++
+        ) {
+
+            columnWidths.push(
+                periodColumnWidth
+            );
+
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * CREATE TABLE
          * --------------------------------------------------------
          */
 
@@ -31281,20 +31709,8 @@ async function downloadGeneratedTimetablesWord() {
 
             },
 
-            columnWidths: [
-
-                DAY_COLUMN_WIDTH,
-
-                ...Array(
-                    Math.max(
-                        1,
-                        columnCount - 1
-                    )
-                ).fill(
-                    periodColumnWidth
-                )
-
-            ],
+            columnWidths:
+                columnWidths,
 
             layout:
                 TableLayoutType.FIXED,
@@ -31320,7 +31736,10 @@ async function downloadGeneratedTimetablesWord() {
 
 
     timetables.forEach(
-        function(timetable, timetableIndex) {
+        function(
+            timetable,
+            timetableIndex
+        ) {
 
             /*
              * ----------------------------------------------------
@@ -31336,6 +31755,12 @@ async function downloadGeneratedTimetablesWord() {
 
             if (!htmlTable) {
 
+                console.warn(
+                    "No timetable table found in timetable section:",
+                    timetable
+                );
+
+
                 return;
 
             }
@@ -31343,33 +31768,40 @@ async function downloadGeneratedTimetablesWord() {
 
             /*
              * ----------------------------------------------------
-             * STREAM NAME
+             * STREAM / CLASS NAME
              * ----------------------------------------------------
              */
 
-            const streamName =
+            let streamName =
                 timetable
                     .querySelector(
                         ".print-timetable-title"
                     )
                     ?.textContent
-                    ?.replace(
-                        /CLASS TIMETABLE\s*[—-]\s*/i,
+                    ?.trim()
+                    || "TIMETABLE";
+
+
+            streamName =
+                streamName
+                    .replace(
+                        /^CLASS TIMETABLE\s*[—–-]\s*/i,
                         ""
                     )
-                    ?.trim()
-                    ||
-                    "TIMETABLE";
+                    .trim();
 
 
             /*
              * ----------------------------------------------------
              * HEADER
-             * SAME CONTENT AS PRINT VERSION
              * ----------------------------------------------------
              */
 
             const headerChildren = [
+
+                /*
+                 * SCHOOL NAME
+                 */
 
                 new Paragraph({
 
@@ -31378,9 +31810,11 @@ async function downloadGeneratedTimetablesWord() {
 
                     spacing: {
 
-                        before: 0,
+                        before:
+                            0,
 
-                        after: 0
+                        after:
+                            0
 
                     },
 
@@ -31389,10 +31823,12 @@ async function downloadGeneratedTimetablesWord() {
                         new TextRun({
 
                             text:
-                                schoolName
-                                    .toUpperCase(),
+                                cleanText(
+                                    schoolName
+                                ).toUpperCase(),
 
-                            bold: true,
+                            bold:
+                                true,
 
                             size:
                                 36,
@@ -31407,6 +31843,10 @@ async function downloadGeneratedTimetablesWord() {
                 }),
 
 
+                /*
+                 * CLASS TIMETABLE
+                 */
+
                 new Paragraph({
 
                     alignment:
@@ -31414,9 +31854,11 @@ async function downloadGeneratedTimetablesWord() {
 
                     spacing: {
 
-                        before: 20,
+                        before:
+                            20,
 
-                        after: 20
+                        after:
+                            20
 
                     },
 
@@ -31425,9 +31867,10 @@ async function downloadGeneratedTimetablesWord() {
                         new TextRun({
 
                             text:
-                                `CLASS TIMETABLE — ${streamName}`,
+                                `CLASS TIMETABLE — ${cleanText(streamName)}`,
 
-                            bold: true,
+                            bold:
+                                true,
 
                             size:
                                 30,
@@ -31442,6 +31885,10 @@ async function downloadGeneratedTimetablesWord() {
                 }),
 
 
+                /*
+                 * ACADEMIC INFORMATION
+                 */
+
                 new Paragraph({
 
                     alignment:
@@ -31449,9 +31896,11 @@ async function downloadGeneratedTimetablesWord() {
 
                     spacing: {
 
-                        before: 0,
+                        before:
+                            0,
 
-                        after: 100
+                        after:
+                            100
 
                     },
 
@@ -31460,19 +31909,7 @@ async function downloadGeneratedTimetablesWord() {
                         new TextRun({
 
                             text:
-                                `Academic Year ${academicYear} • Term ${term} • Printed: ${new Date().toLocaleDateString(
-                                    "en-KE",
-                                    {
-                                        day:
-                                            "2-digit",
-
-                                        month:
-                                            "long",
-
-                                        year:
-                                            "numeric"
-                                    }
-                                )}`,
+                                `Academic Year ${academicYear} • Term ${term} • Printed: ${printedDate}`,
 
                             size:
                                 20,
@@ -31491,7 +31928,7 @@ async function downloadGeneratedTimetablesWord() {
 
             /*
              * ----------------------------------------------------
-             * BUILD TABLE
+             * TABLE
              * ----------------------------------------------------
              */
 
@@ -31510,7 +31947,7 @@ async function downloadGeneratedTimetablesWord() {
 
             /*
              * ----------------------------------------------------
-             * FOOTER
+             * FOOTER TEXT
              * ----------------------------------------------------
              */
 
@@ -31555,7 +31992,7 @@ async function downloadGeneratedTimetablesWord() {
 
             /*
              * ----------------------------------------------------
-             * SECTION CONTENT
+             * SECTION CHILDREN
              * ----------------------------------------------------
              */
 
@@ -31572,11 +32009,15 @@ async function downloadGeneratedTimetablesWord() {
 
             /*
              * ----------------------------------------------------
-             * ADD PAGE BREAK BEFORE EVERY STREAM EXCEPT FIRST
+             * PAGE BREAK
+             *
+             * Every stream gets its own page.
              * ----------------------------------------------------
              */
 
-            if (timetableIndex > 0) {
+            if (
+                timetableIndex > 0
+            ) {
 
                 children.unshift(
 
@@ -31588,7 +32029,10 @@ async function downloadGeneratedTimetablesWord() {
                         children: [
 
                             new TextRun({
-                                text: ""
+
+                                text:
+                                    ""
+
                             })
 
                         ]
@@ -31625,16 +32069,16 @@ async function downloadGeneratedTimetablesWord() {
                         margin: {
 
                             top:
-                                MARGIN,
+                                PAGE_MARGIN,
 
                             right:
-                                MARGIN,
+                                PAGE_MARGIN,
 
                             bottom:
-                                MARGIN,
+                                PAGE_MARGIN,
 
                             left:
-                                MARGIN
+                                PAGE_MARGIN
 
                         }
 
@@ -31653,19 +32097,28 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * NOTHING TO EXPORT
+     * CHECK SECTIONS
      * ============================================================
      */
 
-    if (sections.length === 0) {
+    if (
+        sections.length === 0
+    ) {
 
         alert(
             "No timetable tables were found to export."
         );
 
+
         return;
 
     }
+
+
+    console.log(
+        "DOCX sections created:",
+        sections.length
+    );
 
 
     /*
@@ -31674,7 +32127,7 @@ async function downloadGeneratedTimetablesWord() {
      * ============================================================
      */
 
-    const document =
+    const wordDocument =
         new Document({
 
             creator:
@@ -31697,21 +32150,33 @@ async function downloadGeneratedTimetablesWord() {
 
     /*
      * ============================================================
-     * CREATE DOCX BLOB
+     * GENERATE DOCX
      * ============================================================
      */
 
     try {
 
+        console.log(
+            "Generating DOCX..."
+        );
+
+
         const blob =
             await Packer.toBlob(
-                document
+                wordDocument
             );
+
+
+        console.log(
+            "DOCX generated successfully:",
+            blob.size,
+            "bytes"
+        );
 
 
         /*
          * --------------------------------------------------------
-         * DOWNLOAD
+         * CREATE DOWNLOAD URL
          * --------------------------------------------------------
          */
 
@@ -31720,6 +32185,12 @@ async function downloadGeneratedTimetablesWord() {
                 blob
             );
 
+
+        /*
+         * --------------------------------------------------------
+         * CREATE DOWNLOAD LINK
+         * --------------------------------------------------------
+         */
 
         const link =
             document.createElement(
@@ -31731,9 +32202,36 @@ async function downloadGeneratedTimetablesWord() {
             url;
 
 
-        link.download =
-            `${schoolName} - Timetable.docx`;
+        /*
+         * --------------------------------------------------------
+         * CLEAN FILE NAME
+         * --------------------------------------------------------
+         */
 
+        const safeSchoolName =
+            cleanText(
+                schoolName
+            )
+                .replace(
+                    /[<>:"/\\|?*]+/g,
+                    ""
+                )
+                .replace(
+                    /\s+/g,
+                    " "
+                )
+                .trim();
+
+
+        link.download =
+            `${safeSchoolName || "School"} - Timetable.docx`;
+
+
+        /*
+         * --------------------------------------------------------
+         * DOWNLOAD
+         * --------------------------------------------------------
+         */
 
         document.body.appendChild(
             link
@@ -31748,6 +32246,12 @@ async function downloadGeneratedTimetablesWord() {
         );
 
 
+        /*
+         * --------------------------------------------------------
+         * RELEASE OBJECT URL
+         * --------------------------------------------------------
+         */
+
         setTimeout(
             function() {
 
@@ -31756,7 +32260,12 @@ async function downloadGeneratedTimetablesWord() {
                 );
 
             },
-            1000
+            2000
+        );
+
+
+        console.log(
+            "Word timetable downloaded successfully."
         );
 
 
@@ -31769,21 +32278,13 @@ async function downloadGeneratedTimetablesWord() {
 
 
         alert(
-            "The Word document could not be generated. Please check the browser console for details."
+            "The Word document could not be generated.\n\n" +
+            "Please open the browser console for the exact error."
         );
 
     }
 
 }
-
-
-
-
-
-
-
-
-
 
 
 
@@ -31812,6 +32313,12 @@ if (
     );
 
 }
+
+
+
+
+
+
 
 
 
