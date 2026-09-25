@@ -395,6 +395,8 @@ await loadRequirementOptions();
 await loadRequirements();
     await loadRooms();
     await loadStreams();
+     await loadPeriods();
+    
     // --------------------------------------------------------
     // INITIALIZE TIMETABLE GENERATOR
     // --------------------------------------------------------
