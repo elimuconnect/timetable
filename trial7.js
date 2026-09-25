@@ -30015,7 +30015,8 @@ async function loadPdfLibraries() {
 
 // ============================================================
 // DOWNLOAD GENERATED TIMETABLES AS PDF
-// A4 LANDSCAPE — MATCHES WORD EXPORT
+// A4 LANDSCAPE — FULL PRINT LAYOUT
+// Heading + Table + Footer
 // ============================================================
 
 async function downloadGeneratedTimetablesPdf() {
@@ -30030,11 +30031,14 @@ async function downloadGeneratedTimetablesPdf() {
             );
 
         if (!timetableSections.length) {
+
             alert(
                 "No generated timetables are available to download."
             );
+
             return;
         }
+
 
         console.log(
             `Preparing ${timetableSections.length} timetable(s) for PDF...`
@@ -30055,18 +30059,16 @@ async function downloadGeneratedTimetablesPdf() {
         // A4 LANDSCAPE
         // --------------------------------------------------------
 
-        const PAGE_WIDTH_MM = 297;
-        const PAGE_HEIGHT_MM = 210;
+        const PAGE_WIDTH = 297;
+        const PAGE_HEIGHT = 210;
 
-        const MARGIN_MM = 8;
+        const MARGIN = 8;
 
-        const CONTENT_WIDTH_MM =
-            PAGE_WIDTH_MM -
-            (MARGIN_MM * 2);
+        const CONTENT_WIDTH =
+            PAGE_WIDTH - (MARGIN * 2);
 
-        const CONTENT_HEIGHT_MM =
-            PAGE_HEIGHT_MM -
-            (MARGIN_MM * 2);
+        const CONTENT_HEIGHT =
+            PAGE_HEIGHT - (MARGIN * 2);
 
 
         // --------------------------------------------------------
@@ -30082,7 +30084,7 @@ async function downloadGeneratedTimetablesPdf() {
 
 
         // --------------------------------------------------------
-        // School name
+        // School name for filename
         // --------------------------------------------------------
 
         const schoolName =
@@ -30097,9 +30099,9 @@ async function downloadGeneratedTimetablesPdf() {
                 .trim();
 
 
-        // --------------------------------------------------------
-        // Process every timetable
-        // --------------------------------------------------------
+        // ========================================================
+        // PROCESS EACH TIMETABLE
+        // ========================================================
 
         for (
             let index = 0;
@@ -30110,13 +30112,14 @@ async function downloadGeneratedTimetablesPdf() {
             const originalSection =
                 timetableSections[index];
 
+
             console.log(
                 `Rendering timetable ${index + 1} of ${timetableSections.length}...`
             );
 
 
             // ----------------------------------------------------
-            // Add page
+            // New PDF page
             // ----------------------------------------------------
 
             if (index > 0) {
@@ -30130,14 +30133,11 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ====================================================
-            // CREATE TEMPORARY PDF EXPORT CONTAINER
+            // TEMPORARY EXPORT CONTAINER
             // ====================================================
 
             const exportContainer =
                 document.createElement("div");
-
-            exportContainer.className =
-                "smart-elimu-pdf-export";
 
 
             exportContainer.style.position =
@@ -30150,27 +30150,24 @@ async function downloadGeneratedTimetablesPdf() {
                 "0";
 
             exportContainer.style.width =
-                `${CONTENT_WIDTH_MM}mm`;
+                `${CONTENT_WIDTH}mm`;
 
-            exportContainer.style.background =
+            exportContainer.style.backgroundColor =
                 "#ffffff";
 
-            exportContainer.style.padding =
+            exportContainer.style.margin =
                 "0";
 
-            exportContainer.style.margin =
+            exportContainer.style.padding =
                 "0";
 
             exportContainer.style.boxSizing =
                 "border-box";
 
-            exportContainer.style.zIndex =
-                "-1";
 
-
-            // ----------------------------------------------------
-            // Clone timetable
-            // ----------------------------------------------------
+            // ====================================================
+            // CLONE COMPLETE PRINTABLE TIMETABLE
+            // ====================================================
 
             const clone =
                 originalSection.cloneNode(true);
@@ -30195,10 +30192,10 @@ async function downloadGeneratedTimetablesPdf() {
                 "0";
 
             clone.style.width =
-                `${CONTENT_WIDTH_MM}mm`;
+                `${CONTENT_WIDTH}mm`;
 
             clone.style.maxWidth =
-                `${CONTENT_WIDTH_MM}mm`;
+                `${CONTENT_WIDTH}mm`;
 
             clone.style.minWidth =
                 "0";
@@ -30212,44 +30209,157 @@ async function downloadGeneratedTimetablesPdf() {
             clone.style.padding =
                 "0";
 
-            clone.style.background =
+            clone.style.backgroundColor =
                 "#ffffff";
 
             clone.style.boxSizing =
                 "border-box";
 
 
+            // ====================================================
+            // HEADER
+            // ====================================================
+
+            const header =
+                clone.querySelector(
+                    ".print-timetable-header"
+                );
+
+            if (header) {
+
+                header.style.display =
+                    "block";
+
+                header.style.visibility =
+                    "visible";
+
+                header.style.width =
+                    "100%";
+
+                header.style.maxWidth =
+                    "100%";
+
+                header.style.boxSizing =
+                    "border-box";
+
+                header.style.textAlign =
+                    "center";
+
+                header.style.backgroundColor =
+                    "#ffffff";
+
+            }
+
+
             // ----------------------------------------------------
-            // Force timetable itself to fit the PDF width
+            // School name
             // ----------------------------------------------------
 
-            const clonedTable =
+            const schoolNameElement =
+                clone.querySelector(
+                    ".print-school-name"
+                );
+
+            if (schoolNameElement) {
+
+                schoolNameElement.style.display =
+                    "block";
+
+                schoolNameElement.style.visibility =
+                    "visible";
+
+                schoolNameElement.style.textAlign =
+                    "center";
+
+            }
+
+
+            // ----------------------------------------------------
+            // Timetable title
+            // ----------------------------------------------------
+
+            const titleElement =
+                clone.querySelector(
+                    ".print-timetable-title"
+                );
+
+            if (titleElement) {
+
+                titleElement.style.display =
+                    "block";
+
+                titleElement.style.visibility =
+                    "visible";
+
+                titleElement.style.textAlign =
+                    "center";
+
+            }
+
+
+            // ----------------------------------------------------
+            // Academic year / term / date
+            // ----------------------------------------------------
+
+            const metaElement =
+                clone.querySelector(
+                    ".print-timetable-meta"
+                );
+
+            if (metaElement) {
+
+                metaElement.style.display =
+                    "block";
+
+                metaElement.style.visibility =
+                    "visible";
+
+                metaElement.style.textAlign =
+                    "center";
+
+            }
+
+
+            // ====================================================
+            // TIMETABLE TABLE
+            // ====================================================
+
+            const table =
                 clone.querySelector(
                     ".kenyan-timetable-table"
                 );
 
-            if (clonedTable) {
+            if (table) {
 
-                clonedTable.style.width =
+                table.style.display =
+                    "table";
+
+                table.style.visibility =
+                    "visible";
+
+                table.style.width =
                     "100%";
 
-                clonedTable.style.maxWidth =
+                table.style.maxWidth =
                     "100%";
 
-                clonedTable.style.minWidth =
+                table.style.minWidth =
                     "0";
 
-                clonedTable.style.tableLayout =
+                table.style.tableLayout =
                     "fixed";
 
-                clonedTable.style.boxSizing =
+                table.style.margin =
+                    "0";
+
+                table.style.boxSizing =
                     "border-box";
 
             }
 
 
             // ----------------------------------------------------
-            // Force table cells to remain inside the table
+            // Force cells to stay inside table
             // ----------------------------------------------------
 
             clone
@@ -30269,9 +30379,41 @@ async function downloadGeneratedTimetablesPdf() {
                 );
 
 
-            // ----------------------------------------------------
-            // Add clone to export container
-            // ----------------------------------------------------
+            // ====================================================
+            // FOOTER
+            // ====================================================
+
+            const footer =
+                clone.querySelector(
+                    ".print-footer"
+                );
+
+            if (footer) {
+
+                footer.style.display =
+                    "block";
+
+                footer.style.visibility =
+                    "visible";
+
+                footer.style.width =
+                    "100%";
+
+                footer.style.maxWidth =
+                    "100%";
+
+                footer.style.textAlign =
+                    "center";
+
+                footer.style.boxSizing =
+                    "border-box";
+
+            }
+
+
+            // ====================================================
+            // ADD COMPLETE CLONE TO DOCUMENT
+            // ====================================================
 
             exportContainer.appendChild(
                 clone
@@ -30283,7 +30425,7 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ----------------------------------------------------
-            // Wait for browser layout
+            // Allow browser to calculate layout
             // ----------------------------------------------------
 
             await new Promise(
@@ -30298,7 +30440,7 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ----------------------------------------------------
-            // Determine actual rendered size
+            // Get rendered dimensions
             // ----------------------------------------------------
 
             const exportWidth =
@@ -30328,7 +30470,7 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ====================================================
-            // RENDER CLONE
+            // RENDER COMPLETE TIMETABLE
             // ====================================================
 
             let canvas;
@@ -30372,9 +30514,6 @@ async function downloadGeneratedTimetablesPdf() {
 
             } finally {
 
-                // Always remove temporary export
-                // container after rendering.
-
                 exportContainer.remove();
 
             }
@@ -30402,9 +30541,9 @@ async function downloadGeneratedTimetablesPdf() {
             );
 
 
-            // ----------------------------------------------------
-            // Convert to image
-            // ----------------------------------------------------
+            // ====================================================
+            // CONVERT TO IMAGE
+            // ====================================================
 
             const imageData =
                 canvas.toDataURL(
@@ -30413,21 +30552,17 @@ async function downloadGeneratedTimetablesPdf() {
                 );
 
 
-            // ----------------------------------------------------
-            // Calculate aspect ratio
-            // ----------------------------------------------------
+            // ====================================================
+            // FIT COMPLETE TIMETABLE TO A4 LANDSCAPE
+            // ====================================================
 
             const aspectRatio =
                 canvas.width /
                 canvas.height;
 
 
-            // ----------------------------------------------------
-            // Fit inside A4 LANDSCAPE
-            // ----------------------------------------------------
-
             let imageWidth =
-                CONTENT_WIDTH_MM;
+                CONTENT_WIDTH;
 
             let imageHeight =
                 imageWidth /
@@ -30436,11 +30571,11 @@ async function downloadGeneratedTimetablesPdf() {
 
             if (
                 imageHeight >
-                CONTENT_HEIGHT_MM
+                CONTENT_HEIGHT
             ) {
 
                 imageHeight =
-                    CONTENT_HEIGHT_MM;
+                    CONTENT_HEIGHT;
 
                 imageWidth =
                     imageHeight *
@@ -30450,21 +30585,21 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ----------------------------------------------------
-            // Center on A4 landscape page
+            // Center complete timetable
             // ----------------------------------------------------
 
             const x =
-                (PAGE_WIDTH_MM -
+                (PAGE_WIDTH -
                     imageWidth) / 2;
 
             const y =
-                (PAGE_HEIGHT_MM -
+                (PAGE_HEIGHT -
                     imageHeight) / 2;
 
 
-            // ----------------------------------------------------
-            // Add timetable
-            // ----------------------------------------------------
+            // ====================================================
+            // ADD TO PDF
+            // ====================================================
 
             pdf.addImage(
                 imageData,
@@ -30485,17 +30620,13 @@ async function downloadGeneratedTimetablesPdf() {
         }
 
 
-        // --------------------------------------------------------
-        // Filename
-        // --------------------------------------------------------
+        // ========================================================
+        // DOWNLOAD
+        // ========================================================
 
         const filename =
             `${schoolName || "School"} - Timetable.pdf`;
 
-
-        // --------------------------------------------------------
-        // Download
-        // --------------------------------------------------------
 
         pdf.save(
             filename
@@ -30522,8 +30653,6 @@ async function downloadGeneratedTimetablesPdf() {
     }
 
 }
-
-
 
 
 
