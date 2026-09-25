@@ -28013,17 +28013,13 @@ async function loadSelectedTimetableView() {
 
         }
 
+filteredEntries =
+    await getTimetableEntriesForGrade(
+        grade
+    );
 
-        filteredEntries =
-            getTimetableEntriesForGrade(
-                grade
-            );
-
-
-        label =
-            `Grade ${grade}`;
-
-    }
+label =
+    String(grade);
 
 
     // ========================================================
