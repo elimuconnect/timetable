@@ -30308,10 +30308,9 @@ async function downloadGeneratedTimetablesPDF() {
 // Smart Elimu Connect
 // ============================================================
 
-
 // ============================================================
 // DOCX LIBRARY LOADER
-// Loads docx.js only when Word export is requested.
+// Smart Elimu Connect
 // ============================================================
 
 function loadDocxLibrary() {
@@ -30320,7 +30319,7 @@ function loadDocxLibrary() {
 
         /*
          * --------------------------------------------------------
-         * ALREADY LOADED
+         * CHECK IF ALREADY LOADED
          * --------------------------------------------------------
          */
 
@@ -30330,7 +30329,13 @@ function loadDocxLibrary() {
             window.docx.Packer
         ) {
 
-            resolve(window.docx);
+            console.log(
+                "DOCX library already available."
+            );
+
+            resolve(
+                window.docx
+            );
 
             return;
 
@@ -30339,7 +30344,7 @@ function loadDocxLibrary() {
 
         /*
          * --------------------------------------------------------
-         * CHECK FOR AN EXISTING LOADING SCRIPT
+         * CHECK FOR EXISTING DOCX SCRIPT
          * --------------------------------------------------------
          */
 
@@ -30352,8 +30357,7 @@ function loadDocxLibrary() {
         if (existingScript) {
 
             /*
-             * If the script is already loaded but the
-             * global was not available, reject.
+             * Already loaded
              */
 
             if (
@@ -30366,13 +30370,15 @@ function loadDocxLibrary() {
                     window.docx.Packer
                 ) {
 
-                    resolve(window.docx);
+                    resolve(
+                        window.docx
+                    );
 
                 } else {
 
                     reject(
                         new Error(
-                            "DOCX library loaded but window.docx is unavailable."
+                            "DOCX script loaded but window.docx is unavailable."
                         )
                     );
 
@@ -30384,7 +30390,7 @@ function loadDocxLibrary() {
 
 
             /*
-             * Wait for existing script.
+             * Wait for script currently loading.
              */
 
             existingScript.addEventListener(
@@ -30400,7 +30406,10 @@ function loadDocxLibrary() {
                         existingScript.dataset.loaded =
                             "true";
 
-                        resolve(window.docx);
+
+                        resolve(
+                            window.docx
+                        );
 
                     } else {
 
@@ -30445,17 +30454,32 @@ function loadDocxLibrary() {
          * --------------------------------------------------------
          * CREATE SCRIPT
          * --------------------------------------------------------
+         *
+         * IMPORTANT:
+         *
+         * docx 9.7.2 uses:
+         *
+         * dist/index.umd.cjs
+         *
+         * NOT:
+         *
+         * build/index.umd.js
+         *
+         * --------------------------------------------------------
          */
 
         const script =
-            document.createElement("script");
+            document.createElement(
+                "script"
+            );
 
 
         script.src =
-            "https://cdn.jsdelivr.net/npm/docx@9.7.2/build/index.umd.js";
+            "https://cdn.jsdelivr.net/npm/docx@9.7.2/dist/index.umd.cjs";
 
 
-        script.async = true;
+        script.async =
+            true;
 
 
         script.dataset.smartElimuDocx =
@@ -30471,17 +30495,13 @@ function loadDocxLibrary() {
         script.onload =
             function() {
 
-                script.dataset.loaded =
-                    "true";
-
-
                 console.log(
-                    "Smart Elimu Connect: DOCX library loaded."
+                    "Smart Elimu Connect: DOCX script loaded."
                 );
 
 
                 console.log(
-                    "DOCX library:",
+                    "window.docx:",
                     window.docx
                 );
 
@@ -30492,6 +30512,22 @@ function loadDocxLibrary() {
                     window.docx.Packer
                 ) {
 
+                    script.dataset.loaded =
+                        "true";
+
+
+                    console.log(
+                        "DOCX Document:",
+                        window.docx.Document
+                    );
+
+
+                    console.log(
+                        "DOCX Packer:",
+                        window.docx.Packer
+                    );
+
+
                     resolve(
                         window.docx
                     );
@@ -30500,7 +30536,7 @@ function loadDocxLibrary() {
 
                     reject(
                         new Error(
-                            "DOCX library loaded, but window.docx was not created."
+                            "DOCX script loaded, but window.docx was not created."
                         )
                     );
 
@@ -30516,7 +30552,13 @@ function loadDocxLibrary() {
          */
 
         script.onerror =
-            function() {
+            function(error) {
+
+                console.error(
+                    "DOCX CDN script failed:",
+                    error
+                );
+
 
                 reject(
                     new Error(
@@ -30529,7 +30571,7 @@ function loadDocxLibrary() {
 
         /*
          * --------------------------------------------------------
-         * ADD SCRIPT TO DOCUMENT
+         * ADD SCRIPT TO HEAD
          * --------------------------------------------------------
          */
 
@@ -30540,8 +30582,6 @@ function loadDocxLibrary() {
     });
 
 }
-
-
 
 // ============================================================
 // MAIN WORD EXPORT FUNCTION
