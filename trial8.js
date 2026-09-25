@@ -27124,7 +27124,7 @@ function renderGeneratedTimetable(entries, lookup) {
                             >
 
                                 <span class="empty-lesson">
-                                    —
+                                    
                                 </span>
 
                             </td>
@@ -27981,7 +27981,7 @@ function renderGeneratedTeacherTimetable(
                     >
 
                         <span class="empty-lesson">
-                            —
+                            
                         </span>
 
                     </td>
@@ -28951,7 +28951,7 @@ function buildTeacherTimetableSection(
                             >
 
                                 <span class="empty-lesson">
-                                    —
+                                    
                                 </span>
 
                             </td>
