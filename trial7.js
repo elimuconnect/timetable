@@ -30871,8 +30871,8 @@ async function downloadGeneratedTimetablesWord() {
                     VerticalAlign.CENTER,
 
                 margins: {
-    top: 250,
-    bottom: 250,
+    top: 300,
+    bottom: 300,
     left: 50,
     right: 50
 },
@@ -31382,12 +31382,13 @@ async function downloadGeneratedTimetablesWord() {
                                     PageOrientation.LANDSCAPE
                             },
 
+                           
                             margin: {
-                                top: MARGIN,
-                                bottom: MARGIN,
-                                left: MARGIN,
-                                right: MARGIN
-                            }
+    top: mmToTwips(20),
+    bottom: MARGIN,
+    left: MARGIN,
+    right: MARGIN
+}
                         }
                     },
 
