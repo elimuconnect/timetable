@@ -30011,8 +30011,11 @@ async function loadPdfLibraries() {
 }
 
 
+
+
 // ============================================================
 // DOWNLOAD GENERATED TIMETABLES AS PDF
+// A4 LANDSCAPE — MATCHES WORD EXPORT
 // ============================================================
 
 async function downloadGeneratedTimetablesPdf() {
@@ -30037,6 +30040,7 @@ async function downloadGeneratedTimetablesPdf() {
             `Preparing ${timetableSections.length} timetable(s) for PDF...`
         );
 
+
         // --------------------------------------------------------
         // Load PDF libraries
         // --------------------------------------------------------
@@ -30048,7 +30052,25 @@ async function downloadGeneratedTimetablesPdf() {
 
 
         // --------------------------------------------------------
-        // Create A4 landscape PDF
+        // A4 LANDSCAPE
+        // --------------------------------------------------------
+
+        const PAGE_WIDTH_MM = 297;
+        const PAGE_HEIGHT_MM = 210;
+
+        const MARGIN_MM = 8;
+
+        const CONTENT_WIDTH_MM =
+            PAGE_WIDTH_MM -
+            (MARGIN_MM * 2);
+
+        const CONTENT_HEIGHT_MM =
+            PAGE_HEIGHT_MM -
+            (MARGIN_MM * 2);
+
+
+        // --------------------------------------------------------
+        // Create PDF
         // --------------------------------------------------------
 
         const pdf = new jsPDF({
@@ -30057,22 +30079,6 @@ async function downloadGeneratedTimetablesPdf() {
             format: "a4",
             compress: true
         });
-
-
-        // --------------------------------------------------------
-        // A4 dimensions
-        // --------------------------------------------------------
-
-        const pageWidth = 297;
-        const pageHeight = 210;
-
-        const margin = 8;
-
-        const usableWidth =
-            pageWidth - (margin * 2);
-
-        const usableHeight =
-            pageHeight - (margin * 2);
 
 
         // --------------------------------------------------------
@@ -30092,7 +30098,7 @@ async function downloadGeneratedTimetablesPdf() {
 
 
         // --------------------------------------------------------
-        // Process each timetable
+        // Process every timetable
         // --------------------------------------------------------
 
         for (
@@ -30101,7 +30107,7 @@ async function downloadGeneratedTimetablesPdf() {
             index++
         ) {
 
-            const section =
+            const originalSection =
                 timetableSections[index];
 
             console.log(
@@ -30110,128 +30116,272 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ----------------------------------------------------
-            // Add new PDF page except first timetable
+            // Add page
             // ----------------------------------------------------
 
             if (index > 0) {
+
                 pdf.addPage(
                     "a4",
                     "landscape"
                 );
+
+            }
+
+
+            // ====================================================
+            // CREATE TEMPORARY PDF EXPORT CONTAINER
+            // ====================================================
+
+            const exportContainer =
+                document.createElement("div");
+
+            exportContainer.className =
+                "smart-elimu-pdf-export";
+
+
+            exportContainer.style.position =
+                "fixed";
+
+            exportContainer.style.left =
+                "-10000px";
+
+            exportContainer.style.top =
+                "0";
+
+            exportContainer.style.width =
+                `${CONTENT_WIDTH_MM}mm`;
+
+            exportContainer.style.background =
+                "#ffffff";
+
+            exportContainer.style.padding =
+                "0";
+
+            exportContainer.style.margin =
+                "0";
+
+            exportContainer.style.boxSizing =
+                "border-box";
+
+            exportContainer.style.zIndex =
+                "-1";
+
+
+            // ----------------------------------------------------
+            // Clone timetable
+            // ----------------------------------------------------
+
+            const clone =
+                originalSection.cloneNode(true);
+
+
+            clone.style.display =
+                "block";
+
+            clone.style.visibility =
+                "visible";
+
+            clone.style.opacity =
+                "1";
+
+            clone.style.position =
+                "relative";
+
+            clone.style.left =
+                "0";
+
+            clone.style.top =
+                "0";
+
+            clone.style.width =
+                `${CONTENT_WIDTH_MM}mm`;
+
+            clone.style.maxWidth =
+                `${CONTENT_WIDTH_MM}mm`;
+
+            clone.style.minWidth =
+                "0";
+
+            clone.style.height =
+                "auto";
+
+            clone.style.margin =
+                "0";
+
+            clone.style.padding =
+                "0";
+
+            clone.style.background =
+                "#ffffff";
+
+            clone.style.boxSizing =
+                "border-box";
+
+
+            // ----------------------------------------------------
+            // Force timetable itself to fit the PDF width
+            // ----------------------------------------------------
+
+            const clonedTable =
+                clone.querySelector(
+                    ".kenyan-timetable-table"
+                );
+
+            if (clonedTable) {
+
+                clonedTable.style.width =
+                    "100%";
+
+                clonedTable.style.maxWidth =
+                    "100%";
+
+                clonedTable.style.minWidth =
+                    "0";
+
+                clonedTable.style.tableLayout =
+                    "fixed";
+
+                clonedTable.style.boxSizing =
+                    "border-box";
+
             }
 
 
             // ----------------------------------------------------
-            // Temporarily make sure the section is renderable
+            // Force table cells to remain inside the table
             // ----------------------------------------------------
 
-            const originalStyle = {
-                position: section.style.position,
-                left: section.style.left,
-                top: section.style.top,
-                width: section.style.width,
-                height: section.style.height,
-                display: section.style.display,
-                visibility: section.style.visibility,
-                opacity: section.style.opacity,
-                backgroundColor:
-                    section.style.backgroundColor
-            };
+            clone
+                .querySelectorAll(
+                    "table, th, td"
+                )
+                .forEach(
+                    element => {
 
+                        element.style.boxSizing =
+                            "border-box";
 
-            // ----------------------------------------------------
-            // Important:
-            // html2canvas cannot capture display:none content.
-            // ----------------------------------------------------
+                        element.style.maxWidth =
+                            "100%";
 
-            section.style.display = "block";
-            section.style.visibility = "visible";
-            section.style.opacity = "1";
-            section.style.backgroundColor = "#ffffff";
-
-
-            // Keep the actual timetable width.
-            // Do NOT change the width because the current
-            // Word/PDF timetable width is already correct.
-            section.style.position = "relative";
-            section.style.left = "0";
-            section.style.top = "0";
-
-
-            // ----------------------------------------------------
-            // Render HTML timetable
-            // ----------------------------------------------------
-
-            const canvas =
-                await html2canvas(
-                    section,
-                    {
-                        scale: 2,
-
-                        useCORS: true,
-
-                        allowTaint: false,
-
-                        backgroundColor:
-                            "#ffffff",
-
-                        logging: false,
-
-                        imageTimeout: 15000,
-
-                        scrollX: 0,
-
-                        scrollY: 0,
-
-                        windowWidth:
-                            Math.max(
-                                section.scrollWidth,
-                                section.offsetWidth
-                            ),
-
-                        windowHeight:
-                            Math.max(
-                                section.scrollHeight,
-                                section.offsetHeight
-                            )
                     }
                 );
 
 
             // ----------------------------------------------------
-            // Restore original section styling
+            // Add clone to export container
             // ----------------------------------------------------
 
-            section.style.position =
-                originalStyle.position;
+            exportContainer.appendChild(
+                clone
+            );
 
-            section.style.left =
-                originalStyle.left;
-
-            section.style.top =
-                originalStyle.top;
-
-            section.style.width =
-                originalStyle.width;
-
-            section.style.height =
-                originalStyle.height;
-
-            section.style.display =
-                originalStyle.display;
-
-            section.style.visibility =
-                originalStyle.visibility;
-
-            section.style.opacity =
-                originalStyle.opacity;
-
-            section.style.backgroundColor =
-                originalStyle.backgroundColor;
+            document.body.appendChild(
+                exportContainer
+            );
 
 
             // ----------------------------------------------------
-            // Check canvas
+            // Wait for browser layout
+            // ----------------------------------------------------
+
+            await new Promise(
+                resolve =>
+                    requestAnimationFrame(
+                        () =>
+                            requestAnimationFrame(
+                                resolve
+                            )
+                    )
+            );
+
+
+            // ----------------------------------------------------
+            // Determine actual rendered size
+            // ----------------------------------------------------
+
+            const exportWidth =
+                exportContainer.scrollWidth;
+
+            const exportHeight =
+                exportContainer.scrollHeight;
+
+
+            console.log(
+                `PDF export size: ${exportWidth}px × ${exportHeight}px`
+            );
+
+
+            if (
+                exportWidth <= 0 ||
+                exportHeight <= 0
+            ) {
+
+                exportContainer.remove();
+
+                throw new Error(
+                    `Timetable ${index + 1} has an invalid export size.`
+                );
+
+            }
+
+
+            // ====================================================
+            // RENDER CLONE
+            // ====================================================
+
+            let canvas;
+
+            try {
+
+                canvas =
+                    await html2canvas(
+                        exportContainer,
+                        {
+                            scale: 2,
+
+                            useCORS: true,
+
+                            allowTaint: false,
+
+                            backgroundColor:
+                                "#ffffff",
+
+                            logging: false,
+
+                            imageTimeout: 15000,
+
+                            scrollX: 0,
+
+                            scrollY: 0,
+
+                            width:
+                                exportWidth,
+
+                            height:
+                                exportHeight,
+
+                            windowWidth:
+                                exportWidth,
+
+                            windowHeight:
+                                exportHeight
+                        }
+                    );
+
+            } finally {
+
+                // Always remove temporary export
+                // container after rendering.
+
+                exportContainer.remove();
+
+            }
+
+
+            // ----------------------------------------------------
+            // Validate canvas
             // ----------------------------------------------------
 
             if (
@@ -30239,19 +30389,21 @@ async function downloadGeneratedTimetablesPdf() {
                 canvas.width === 0 ||
                 canvas.height === 0
             ) {
+
                 throw new Error(
-                    `Timetable ${index + 1} produced an empty canvas.`
+                    `Timetable ${index + 1} produced an empty PDF canvas.`
                 );
+
             }
 
 
             console.log(
-                `Canvas: ${canvas.width} × ${canvas.height}`
+                `PDF canvas: ${canvas.width} × ${canvas.height}`
             );
 
 
             // ----------------------------------------------------
-            // Convert canvas to JPEG
+            // Convert to image
             // ----------------------------------------------------
 
             const imageData =
@@ -30262,54 +30414,56 @@ async function downloadGeneratedTimetablesPdf() {
 
 
             // ----------------------------------------------------
-            // Calculate dimensions while preserving aspect ratio
+            // Calculate aspect ratio
             // ----------------------------------------------------
 
-            const canvasRatio =
+            const aspectRatio =
                 canvas.width /
                 canvas.height;
 
+
+            // ----------------------------------------------------
+            // Fit inside A4 LANDSCAPE
+            // ----------------------------------------------------
+
             let imageWidth =
-                usableWidth;
+                CONTENT_WIDTH_MM;
 
             let imageHeight =
                 imageWidth /
-                canvasRatio;
+                aspectRatio;
 
-
-            // ----------------------------------------------------
-            // If too tall, scale down to fit A4
-            // ----------------------------------------------------
 
             if (
                 imageHeight >
-                usableHeight
+                CONTENT_HEIGHT_MM
             ) {
 
                 imageHeight =
-                    usableHeight;
+                    CONTENT_HEIGHT_MM;
 
                 imageWidth =
                     imageHeight *
-                    canvasRatio;
+                    aspectRatio;
+
             }
 
 
             // ----------------------------------------------------
-            // Center image on A4 page
+            // Center on A4 landscape page
             // ----------------------------------------------------
 
             const x =
-                (pageWidth -
+                (PAGE_WIDTH_MM -
                     imageWidth) / 2;
 
             const y =
-                (pageHeight -
+                (PAGE_HEIGHT_MM -
                     imageHeight) / 2;
 
 
             // ----------------------------------------------------
-            // Add timetable to PDF
+            // Add timetable
             // ----------------------------------------------------
 
             pdf.addImage(
@@ -30322,6 +30476,12 @@ async function downloadGeneratedTimetablesPdf() {
                 undefined,
                 "FAST"
             );
+
+
+            console.log(
+                `Timetable ${index + 1} added to PDF successfully.`
+            );
+
         }
 
 
@@ -30337,12 +30497,15 @@ async function downloadGeneratedTimetablesPdf() {
         // Download
         // --------------------------------------------------------
 
-        pdf.save(filename);
+        pdf.save(
+            filename
+        );
 
 
         console.log(
             `PDF timetable downloaded: ${filename}`
         );
+
 
     } catch (error) {
 
@@ -30355,8 +30518,13 @@ async function downloadGeneratedTimetablesPdf() {
             "Could not create the PDF timetable.\n\n" +
             error.message
         );
+
     }
+
 }
+
+
+
 
 
 
