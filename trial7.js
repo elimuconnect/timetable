@@ -30871,8 +30871,8 @@ async function downloadGeneratedTimetablesWord() {
                     VerticalAlign.CENTER,
 
                 margins: {
-    top: 400,
-    bottom: 400,
+    top: 300,
+    bottom: 300,
     left: 50,
     right: 50
 },
