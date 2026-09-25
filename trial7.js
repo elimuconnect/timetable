@@ -31013,12 +31013,11 @@ async function downloadGeneratedTimetablesWord() {
             const periodColumnCount =
                 totalColumns - 1;
 
-            const periodColumnWidth =
-                Math.floor(
-                    PERIOD_AREA_WIDTH /
-                        periodColumnCount
-                );
 
+const periodColumnWidth =
+    PERIOD_AREA_WIDTH /
+    periodColumnCount;
+            
             // ----------------------------------------------------
             // Build Word rows
             // ----------------------------------------------------
@@ -31261,6 +31260,8 @@ async function downloadGeneratedTimetablesWord() {
                     type: WidthType.DXA
                 },
 
+alignment: AlignmentType.CENTER,
+                
                 borders: {
                     top: {
                         style: BorderStyle.SINGLE,
@@ -31366,7 +31367,7 @@ async function downloadGeneratedTimetablesWord() {
                         alignment:
                             AlignmentType.CENTER,
                         spacing: {
-                            before: 0,
+                            before: 300,
                             after: 40
                         },
                         children: [
@@ -31443,7 +31444,7 @@ async function downloadGeneratedTimetablesWord() {
 
                            
                             margin: {
-    top: mmToTwips(30),
+    top: mmToTwips(15),
     bottom: MARGIN,
     left: MARGIN,
     right: MARGIN
