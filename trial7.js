@@ -31495,33 +31495,23 @@ async function downloadGeneratedTimetablesWord() {
 
 
 
-
-// ============================================================
-// WORD DOWNLOAD BUTTON
-// ============================================================
-
 const downloadTimetableWordBtn =
     document.getElementById(
         "downloadTimetableWordBtn"
     );
 
-
 if (
     downloadTimetableWordBtn &&
     !downloadTimetableWordBtn.dataset.wordListenerAttached
 ) {
-
     downloadTimetableWordBtn.dataset.wordListenerAttached =
         "true";
-
 
     downloadTimetableWordBtn.addEventListener(
         "click",
         downloadGeneratedTimetablesWord
     );
-
 }
-
 
 
 
