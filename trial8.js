@@ -25957,7 +25957,15 @@ function moveStage7Task(
 
 
 
+// ============================================================
+// TIMETABLE VIEW / LOAD STATE
+// DOES NOT AFFECT TIMETABLE GENERATION
+// ============================================================
 
+let timetableDisplayLookup = null;
+let timetableSelectedViewEntries = [];
+let timetableLoadedViewType = "school";
+let timetableLoadedViewLabel = "Whole School";
 
 
 
@@ -26263,8 +26271,15 @@ async function loadGeneratedTimetable() {
                     roomsResult.data || []
 
             });
+// ----------------------------------------------------
+// SAVE DISPLAY LOOKUP FOR GRADE / STREAM / TEACHER VIEW
+// ----------------------------------------------------
+
+timetableDisplayLookup = lookup;
 
 
+
+        
         console.log(
             "Display periods:",
             periodsResult.data?.length || 0
@@ -27326,6 +27341,1119 @@ const teacherCode =
 
 
 
+// ============================================================
+// LOAD / FILTER GENERATED TIMETABLE VIEWS
+// ============================================================
+//
+// IMPORTANT:
+// This does NOT generate a timetable.
+//
+// It only filters the already generated:
+//     generatedTimetableEntries
+//
+// Whole-school generation remains untouched.
+// ============================================================
+
+
+// ------------------------------------------------------------
+// INITIALIZE LOAD SELECTORS
+// ------------------------------------------------------------
+
+async function initializeTimetableLoadSelectors() {
+
+    const loadType =
+        document.getElementById(
+            "timetableLoadType"
+        );
+
+    const gradeSelect =
+        document.getElementById(
+            "timetableGradeSelect"
+        );
+
+    const streamSelect =
+        document.getElementById(
+            "timetableLoadStreamSelect"
+        );
+
+    const teacherSelect =
+        document.getElementById(
+            "timetableLoadTeacherSelect"
+        );
+
+    if (
+        !loadType ||
+        !gradeSelect ||
+        !streamSelect ||
+        !teacherSelect
+    ) {
+
+        console.warn(
+            "Timetable load selectors not found."
+        );
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // LOAD TYPE CHANGE
+    // --------------------------------------------------------
+
+    loadType.addEventListener(
+        "change",
+        handleTimetableLoadTypeChange
+    );
+
+
+    // --------------------------------------------------------
+    // INITIAL STATE
+    // --------------------------------------------------------
+
+    handleTimetableLoadTypeChange();
+
+
+    console.log(
+        "Timetable load selectors initialized."
+    );
+
+}
+
+
+// ------------------------------------------------------------
+// SHOW / HIDE SELECTORS
+// ------------------------------------------------------------
+
+function handleTimetableLoadTypeChange() {
+
+    const loadType =
+        document.getElementById(
+            "timetableLoadType"
+        );
+
+    const gradeGroup =
+        document.getElementById(
+            "timetableGradeSelectGroup"
+        );
+
+    const streamGroup =
+        document.getElementById(
+            "timetableLoadStreamGroup"
+        );
+
+    const teacherGroup =
+        document.getElementById(
+            "timetableTeacherSelectGroup"
+        );
+
+    if (!loadType) {
+        return;
+    }
+
+
+    if (gradeGroup) {
+        gradeGroup.style.display = "none";
+    }
+
+    if (streamGroup) {
+        streamGroup.style.display = "none";
+    }
+
+    if (teacherGroup) {
+        teacherGroup.style.display = "none";
+    }
+
+
+    switch (loadType.value) {
+
+        case "grade":
+
+            if (gradeGroup) {
+                gradeGroup.style.display = "";
+            }
+
+            populateTimetableGradeSelect();
+
+            break;
+
+
+        case "stream":
+
+            if (streamGroup) {
+                streamGroup.style.display = "";
+            }
+
+            populateTimetableStreamLoadSelect();
+
+            break;
+
+
+        case "teacher":
+
+            if (teacherGroup) {
+                teacherGroup.style.display = "";
+            }
+
+            populateTimetableTeacherLoadSelect();
+
+            break;
+
+
+        case "school":
+        default:
+
+            break;
+
+    }
+
+}
+
+
+// ============================================================
+// POPULATE GRADE SELECT
+// ============================================================
+
+async function populateTimetableGradeSelect() {
+
+    const gradeSelect =
+        document.getElementById(
+            "timetableGradeSelect"
+        );
+
+    if (!gradeSelect) {
+        return;
+    }
+
+
+    gradeSelect.innerHTML = `
+        <option value="">
+            Select Grade
+        </option>
+    `;
+
+
+    if (
+        !Array.isArray(
+            generatedTimetableEntries
+        ) ||
+        generatedTimetableEntries.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    if (!timetableDisplayLookup?.streams) {
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // Get streams actually used in generated timetable
+    // --------------------------------------------------------
+
+    const streamIds =
+        [
+            ...new Set(
+                generatedTimetableEntries
+                    .map(
+                        entry =>
+                            entry.stream_id
+                    )
+                    .filter(Boolean)
+            )
+        ];
+
+
+    const streams =
+        streamIds
+            .map(
+                streamId =>
+                    timetableDisplayLookup.streams.get(
+                        streamId
+                    )
+            )
+            .filter(Boolean);
+
+
+    // --------------------------------------------------------
+    // Load class information
+    // --------------------------------------------------------
+
+    const schoolId =
+        timetableState?.schoolId;
+
+
+    if (!schoolId) {
+        return;
+    }
+
+
+    const {
+        data: classes,
+        error
+    } =
+        await supabaseClient
+            .from(
+                "timetable_classes"
+            )
+            .select("*")
+            .eq(
+                "school_id",
+                schoolId
+            );
+
+
+    if (error) {
+
+        console.error(
+            "Failed to load timetable classes:",
+            error
+        );
+
+        return;
+
+    }
+
+
+    const classMap =
+        new Map(
+            (classes || []).map(
+                classRow => [
+                    classRow.id,
+                    classRow
+                ]
+            )
+        );
+
+
+    const grades =
+        new Map();
+
+
+    streams.forEach(
+        stream => {
+
+            const classRow =
+                classMap.get(
+                    stream.class_id
+                );
+
+
+            if (!classRow) {
+                return;
+            }
+
+
+            const grade =
+                classRow.class_level ||
+                classRow.class_name;
+
+
+            if (!grade) {
+                return;
+            }
+
+
+            const gradeValue =
+                String(
+                    grade
+                ).trim();
+
+
+            grades.set(
+                gradeValue,
+                gradeValue
+            );
+
+        }
+    );
+
+
+    [
+        ...grades.values()
+    ]
+        .sort(
+            (
+                a,
+                b
+            ) =>
+                String(a).localeCompare(
+                    String(b),
+                    undefined,
+                    {
+                        numeric: true,
+                        sensitivity: "base"
+                    }
+                )
+        )
+        .forEach(
+            grade => {
+
+                gradeSelect.insertAdjacentHTML(
+                    "beforeend",
+                    `
+                        <option value="${escapeHtml(
+                            String(grade)
+                        )}">
+                            ${escapeHtml(
+                                String(grade)
+                            )}
+                        </option>
+                    `
+                );
+
+            }
+        );
+
+
+    console.log(
+        "Available grades:",
+        [...grades.values()]
+    );
+
+}
+
+
+// ============================================================
+// POPULATE STREAM SELECT
+// ============================================================
+
+function populateTimetableStreamLoadSelect() {
+
+    const streamSelect =
+        document.getElementById(
+            "timetableLoadStreamSelect"
+        );
+
+    if (!streamSelect) {
+        return;
+    }
+
+
+    streamSelect.innerHTML = `
+        <option value="">
+            Select Stream
+        </option>
+    `;
+
+
+    if (!timetableDisplayLookup?.streams) {
+        return;
+    }
+
+
+    const streamIds =
+        [
+            ...new Set(
+                generatedTimetableEntries
+                    .map(
+                        entry =>
+                            entry.stream_id
+                    )
+                    .filter(Boolean)
+            )
+        ];
+
+
+    const streams =
+        streamIds
+            .map(
+                streamId =>
+                    timetableDisplayLookup.streams.get(
+                        streamId
+                    )
+            )
+            .filter(Boolean)
+            .sort(
+                (
+                    a,
+                    b
+                ) =>
+                    String(
+                        getTimetableStreamName(a) || ""
+                    ).localeCompare(
+                        String(
+                            getTimetableStreamName(b) || ""
+                        ),
+                        undefined,
+                        {
+                            numeric: true,
+                            sensitivity: "base"
+                        }
+                    )
+            );
+
+
+    streams.forEach(
+        stream => {
+
+            const name =
+                getTimetableStreamName(
+                    stream
+                ) ||
+                "Unknown Stream";
+
+
+            streamSelect.insertAdjacentHTML(
+                "beforeend",
+                `
+                    <option value="${escapeHtml(
+                        String(stream.id)
+                    )}">
+                        ${escapeHtml(name)}
+                    </option>
+                `
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// POPULATE TEACHER SELECT
+// ============================================================
+
+function populateTimetableTeacherLoadSelect() {
+
+    const teacherSelect =
+        document.getElementById(
+            "timetableLoadTeacherSelect"
+        );
+
+    if (!teacherSelect) {
+        return;
+    }
+
+
+    teacherSelect.innerHTML = `
+        <option value="">
+            Select Teacher
+        </option>
+    `;
+
+
+    if (!timetableDisplayLookup?.teachers) {
+        return;
+    }
+
+
+    const teacherIds =
+        [
+            ...new Set(
+                generatedTimetableEntries
+                    .map(
+                        entry =>
+                            entry.teacher_id
+                    )
+                    .filter(Boolean)
+            )
+        ];
+
+
+    const teachers =
+        teacherIds
+            .map(
+                teacherId =>
+                    timetableDisplayLookup.teachers.get(
+                        teacherId
+                    )
+            )
+            .filter(Boolean)
+            .sort(
+                (
+                    a,
+                    b
+                ) =>
+                    String(
+                        getTimetableTeacherName(a) || ""
+                    ).localeCompare(
+                        String(
+                            getTimetableTeacherName(b) || ""
+                        ),
+                        undefined,
+                        {
+                            sensitivity: "base"
+                        }
+                    )
+            );
+
+
+    teachers.forEach(
+        teacher => {
+
+            const name =
+                getTimetableTeacherName(
+                    teacher
+                ) ||
+                "Unknown Teacher";
+
+
+            teacherSelect.insertAdjacentHTML(
+                "beforeend",
+                `
+                    <option value="${escapeHtml(
+                        String(teacher.id)
+                    )}">
+                        ${escapeHtml(name)}
+                    </option>
+                `
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// LOAD SELECTED TIMETABLE
+// ============================================================
+
+async function loadSelectedTimetableView() {
+
+    const loadType =
+        document.getElementById(
+            "timetableLoadType"
+        )?.value;
+
+
+    const container =
+        document.getElementById(
+            "timetableContent"
+        );
+
+
+    if (!container) {
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // CHECK GENERATED DATA
+    // --------------------------------------------------------
+
+    if (
+        !Array.isArray(
+            generatedTimetableEntries
+        ) ||
+        generatedTimetableEntries.length === 0
+    ) {
+
+        alert(
+            "Generate the whole-school timetable first."
+        );
+
+        return;
+
+    }
+
+
+    if (!timetableDisplayLookup) {
+
+        alert(
+            "Timetable reference data is not loaded."
+        );
+
+        return;
+
+    }
+
+
+    let filteredEntries = [];
+    let label = "Whole School";
+
+
+    // ========================================================
+    // WHOLE SCHOOL
+    // ========================================================
+
+    if (
+        loadType === "school"
+    ) {
+
+        filteredEntries =
+            [
+                ...generatedTimetableEntries
+            ];
+
+        label =
+            "Whole School";
+
+    }
+
+
+    // ========================================================
+    // GRADE
+    // ========================================================
+
+    else if (
+        loadType === "grade"
+    ) {
+
+        const grade =
+            document.getElementById(
+                "timetableGradeSelect"
+            )?.value;
+
+
+        if (!grade) {
+
+            alert(
+                "Please select a grade."
+            );
+
+            return;
+
+        }
+
+
+        filteredEntries =
+            getTimetableEntriesForGrade(
+                grade
+            );
+
+
+        label =
+            `Grade ${grade}`;
+
+    }
+
+
+    // ========================================================
+    // STREAM
+    // ========================================================
+
+    else if (
+        loadType === "stream"
+    ) {
+
+        const streamId =
+            document.getElementById(
+                "timetableLoadStreamSelect"
+            )?.value;
+
+
+        if (!streamId) {
+
+            alert(
+                "Please select a stream."
+            );
+
+            return;
+
+        }
+
+
+        filteredEntries =
+            generatedTimetableEntries.filter(
+                entry =>
+                    String(
+                        entry.stream_id
+                    ) === String(streamId)
+            );
+
+
+        const stream =
+            timetableDisplayLookup.streams.get(
+                streamId
+            );
+
+
+        label =
+            getTimetableStreamName(
+                stream
+            ) ||
+            "Selected Stream";
+
+    }
+
+
+    // ========================================================
+    // TEACHER
+    // ========================================================
+
+    else if (
+        loadType === "teacher"
+    ) {
+
+        const teacherId =
+            document.getElementById(
+                "timetableLoadTeacherSelect"
+            )?.value;
+
+
+        if (!teacherId) {
+
+            alert(
+                "Please select a teacher."
+            );
+
+            return;
+
+        }
+
+
+        filteredEntries =
+            generatedTimetableEntries.filter(
+                entry =>
+                    String(
+                        entry.teacher_id
+                    ) === String(teacherId)
+            );
+
+
+        const teacher =
+            timetableDisplayLookup.teachers.get(
+                teacherId
+            );
+
+
+        label =
+            getTimetableTeacherName(
+                teacher
+            ) ||
+            "Selected Teacher";
+
+    }
+
+
+    // ========================================================
+    // NO RESULTS
+    // ========================================================
+
+    if (
+        filteredEntries.length === 0
+    ) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+
+                <div>📅</div>
+
+                <h3>
+                    No timetable entries found.
+                </h3>
+
+                <p>
+                    No generated lessons match:
+                    <strong>
+                        ${escapeHtml(label)}
+                    </strong>
+                </p>
+
+            </div>
+        `;
+
+        timetableSelectedViewEntries = [];
+
+        return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SAVE CURRENT VIEW
+    // --------------------------------------------------------
+
+    timetableSelectedViewEntries =
+        filteredEntries;
+
+    timetableLoadedViewType =
+        loadType;
+
+    timetableLoadedViewLabel =
+        label;
+
+
+    // --------------------------------------------------------
+    // RENDER
+    // --------------------------------------------------------
+
+    renderGeneratedTimetable(
+        filteredEntries,
+        timetableDisplayLookup
+    );
+
+
+    // --------------------------------------------------------
+    // SHOW EXPORT BUTTONS
+    // --------------------------------------------------------
+
+    const exportActions =
+        document.getElementById(
+            "timetableExportActions"
+        );
+
+
+    if (exportActions) {
+
+        exportActions.style.display =
+            "";
+
+    }
+
+
+    console.log(
+        "Loaded timetable view:",
+        label,
+        "Entries:",
+        filteredEntries.length
+    );
+
+}
+
+
+// ============================================================
+// GET ENTRIES FOR GRADE
+// ============================================================
+
+async function getTimetableEntriesForGrade(
+    grade
+) {
+
+    if (
+        !timetableDisplayLookup?.streams
+    ) {
+
+        return [];
+
+    }
+
+
+    const schoolId =
+        timetableState?.schoolId;
+
+
+    if (!schoolId) {
+        return [];
+    }
+
+
+    // --------------------------------------------------------
+    // Load classes
+    // --------------------------------------------------------
+
+    const {
+        data: classes,
+        error
+    } =
+        await supabaseClient
+            .from(
+                "timetable_classes"
+            )
+            .select("*")
+            .eq(
+                "school_id",
+                schoolId
+            );
+
+
+    if (error) {
+
+        console.error(
+            "Failed to load classes for grade filter:",
+            error
+        );
+
+        return [];
+
+    }
+
+
+    const classIds =
+        (classes || [])
+            .filter(
+                classRow =>
+                    String(
+                        classRow.class_level ||
+                        classRow.class_name ||
+                        ""
+                    ).trim() ===
+                    String(grade).trim()
+            )
+            .map(
+                classRow =>
+                    String(classRow.id)
+            );
+
+
+    if (classIds.length === 0) {
+        return [];
+    }
+
+
+    const streamIds =
+        [
+            ...timetableDisplayLookup.streams.values()
+        ]
+            .filter(
+                stream =>
+                    classIds.includes(
+                        String(
+                            stream.class_id
+                        )
+                    )
+            )
+            .map(
+                stream =>
+                    String(stream.id)
+            );
+
+
+    return generatedTimetableEntries.filter(
+        entry =>
+            streamIds.includes(
+                String(
+                    entry.stream_id
+                )
+            )
+    );
+
+}
+
+
+// ============================================================
+// LOAD WHOLE SCHOOL
+// ============================================================
+
+function loadWholeSchoolTimetableView() {
+
+    if (
+        !Array.isArray(
+            generatedTimetableEntries
+        ) ||
+        generatedTimetableEntries.length === 0
+    ) {
+
+        alert(
+            "Generate the whole-school timetable first."
+        );
+
+        return;
+
+    }
+
+
+    timetableSelectedViewEntries =
+        [
+            ...generatedTimetableEntries
+        ];
+
+    timetableLoadedViewType =
+        "school";
+
+    timetableLoadedViewLabel =
+        "Whole School";
+
+
+    renderGeneratedTimetable(
+        generatedTimetableEntries,
+        timetableDisplayLookup
+    );
+
+
+    const loadType =
+        document.getElementById(
+            "timetableLoadType"
+        );
+
+    if (loadType) {
+        loadType.value = "school";
+    }
+
+
+    handleTimetableLoadTypeChange();
+
+
+    const exportActions =
+        document.getElementById(
+            "timetableExportActions"
+        );
+
+    if (exportActions) {
+        exportActions.style.display = "";
+    }
+
+}
+
+
+// ============================================================
+// INITIALIZE BUTTONS
+// ============================================================
+
+function initializeTimetableViewControls() {
+
+    const loadButton =
+        document.getElementById(
+            "loadSelectedTimetableBtn"
+        );
+
+
+    const wholeSchoolButton =
+        document.getElementById(
+            "loadWholeSchoolTimetableBtn"
+        );
+
+
+    if (loadButton) {
+
+        loadButton.addEventListener(
+            "click",
+            loadSelectedTimetableView
+        );
+
+    }
+
+
+    if (wholeSchoolButton) {
+
+        wholeSchoolButton.addEventListener(
+            "click",
+            loadWholeSchoolTimetableView
+        );
+
+    }
+
+
+    initializeTimetableLoadSelectors();
+
+}
+
+
+// ============================================================
+// START NEW VIEW CONTROLS
+// ============================================================
+
+if (
+    document.readyState === "loading"
+) {
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        initializeTimetableViewControls,
+        {
+            once: true
+        }
+    );
+
+} else {
+
+    initializeTimetableViewControls();
+
+}
+
+
+
+
+
+
 
 // ============================================================
 // TIMETABLE DISPLAY HELPERS
@@ -27348,20 +28476,19 @@ function formatTimetableTime(time) {
         Number(parts[0]);
 
     const minute =
-        parts[1];
+        parts[1].padStart(2, "0");
 
-    const suffix =
-        hour >= 12
-            ? "PM"
-            : "AM";
-
+    // Convert to 12-hour format without AM/PM
     hour =
         hour % 12 || 12;
 
-    return `${hour}:${minute} ${suffix}`;
+    return `${hour}:${minute}`;
 }
 
 
+
+
+    
 // ------------------------------------------------------------
 // PERIOD CSS CLASS
 // ------------------------------------------------------------
