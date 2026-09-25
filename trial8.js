@@ -27344,8 +27344,14 @@ const teacherCode =
 
 
 
+
+
+
 // ============================================================
-// RENDER SELECTED TEACHER — PRINTABLE TIMETABLE
+// RENDER TEACHER TIMETABLE
+// SAME KENYAN SCHOOL TIMETABLE FORMAT
+// TIME ACROSS TOP • DAYS DOWN LEFT
+// SUBJECT CODE • STREAM • ROOM
 // ============================================================
 
 function renderGeneratedTeacherTimetable(
@@ -27355,23 +27361,23 @@ function renderGeneratedTeacherTimetable(
 ) {
 
     const container =
-        document.getElementById(
-            "timetableContent"
-        );
+        document.getElementById("timetableContent");
 
     if (!container) {
+        console.warn("timetableContent element not found.");
         return;
     }
 
-    if (
-        !Array.isArray(entries) ||
-        entries.length === 0
-    ) {
+    // --------------------------------------------------------
+    // VALIDATE
+    // --------------------------------------------------------
+
+    if (!Array.isArray(entries) || entries.length === 0) {
 
         container.innerHTML = `
             <div class="empty-state">
                 <div>📅</div>
-                <h3>No timetable entries found.</h3>
+                <h3>No timetable entries available.</h3>
             </div>
         `;
 
@@ -27387,111 +27393,221 @@ function renderGeneratedTeacherTimetable(
         !lookup.rooms
     ) {
 
-        console.error(
-            "renderGeneratedTeacherTimetable: incomplete lookup maps."
-        );
+        container.innerHTML = `
+            <div class="empty-state">
+                <div>⚠️</div>
+                <h3>Unable to display timetable.</h3>
+                <p>Timetable reference data is incomplete.</p>
+            </div>
+        `;
+
+        return;
+    }
+
+    console.log(
+        "Rendering teacher timetable:",
+        entries.length,
+        "entries"
+    );
+
+
+    // ========================================================
+    // 1. GET ALL PERIODS
+    // ========================================================
+
+    const allPeriods = [
+        ...lookup.periods.values()
+    ];
+
+    if (allPeriods.length === 0) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+                <div>⚠️</div>
+                <h3>No timetable periods found.</h3>
+            </div>
+        `;
 
         return;
     }
 
 
-    // --------------------------------------------------------
-    // TEACHER NAME
-    // --------------------------------------------------------
+    // ========================================================
+    // 2. SORT PERIODS
+    // ========================================================
 
-    const teacherName =
-        getTimetableTeacherName(
-            teacher
-        ) ||
-        "Selected Teacher";
+    const sortedPeriods =
+        [...allPeriods].sort((a, b) => {
 
+            const dayA =
+                Number(a.day_number || 0);
 
-    // --------------------------------------------------------
-    // ALL PERIODS
-    // --------------------------------------------------------
+            const dayB =
+                Number(b.day_number || 0);
 
-    const allPeriods =
-        [...lookup.periods.values()]
-            .filter(Boolean)
-            .sort(
-                (a, b) => {
-
-                    const dayA =
-                        Number(
-                            a.day_number || 0
-                        );
-
-                    const dayB =
-                        Number(
-                            b.day_number || 0
-                        );
-
-                    if (
-                        dayA !== dayB
-                    ) {
-                        return dayA - dayB;
-                    }
-
-                    return Number(
-                        a.period_order ??
-                        a.period_number ??
-                        0
-                    ) -
-                    Number(
-                        b.period_order ??
-                        b.period_number ??
-                        0
-                    );
-
-                }
-            );
-
-
-    // --------------------------------------------------------
-    // PERIODS USED AS COLUMNS
-    // --------------------------------------------------------
-
-    const uniquePeriods =
-        [];
-
-    const seenPeriods =
-        new Set();
-
-
-    allPeriods.forEach(
-        period => {
-
-            const periodNumber =
-                Number(
-                    period.period_number ??
-                    period.period_order ??
-                    0
-                );
-
-            if (
-                !periodNumber ||
-                seenPeriods.has(
-                    periodNumber
-                )
-            ) {
-                return;
+            if (dayA !== dayB) {
+                return dayA - dayB;
             }
 
-            seenPeriods.add(
-                periodNumber
+            return (
+                Number(a.period_number || 0) -
+                Number(b.period_number || 0)
             );
 
-            uniquePeriods.push(
-                period
+        });
+
+
+    // ========================================================
+    // 3. BUILD DAILY PERIOD MAP
+    // ========================================================
+
+    const dailyPeriodMap =
+        new Map();
+
+    sortedPeriods.forEach(period => {
+
+        const dayNumber =
+            Number(
+                period.day_number || 0
+            );
+
+        const periodNumber =
+            Number(
+                period.period_number || 0
+            );
+
+        const key =
+            `${dayNumber}__${periodNumber}`;
+
+        dailyPeriodMap.set(
+            key,
+            period
+        );
+
+    });
+
+
+    // ========================================================
+    // 4. AVAILABLE DAYS
+    // ========================================================
+
+    const availableDays =
+        [...new Set(
+            sortedPeriods
+                .map(
+                    period =>
+                        Number(
+                            period.day_number || 0
+                        )
+                )
+        )]
+        .filter(
+            day => day > 0
+        )
+        .sort(
+            (a, b) => a - b
+        );
+
+
+    if (availableDays.length === 0) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+                <div>⚠️</div>
+                <h3>No valid timetable days found.</h3>
+            </div>
+        `;
+
+        return;
+    }
+
+
+    // ========================================================
+    // 5. USE FIRST AVAILABLE DAY AS COLUMN TEMPLATE
+    // ========================================================
+
+    const referenceDay =
+        availableDays[0];
+
+    const displayPeriods =
+        sortedPeriods
+            .filter(
+                period =>
+                    Number(
+                        period.day_number || 0
+                    ) === referenceDay
+            )
+            .sort(
+                (a, b) =>
+                    Number(
+                        a.period_number || 0
+                    ) -
+                    Number(
+                        b.period_number || 0
+                    )
+            );
+
+
+    // ========================================================
+    // 6. BUILD TEACHER ENTRY LOOKUP
+    // ========================================================
+    //
+    // KEY:
+    //
+    // day_number + period_number
+    //
+    // Because this renderer already contains only the
+    // selected teacher's entries.
+    //
+    // ========================================================
+
+    const entryMap =
+        new Map();
+
+    entries.forEach(entry => {
+
+        const period =
+            lookup.periods.get(
+                entry.period_id
+            );
+
+        if (!period) {
+            return;
+        }
+
+        const dayNumber =
+            Number(
+                period.day_number || 0
+            );
+
+        const periodNumber =
+            Number(
+                period.period_number || 0
+            );
+
+        const key =
+            `${dayNumber}__${periodNumber}`;
+
+
+        if (!entryMap.has(key)) {
+
+            entryMap.set(
+                key,
+                []
             );
 
         }
-    );
+
+        entryMap
+            .get(key)
+            .push(entry);
+
+    });
 
 
-    // --------------------------------------------------------
-    // MONDAY-FRIDAY
-    // --------------------------------------------------------
+    // ========================================================
+    // 7. DAYS
+    // ========================================================
 
     const days = [
         {
@@ -27514,60 +27630,29 @@ function renderGeneratedTeacherTimetable(
             number: 5,
             name: "Friday"
         }
-    ];
-
-
-    // --------------------------------------------------------
-    // ENTRY LOOKUP
-    // --------------------------------------------------------
-
-    const entryMap =
-        new Map();
-
-
-    entries.forEach(
-        entry => {
-
-            const period =
-                lookup.periods.get(
-                    entry.period_id
-                );
-
-            if (!period) {
-                return;
-            }
-
-            const dayNumber =
-                Number(
-                    period.day_number || 0
-                );
-
-            const periodNumber =
-                Number(
-                    period.period_number ??
-                    period.period_order ??
-                    0
-                );
-
-            if (
-                !dayNumber ||
-                !periodNumber
-            ) {
-                return;
-            }
-
-            entryMap.set(
-                `${dayNumber}__${periodNumber}`,
-                entry
-            );
-
-        }
+    ]
+    .filter(
+        day =>
+            availableDays.includes(
+                day.number
+            )
     );
 
 
-    // --------------------------------------------------------
-    // BUILD HTML
-    // --------------------------------------------------------
+    // ========================================================
+    // 8. TEACHER NAME
+    // ========================================================
+
+    const teacherName =
+        getTimetableTeacherName(
+            teacher
+        ) ||
+        "Selected Teacher";
+
+
+    // ========================================================
+    // 9. BUILD MAIN HEADER
+    // ========================================================
 
     let html = `
 
@@ -27575,273 +27660,360 @@ function renderGeneratedTeacherTimetable(
 
             <div class="timetable-toolbar">
 
-                <strong>
-                    👨‍🏫 Teacher Timetable
-                </strong>
+                <div class="timetable-toolbar-title">
 
-            </div>
-
-            <div
-                class="printable-timetable timetable-teacher"
-                data-teacher-id="${escapeHtml(
-                    String(
-                        teacher?.id || ""
-                    )
-                )}"
-            >
-
-                <div class="print-timetable-header">
-
-                    <div class="print-school-name">
-                        ${escapeHtml(
-                            getTimetableSchoolName()
-                        )}
+                    <div class="timetable-main-title">
+                        👨‍🏫 Teacher Timetable
                     </div>
 
-                    <div class="print-timetable-title">
-                        TEACHER TIMETABLE — ${escapeHtml(
+                    <div class="timetable-subtitle">
+                        ${escapeHtml(
                             teacherName
                         )}
-                    </div>
-
-                    <div class="print-timetable-meta">
-                        Printed:
-                        ${escapeHtml(
-                            new Date().toLocaleDateString()
-                        )}
+                        •
+                        ${entries.length}
+                        lesson periods
                     </div>
 
                 </div>
 
-                <div class="timetable-stream-heading">
-                    👨‍🏫
+            </div>
+
+    `;
+
+
+    // ========================================================
+    // 10. RENDER TEACHER TIMETABLE
+    // ========================================================
+
+    html += `
+
+        <section
+            class="printable-timetable timetable-teacher"
+            data-teacher-id="${escapeHtml(
+                String(
+                    teacher?.id || ""
+                )
+            )}"
+        >
+
+            <div class="print-timetable-header">
+
+                <div class="print-school-name">
                     ${escapeHtml(
+                        getTimetableSchoolName?.() ||
+                        "SCHOOL TIMETABLE"
+                    )}
+                </div>
+
+                <div class="print-timetable-title">
+                    TEACHER TIMETABLE — ${escapeHtml(
                         teacherName
                     )}
                 </div>
 
-                <div class="timetable-table-wrapper">
+                <div class="print-timetable-meta">
 
-                    <table class="kenyan-timetable-table">
+                    <span class="printed-date">
+                        • Printed:
+                        ${new Date().toLocaleDateString(
+                            "en-KE",
+                            {
+                                day: "2-digit",
+                                month: "long",
+                                year: "numeric"
+                            }
+                        )}
+                    </span>
 
-                        <thead>
+                </div>
 
-                            <tr>
+            </div>
 
-                                <th>
-                                    Day
-                                </th>
+
+            <div class="timetable-stream-heading">
+
+                <span class="stream-icon">
+                    👨‍🏫
+                </span>
+
+                <span>
+                    ${escapeHtml(
+                        teacherName
+                    )}
+                </span>
+
+            </div>
+
+
+            <div class="timetable-table-wrapper">
+
+                <table class="kenyan-timetable-table">
+
+                    <thead>
+
+                        <tr>
+
+                            <th
+                                class="day-column-header"
+                            >
+                                DAY
+                            </th>
+
     `;
 
 
-    // --------------------------------------------------------
-    // TIME HEADERS
-    // --------------------------------------------------------
+    // ========================================================
+    // 11. PERIOD HEADERS
+    // ========================================================
 
-    uniquePeriods.forEach(
-        period => {
+    displayPeriods.forEach(period => {
 
-            const periodNumber =
-                period.period_number ??
-                period.period_order ??
-                "";
-
-            const time =
-                typeof formatTimetableTime ===
-                "function"
-                    ? `${formatTimetableTime(
-                        period.start_time
-                    )}-${formatTimetableTime(
-                        period.end_time
-                    )}`
-                    : `${period.start_time || ""}-${period.end_time || ""}`;
+        const periodType =
+            String(
+                period.period_type ||
+                "lesson"
+            ).toLowerCase();
 
 
-            html += `
+        const isTeaching =
+            period.is_teaching_period === true;
 
-                <th>
 
-                    <div class="timetable-period-number">
-                        ${escapeHtml(
-                            String(
-                                periodNumber
-                            )
-                        )}
-                    </div>
+        const start =
+            formatTimetableTime(
+                period.start_time
+            );
 
-                    <div class="timetable-period-time">
-                        ${escapeHtml(
-                            time
-                        )}
-                    </div>
 
-                </th>
+        const end =
+            formatTimetableTime(
+                period.end_time
+            );
 
-            `;
 
-        }
-    );
+        const time =
+            start && end
+                ? `${start} – ${end}`
+                : "";
+
+
+        const periodName =
+            period.period_name ||
+            "";
+
+
+        const cssType =
+            getTimetablePeriodCssClass(
+                periodType
+            );
+
+
+        html += `
+
+            <th
+                class="
+                    timetable-period-header
+                    ${cssType}
+                    ${
+                        isTeaching
+                            ? "teaching-header"
+                            : "non-teaching-header"
+                    }
+                "
+            >
+
+                <div class="period-time">
+                    ${escapeHtml(time)}
+                </div>
+
+                <div class="period-name">
+                    ${escapeHtml(
+                        periodName
+                    )}
+                </div>
+
+            </th>
+
+        `;
+
+    });
 
 
     html += `
 
-                            </tr>
+                        </tr>
 
-                        </thead>
+                    </thead>
 
-                        <tbody>
+                    <tbody>
 
     `;
 
 
-    // --------------------------------------------------------
-    // DAY ROWS
-    // --------------------------------------------------------
+    // ========================================================
+    // 12. RENDER MONDAY–FRIDAY
+    // ========================================================
 
-    days.forEach(
-        day => {
+    days.forEach(day => {
+
+        html += `
+
+            <tr>
+
+                <th
+                    class="day-name-cell"
+                    scope="row"
+                >
+                    ${escapeHtml(
+                        day.name.toUpperCase()
+                    )}
+                </th>
+
+        `;
+
+
+        // ====================================================
+        // 13. RENDER EACH PERIOD
+        // ====================================================
+
+        displayPeriods.forEach(periodTemplate => {
+
+            const periodNumber =
+                Number(
+                    periodTemplate.period_number ||
+                    0
+                );
+
+
+            const dayKey =
+                `${day.number}__${periodNumber}`;
+
+
+            const dayPeriod =
+                dailyPeriodMap.get(
+                    dayKey
+                ) ||
+                periodTemplate;
+
+
+            const periodType =
+                String(
+                    dayPeriod.period_type ||
+                    "lesson"
+                ).toLowerCase();
+
+
+            const isTeaching =
+                dayPeriod.is_teaching_period === true;
+
+
+            const slotEntries =
+                entryMap.get(
+                    dayKey
+                ) || [];
+
+
+            // =================================================
+            // NON-TEACHING PERIOD
+            // =================================================
+
+            if (!isTeaching) {
+
+                const periodLabel =
+                    dayPeriod.period_name ||
+                    getActivityLabel(
+                        periodType
+                    );
+
+
+                html += `
+
+                    <td
+                        class="
+                            timetable-cell
+                            non-teaching-cell
+                            ${getTimetablePeriodCssClass(
+                                periodType
+                            )}
+                        "
+                    >
+
+                        <div class="special-period">
+
+                            <div class="special-period-icon">
+                                ${getPeriodIcon(
+                                    periodType
+                                )}
+                            </div>
+
+                            <div class="special-period-name">
+                                ${escapeHtml(
+                                    periodLabel
+                                )}
+                            </div>
+
+                        </div>
+
+                    </td>
+
+                `;
+
+                return;
+            }
+
+
+            // =================================================
+            // TEACHING PERIOD WITH NO ENTRY
+            // =================================================
+
+            if (
+                slotEntries.length === 0
+            ) {
+
+                html += `
+
+                    <td
+                        class="
+                            timetable-cell
+                            empty-lesson-cell
+                        "
+                    >
+
+                        <span class="empty-lesson">
+                            —
+                        </span>
+
+                    </td>
+
+                `;
+
+                return;
+            }
+
+
+            // =================================================
+            // TEACHING PERIOD
+            // =================================================
 
             html += `
 
-                <tr>
-
-                    <th class="timetable-day">
-                        ${escapeHtml(
-                            day.name
-                        )}
-                    </th>
+                <td
+                    class="
+                        timetable-cell
+                        lesson-cell
+                    "
+                >
 
             `;
 
 
-            uniquePeriods.forEach(
-                period => {
+            // =================================================
+            // MULTIPLE ENTRIES
+            // =================================================
 
-                    const periodNumber =
-                        Number(
-                            period.period_number ??
-                            period.period_order ??
-                            0
-                        );
-
-
-                    const key =
-                        `${day.number}__${periodNumber}`;
-
-
-                    const entry =
-                        entryMap.get(
-                            key
-                        );
-
-
-                    // ------------------------------------------------
-                    // NO LESSON
-                    // ------------------------------------------------
-
-                    if (!entry) {
-
-                        const periodType =
-                            String(
-                                period.period_type ||
-                                ""
-                            ).toLowerCase();
-
-
-                        let label = "";
-
-                        let icon = "";
-
-
-                        if (
-                            periodType ===
-                            "assembly"
-                        ) {
-
-                            label =
-                                "Assembly";
-
-                            icon =
-                                "🏫";
-
-                        }
-                        else if (
-                            periodType ===
-                            "break"
-                        ) {
-
-                            label =
-                                "Break";
-
-                            icon =
-                                "☕";
-
-                        }
-                        else if (
-                            periodType ===
-                            "lunch"
-                        ) {
-
-                            label =
-                                "Lunch Break";
-
-                            icon =
-                                "🍽️";
-
-                        }
-                        else if (
-                            periodType ===
-                            "activity"
-                        ) {
-
-                            label =
-                                "Activities";
-
-                            icon =
-                                "⚽";
-
-                        }
-
-
-                        html += `
-
-                            <td class="${escapeHtml(
-                                getTimetablePeriodCssClass(
-                                    periodType
-                                )
-                            )}">
-
-                                ${
-                                    label
-                                        ? `
-                                            <div class="timetable-special-period">
-
-                                                <span>
-                                                    ${icon}
-                                                </span>
-
-                                                <strong>
-                                                    ${escapeHtml(
-                                                        label
-                                                    )}
-                                                </strong>
-
-                                            </div>
-                                          `
-                                        : ""
-                                }
-
-                            </td>
-
-                        `;
-
-                        return;
-                    }
-
-
-                    // ------------------------------------------------
-                    // LESSON
-                    // ------------------------------------------------
+            slotEntries.forEach(
+                (entry, index) => {
 
                     const subject =
                         lookup.subjects.get(
@@ -27863,12 +28035,18 @@ function renderGeneratedTeacherTimetable(
                             : null;
 
 
-                    const subjectName =
-                        getTimetableSubjectName(
-                            subject
-                        ) ||
+                    // ------------------------------------------------
+                    // SUBJECT CODE
+                    // ------------------------------------------------
+
+                    const subjectCode =
+                        subject?.subject_code ||
                         "Unknown Subject";
 
+
+                    // ------------------------------------------------
+                    // STREAM
+                    // ------------------------------------------------
 
                     const streamName =
                         getTimetableStreamName(
@@ -27877,46 +28055,70 @@ function renderGeneratedTeacherTimetable(
                         "Unknown Stream";
 
 
-                    const roomName =
-                        getTimetableRoomName(
-                            room
-                        ) ||
-                        "";
+                    // ------------------------------------------------
+                    // ROOM
+                    // ------------------------------------------------
 
+                    const roomName =
+                        entry.room_id
+                            ? (
+                                getTimetableRoomName(
+                                    room
+                                ) ||
+                                "Unknown Room"
+                            )
+                            : "";
+
+
+                    // ------------------------------------------------
+                    // DIVIDER FOR MULTIPLE ENTRIES
+                    // ------------------------------------------------
+
+                    if (index > 0) {
+
+                        html += `
+                            <div
+                                class="timetable-entry-divider"
+                            ></div>
+                        `;
+
+                    }
+
+
+                    // =================================================
+                    // LESSON CELL
+                    // SAME STRUCTURE AS OTHER TIMETABLES
+                    // =================================================
 
                     html += `
 
-                        <td class="period-lesson">
+                        <div class="timetable-entry">
 
-                            <div class="timetable-lesson">
-
-                                <strong class="timetable-subject">
-                                    ${escapeHtml(
-                                        subjectName
-                                    )}
-                                </strong>
-
-                                <div class="timetable-stream">
-                                    ${escapeHtml(
-                                        streamName
-                                    )}
-                                </div>
-
-                                ${
-                                    roomName
-                                        ? `
-                                            <div class="timetable-room">
-                                                ${escapeHtml(
-                                                    roomName
-                                                )}
-                                            </div>
-                                          `
-                                        : ""
-                                }
-
+                            <div class="lesson-subject">
+                                ${escapeHtml(
+                                    subjectCode
+                                )}
                             </div>
 
-                        </td>
+                            <div class="lesson-teacher">
+                                ${escapeHtml(
+                                    streamName
+                                )}
+                            </div>
+
+                            ${
+                                roomName
+                                    ? `
+                                        <div class="lesson-room">
+                                            ${escapeHtml(
+                                                roomName
+                                            )}
+                                        </div>
+                                    `
+                                    : ""
+                            }
+
+                        </div>
 
                     `;
 
@@ -27926,51 +28128,98 @@ function renderGeneratedTeacherTimetable(
 
             html += `
 
-                </tr>
+                </td>
 
             `;
 
-        }
-    );
+        });
 
+
+        html += `
+
+            </tr>
+
+        `;
+
+    });
+
+
+    // ========================================================
+    // 14. CLOSE TABLE
+    // ========================================================
 
     html += `
 
-                        </tbody>
+                    </tbody>
 
-                    </table>
-
-                </div>
-
-                <div class="print-footer">
-                    Smart Elimu Connect
-                </div>
+                </table>
 
             </div>
+
+            <div class="print-footer">
+                Smart Elimu Connect
+            </div>
+
+        </section>
+
+    `;
+
+
+    // ========================================================
+    // 15. CLOSE MAIN CONTAINER
+    // ========================================================
+
+    html += `
 
         </div>
 
     `;
 
 
+    // ========================================================
+    // 16. DISPLAY
+    // ========================================================
+
     container.innerHTML =
         html;
 
 
+    // ========================================================
+    // 17. LOGGING
+    // ========================================================
+
     console.log(
-        "Teacher timetable rendered:",
-        teacherName,
+        "Teacher timetable rendered successfully."
+    );
+
+    console.log(
+        "Teacher:",
+        teacherName
+    );
+
+    console.log(
         "Entries:",
         entries.length
     );
 
+    console.log(
+        "Daily period columns:",
+        displayPeriods.length
+    );
+
+    console.log(
+        "Days:",
+        days.length
+    );
+
+    console.log(
+        "Period numbers:",
+        displayPeriods.map(
+            p => p.period_number
+        )
+    );
+
 }
-
-
-
-
-
-
 
 
 
