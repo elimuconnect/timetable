@@ -31777,11 +31777,6 @@ async function downloadGeneratedTimetablesWord() {
 }
 
 
-<script>
-console.log("DOCX library:", typeof docx);
-console.log("DOCX Document:", typeof docx?.Document);
-console.log("DOCX Packer:", typeof docx?.Packer);
-</script>
 
 
 
