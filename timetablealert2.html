@@ -320,14 +320,6 @@
 
 
     <button
-      class="secondary"
-      onclick="testVoice()"
-    >
-      🔊 Test Voice
-    </button>
-
-
-    <button
       class="success"
       id="startBtn"
       onclick="startMonitoring()"
@@ -2361,6 +2353,26 @@ function stopMonitoring() {
 
 /* ============================================================
    CHECK TIMETABLE
+   ============================================================
+
+   IMPORTANT:
+
+   Lesson times come ONLY from the uploaded timetable.
+
+   There are NO hard-coded lesson times here.
+
+   Example uploaded timetable:
+
+   11:20 – 12:00 Period 4
+
+   Alert window:
+
+   11:18:00
+   through
+   11:19:59
+
+   The alert is triggered exactly 2 minutes
+   before the uploaded lesson start time.
    ============================================================ */
 
 function checkTimetable() {
@@ -2382,9 +2394,28 @@ function checkTimetable() {
     getToday();
 
 
-  const currentMinutes =
-    now.getHours() * 60 +
-    now.getMinutes();
+  /*
+     Use seconds, not only minutes.
+
+     Example:
+
+     11:18:06
+
+     becomes:
+
+     11 * 3600 +
+     18 * 60 +
+     6
+  */
+
+  const currentSeconds =
+    (
+      now.getHours() * 3600
+    ) +
+    (
+      now.getMinutes() * 60
+    ) +
+    now.getSeconds();
 
 
   document.getElementById(
@@ -2402,98 +2433,177 @@ function checkTimetable() {
 
 
   /*
-     Every lesson's start time comes
-     from the uploaded DOCX.
+     Check only today's lessons.
+
+     We NEVER alert for Monday while
+     it is still Friday.
+
+     The teacher must receive the alert
+     on the actual lesson day.
   */
 
-  teacherSchedule
-    .filter(
+  const todayLessons =
+    teacherSchedule.filter(
       lesson =>
         lesson.day === today
-    )
-    .forEach(
-      lesson => {
+    );
 
-        const lessonStart =
-          timeToMinutes(
-            lesson.start
+
+  todayLessons.forEach(
+    lesson => {
+
+      /*
+         The lesson start comes directly
+         from the uploaded DOCX.
+      */
+
+      const lessonStartMinutes =
+        timeToMinutes(
+          lesson.start
+        );
+
+
+      if (
+        lessonStartMinutes === null
+      ) {
+
+        console.warn(
+          "⚠️ Invalid lesson start time:",
+          lesson
+        );
+
+        return;
+
+      }
+
+
+      /*
+         Convert uploaded lesson start
+         to seconds.
+      */
+
+      const lessonStartSeconds =
+        lessonStartMinutes * 60;
+
+
+      /*
+         Alert exactly 2 minutes before
+         the uploaded lesson start.
+
+         NO hard-coded timetable time.
+
+         The only fixed value here is
+         the alert lead time: 2 minutes.
+      */
+
+      const alertStartSeconds =
+        lessonStartSeconds -
+        (2 * 60);
+
+
+      /*
+         Create unique alert ID.
+      */
+
+      const alertId =
+        today +
+        "|" +
+        lesson.period +
+        "|" +
+        lesson.start +
+        "|" +
+        lesson.end +
+        "|" +
+        lesson.lesson;
+
+
+      /*
+         Alert window:
+
+         alertStartSeconds <= current time
+         AND
+         current time < lesson start
+
+         Example:
+
+         Lesson:
+         11:20:00
+
+         Alert:
+
+         11:18:00
+         through
+         11:19:59
+      */
+
+      if (
+        currentSeconds >=
+          alertStartSeconds &&
+
+        currentSeconds <
+          lessonStartSeconds
+      ) {
+
+        console.log(
+          "🚨 ALERT WINDOW ACTIVE:",
+          {
+            day:
+              today,
+
+            lesson:
+              lesson.lesson,
+
+            period:
+              lesson.period,
+
+            start:
+              lesson.start,
+
+            end:
+              lesson.end,
+
+            currentTime:
+              formatTime(now),
+
+            alertFor:
+              lesson.start
+          }
+        );
+
+
+        if (
+          !announcedAlerts.has(
+            alertId
+          )
+        ) {
+
+          announcedAlerts.add(
+            alertId
           );
 
 
-        if (
-          lessonStart === null
-        ) {
-
-          return;
-
-        }
+          console.log(
+            "🔊 ANNOUNCING:",
+            lesson.lesson
+          );
 
 
-        /*
-           Alert two minutes before the
-           uploaded timetable start time.
-
-           Example:
-
-           DOCX:
-           11:02 – 11:42
-
-           Alert:
-           11:00
-        */
-
-        const alertTime =
-          lessonStart - 2;
-
-
-        const alertId =
-          today +
-          "|" +
-          lesson.period +
-          "|" +
-          lesson.start +
-          "|" +
-          lesson.lesson;
-
-
-        /*
-           Check every 10 seconds.
-
-           This gives us a small window
-           before the lesson starts.
-        */
-
-        if (
-          currentMinutes >= alertTime &&
-          currentMinutes < lessonStart
-        ) {
-
-          if (
-            !announcedAlerts.has(
-              alertId
-            )
-          ) {
-
-            announcedAlerts.add(
-              alertId
-            );
-
-
-            announceLesson(
-              lesson
-            );
-
-          }
+          announceLesson(
+            lesson
+          );
 
         }
 
       }
-    );
+
+    }
+  );
 
 
   updateNextLesson();
 
 }
+  
 
 
 /* ============================================================
@@ -2590,31 +2700,6 @@ function speakText(
 
 }
 
-
-/* ============================================================
-   TEST VOICE
-   ============================================================ */
-
-function testVoice() {
-
-  const name =
-    document.getElementById(
-      "teacherName"
-    ).value.trim();
-
-
-  const teacher =
-    name ||
-    "Teacher";
-
-
-  speakText(
-    "Hello " +
-    teacher +
-    ". Your Smart Timetable Voice Alert is working."
-  );
-
-}
 
 
 /* ============================================================
