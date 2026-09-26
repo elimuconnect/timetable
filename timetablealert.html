@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -223,6 +222,15 @@
     .next-countdown {
       margin-top: 8px;
       font-weight: bold;
+    }
+
+    .timing-source {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f4f8fc;
+      border-radius: 7px;
+      font-size: 13px;
+      color: #555;
     }
 
     @media (max-width: 700px) {
@@ -486,112 +494,29 @@ let alertHistory = [];
 
 
 /* ============================================================
-   NEW TIMETABLE TIMES
+   TIMETABLE HEADER INFORMATION
    ============================================================
 
    IMPORTANT:
 
-   These are the NEW times supplied from timetable_periods.
+   THERE ARE NO HARDCODED LESSON TIMES.
 
-   Period 1 = 08:20
-   Period 2 = 09:00
-   Period 3 = 09:50
-   Period 4 = 10:30
-   Period 5 = 11:40
-   Period 6 = 12:20
-   Period 7 = 14:00
-   Period 8 = 14:40
+   Times are extracted directly from the uploaded DOCX
+   timetable header.
 
-   Alert is automatically 2 minutes before each start time.
+   Example:
+
+   "8:20 – 9:00 Period 1"
+
+   becomes:
+
+   period = "period 1"
+   start  = "08:20"
+   end    = "09:00"
+
+   The actual time written in the uploaded timetable
+   is therefore used everywhere in this application.
    ============================================================ */
-
-const periodTimes = {
-
-  "period 1": {
-    start: "08:20",
-    end: "09:00"
-  },
-
-  "period 2": {
-    start: "09:00",
-    end: "09:40"
-  },
-
-  "period 3": {
-    start: "09:50",
-    end: "10:30"
-  },
-
-  "period 4": {
-    start: "10:30",
-    end: "11:10"
-  },
-
-  "period 5": {
-    start: "11:40",
-    end: "12:20"
-  },
-
-  "period 6": {
-    start: "12:20",
-    end: "13:00"
-  },
-
-  "period 7": {
-    start: "14:00",
-    end: "14:40"
-  },
-
-  "period 8": {
-    start: "14:40",
-    end: "15:20"
-  }
-
-};
-
-
-/* ============================================================
-   NON-TEACHING PERIODS
-   ============================================================ */
-
-const nonTeachingTimes = {
-
-  "assembly": {
-    start: "08:00",
-    end: "08:20"
-  },
-
-  "short break": {
-    start: "09:40",
-    end: "09:50"
-  },
-
-  "long break": {
-    start: "11:10",
-    end: "11:40"
-  },
-
-  "lunch break": {
-    start: "13:00",
-    end: "14:00"
-  },
-
-  "games": {
-    start: "15:30",
-    end: "17:00"
-  },
-
-  "societies": {
-    start: "15:30",
-    end: "17:00"
-  },
-
-  "clubs": {
-    start: "15:30",
-    end: "17:00"
-  }
-
-};
 
 
 /* ============================================================
@@ -632,7 +557,8 @@ function normalizeTeacherName(text) {
 
 function normalizeDay(text) {
 
-  const value = normalize(text);
+  const value =
+    normalize(text);
 
   if (
     value.startsWith("mon")
@@ -672,67 +598,408 @@ function normalizeDay(text) {
 
 
 /* ============================================================
-   NORMALIZE PERIOD HEADER
+   EXTRACT PERIOD NUMBER FROM HEADER
    ============================================================
 
-   Supports:
+   Examples accepted:
 
    Period 1
-   period1
+   Period1
+   period 2
    P1
-   p1
+   p2
    1
+   2
 
-   etc.
+   Also accepts headers containing times:
+
+   8:20 – 9:00 Period 1
+   9:00 – 9:40 Period 2
+   11:02– 11:42 Period 4
+
+   IMPORTANT:
+
+   We do NOT use the printed time for identifying the period.
    ============================================================ */
 
 function normalizePeriod(text) {
 
-  let value = normalize(text);
+  const value =
+    normalize(text);
 
-  value = value
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const match = value.match(
-    /^(?:period\s*|p\s*)?(\d+)$/
-  );
-
-  if (!match) {
+  if (!value) {
     return "";
   }
 
-  const number = parseInt(
-    match[1],
-    10
-  );
 
-  if (
-    number < 1 ||
-    number > 8
-  ) {
-    return "";
+  /*
+     First look for "Period 1", "Period 2", etc.
+  */
+
+  let match =
+    value.match(
+      /\bperiod\s*([1-8])\b/i
+    );
+
+
+  if (match) {
+
+    return (
+      "period " +
+      parseInt(
+        match[1],
+        10
+      )
+    );
+
   }
 
-  return "period " + number;
+
+  /*
+     Also support P1, P2, etc.
+  */
+
+  match =
+    value.match(
+      /\bp\s*([1-8])\b/i
+    );
+
+
+  if (match) {
+
+    return (
+      "period " +
+      parseInt(
+        match[1],
+        10
+      )
+    );
+
+  }
+
+
+  /*
+     Finally support a cell containing
+     only the number.
+  */
+
+  match =
+    value.match(
+      /^([1-8])$/
+    );
+
+
+  if (match) {
+
+    return (
+      "period " +
+      parseInt(
+        match[1],
+        10
+      )
+    );
+
+  }
+
+
+  return "";
 
 }
 
 
 /* ============================================================
-   GET PERIOD INFORMATION
+   PARSE TIME
+   ============================================================
+
+   Converts timetable time formats such as:
+
+   8:20
+   08:20
+   1:00
+   2:40
+   3:20
+
+   into HH:MM 24-hour format.
+
+   This function also handles AM/PM if the DOCX contains it.
    ============================================================ */
 
-function getPeriodInfo(header) {
+function parseTimetableTime(
+  value
+) {
 
-  const periodKey =
-    normalizePeriod(header);
-
-  if (!periodKey) {
+  if (!value) {
     return null;
   }
 
-  return periodTimes[periodKey] || null;
+
+  let text =
+    String(value)
+      .trim()
+      .toLowerCase();
+
+
+  /*
+     Extract:
+
+     8:20
+     08:20
+     1:00
+     12:30
+  */
+
+  const match =
+    text.match(
+      /(\d{1,2})\s*:\s*(\d{2})\s*(am|pm)?/i
+    );
+
+
+  if (!match) {
+    return null;
+  }
+
+
+  let hours =
+    parseInt(
+      match[1],
+      10
+    );
+
+  const minutes =
+    parseInt(
+      match[2],
+      10
+    );
+
+  const modifier =
+    match[3]
+      ? match[3].toLowerCase()
+      : "";
+
+
+  if (
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+
+    return null;
+
+  }
+
+
+  /*
+     Handle AM / PM.
+  */
+
+  if (modifier === "pm" && hours < 12) {
+
+    hours += 12;
+
+  }
+
+
+  if (modifier === "am" && hours === 12) {
+
+    hours = 0;
+
+  }
+
+
+  return (
+    String(hours).padStart(2, "0") +
+    ":" +
+    String(minutes).padStart(2, "0")
+  );
+
+}
+
+
+/* ============================================================
+   EXTRACT START + END TIME FROM PERIOD HEADER
+   ============================================================
+
+   Examples:
+
+   "8:20 – 9:00 Period 1"
+
+   "9:00 - 9:40 Period 2"
+
+   "11:02– 11:42 Period 4"
+
+   The function returns:
+
+   {
+      start: "08:20",
+      end: "09:00"
+   }
+
+   IMPORTANT:
+
+   These times come from the uploaded DOCX.
+   ============================================================ */
+
+function extractHeaderTimes(
+  header
+) {
+
+  if (!header) {
+    return null;
+  }
+
+
+  const text =
+    String(header)
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+
+  /*
+     Match two times separated by:
+
+     -
+     –
+     —
+  */
+
+  const match =
+    text.match(
+      /(\d{1,2}\s*:\s*\d{2}\s*(?:am|pm)?)\s*[-–—]\s*(\d{1,2}\s*:\s*\d{2}\s*(?:am|pm)?)/i
+    );
+
+
+  if (!match) {
+
+    return null;
+
+  }
+
+
+  const start =
+    parseTimetableTime(
+      match[1]
+    );
+
+
+  const end =
+    parseTimetableTime(
+      match[2]
+    );
+
+
+  if (
+    !start ||
+    !end
+  ) {
+
+    return null;
+
+  }
+
+
+  return {
+
+    start:
+      start,
+
+    end:
+      end
+
+  };
+
+}
+
+
+/* ============================================================
+   PARSE COMPLETE PERIOD HEADER
+   ============================================================
+
+   Example input:
+
+   "8:20 – 9:00 Period 1"
+
+   Output:
+
+   {
+      period: "period 1",
+      start: "08:20",
+      end: "09:00"
+   }
+
+   This is the ONLY source of lesson timing.
+   ============================================================ */
+
+function parsePeriodHeader(
+  header
+) {
+
+  const period =
+    normalizePeriod(
+      header
+    );
+
+
+  if (!period) {
+
+    return null;
+
+  }
+
+
+  const timing =
+    extractHeaderTimes(
+      header
+    );
+
+
+  /*
+     If the header contains a period number
+     but no time, we do not invent a time.
+  */
+
+  if (!timing) {
+
+    console.warn(
+      "⚠️ Period found but no time found in timetable header:",
+      header
+    );
+
+    return {
+
+      period:
+        period,
+
+      start:
+        null,
+
+      end:
+        null,
+
+      source:
+        header
+
+    };
+
+  }
+
+
+  return {
+
+    period:
+      period,
+
+    start:
+      timing.start,
+
+    end:
+      timing.end,
+
+    source:
+      header
+
+  };
 
 }
 
@@ -747,25 +1014,43 @@ function timeToMinutes(time) {
     return null;
   }
 
+
   const parts =
     time.split(":");
 
-  if (parts.length < 2) {
+
+  if (
+    parts.length < 2
+  ) {
+
     return null;
+
   }
 
+
   const hours =
-    parseInt(parts[0], 10);
+    parseInt(
+      parts[0],
+      10
+    );
+
 
   const minutes =
-    parseInt(parts[1], 10);
+    parseInt(
+      parts[1],
+      10
+    );
+
 
   if (
     Number.isNaN(hours) ||
     Number.isNaN(minutes)
   ) {
+
     return null;
+
   }
+
 
   return (
     hours * 60 +
@@ -821,10 +1106,12 @@ function updateClock() {
   const now =
     new Date();
 
+
   document.getElementById(
     "currentTime"
   ).textContent =
     formatTime(now);
+
 
   document.getElementById(
     "currentDate"
@@ -850,9 +1137,15 @@ function startClock() {
 
   updateClock();
 
+
   if (clockInterval) {
-    clearInterval(clockInterval);
+
+    clearInterval(
+      clockInterval
+    );
+
   }
+
 
   clockInterval =
     setInterval(
@@ -874,8 +1167,10 @@ function loadTimetable() {
       "lessonFile"
     );
 
+
   const file =
     fileInput.files[0];
+
 
   const inputName =
     document.getElementById(
@@ -939,8 +1234,10 @@ function loadTimetable() {
 
       mammoth
         .convertToHtml({
+
           arrayBuffer:
             event.target.result
+
         })
 
         .then(
@@ -961,10 +1258,12 @@ function loadTimetable() {
               error
             );
 
+
             document.getElementById(
               "status"
             ).textContent =
               "❌ Error reading timetable.";
+
 
             alert(
               "Error reading file: " +
@@ -977,7 +1276,9 @@ function loadTimetable() {
     };
 
 
-  reader.readAsArrayBuffer(file);
+  reader.readAsArrayBuffer(
+    file
+  );
 
 }
 
@@ -992,6 +1293,7 @@ function processTimetableHTML(
 
   const parser =
     new DOMParser();
+
 
   const doc =
     parser.parseFromString(
@@ -1017,7 +1319,7 @@ function processTimetableHTML(
 
   /*
      First try to find the teacher's
-     name near a timetable table.
+     timetable section.
   */
 
   for (
@@ -1028,6 +1330,7 @@ function processTimetableHTML(
 
     const element =
       elements[i];
+
 
     const elementText =
       normalizeTeacherName(
@@ -1065,15 +1368,16 @@ function processTimetableHTML(
 
 
     if (foundTable) {
+
       break;
+
     }
 
   }
 
 
   /*
-     If teacher section was not found,
-     search all tables.
+     Search all tables if necessary.
   */
 
   if (!foundTable) {
@@ -1115,8 +1419,8 @@ function processTimetableHTML(
 
 
   /*
-     Last fallback:
-     use first timetable table.
+     Final fallback:
+     use first table.
   */
 
   if (!foundTable) {
@@ -1129,7 +1433,9 @@ function processTimetableHTML(
       );
 
 
-    if (tables.length > 0) {
+    if (
+      tables.length > 0
+    ) {
 
       foundTable =
         tables[0];
@@ -1146,10 +1452,12 @@ function processTimetableHTML(
     ).textContent =
       "❌ No timetable table found.";
 
+
     document.getElementById(
       "editor"
     ).innerHTML =
       rawHTML;
+
 
     return;
 
@@ -1157,7 +1465,7 @@ function processTimetableHTML(
 
 
   /*
-     Show timetable.
+     Show original timetable.
   */
 
   document.getElementById(
@@ -1167,7 +1475,7 @@ function processTimetableHTML(
 
 
   /*
-     Extract rows.
+     Extract table rows.
   */
 
   const rows =
@@ -1204,20 +1512,39 @@ function processTimetableHTML(
   );
 
 
+  /*
+     Build schedule using times
+     directly from DOCX headers.
+  */
+
   buildTeacherSchedule();
 
 
-  document.getElementById(
-    "status"
-  ).textContent =
-    "✅ Timetable loaded for " +
-    teacherFullName;
+  if (
+    teacherSchedule.length === 0
+  ) {
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "⚠️ Timetable loaded, but no teaching lessons were found for " +
+      teacherFullName;
+
+  } else {
+
+    document.getElementById(
+      "status"
+    ).textContent =
+      "✅ Timetable loaded for " +
+      teacherFullName;
+
+  }
 
 
   document.getElementById(
     "startBtn"
   ).disabled =
-    false;
+    teacherSchedule.length === 0;
 
 
   document.getElementById(
@@ -1236,6 +1563,20 @@ function processTimetableHTML(
 
 /* ============================================================
    BUILD TEACHER SCHEDULE
+   ============================================================
+
+   THIS IS THE IMPORTANT CHANGE.
+
+   We no longer use:
+
+       periodTimes
+
+   We no longer use:
+
+       nonTeachingTimes
+
+   Every lesson gets its start/end time from the
+   uploaded timetable header.
    ============================================================ */
 
 function buildTeacherSchedule() {
@@ -1247,15 +1588,21 @@ function buildTeacherSchedule() {
     !extractedRows ||
     extractedRows.length === 0
   ) {
+
     return;
+
   }
 
 
   /*
      Find the header row.
 
-     Usually the first or second row
-     contains Period 1, Period 2, etc.
+     We search the first several rows for
+     a cell containing:
+
+     Period 1
+     Period 2
+     etc.
   */
 
   let headerRowIndex = -1;
@@ -1265,7 +1612,7 @@ function buildTeacherSchedule() {
     let r = 0;
     r < Math.min(
       extractedRows.length,
-      4
+      6
     );
     r++
   ) {
@@ -1274,14 +1621,18 @@ function buildTeacherSchedule() {
       extractedRows[r];
 
 
-    const hasPeriod =
+    const hasPeriodHeader =
       row.some(
         cell =>
-          normalizePeriod(cell)
+          normalizePeriod(
+            cell
+          )
       );
 
 
-    if (hasPeriod) {
+    if (
+      hasPeriodHeader
+    ) {
 
       headerRowIndex =
         r;
@@ -1298,8 +1649,15 @@ function buildTeacherSchedule() {
   ) {
 
     console.warn(
-      "Could not identify timetable header."
+      "❌ Could not identify timetable header."
     );
+
+
+    console.warn(
+      "Extracted rows:",
+      extractedRows
+    );
+
 
     return;
 
@@ -1319,7 +1677,22 @@ function buildTeacherSchedule() {
 
 
   /*
-     Build period columns.
+     Build period columns from the
+     actual DOCX header.
+
+     Example:
+
+     column 2:
+     8:20 – 9:00 Period 1
+
+     becomes:
+
+     {
+       column: 2,
+       period: "period 1",
+       start: "08:20",
+       end: "09:00"
+     }
   */
 
   const periodColumns = [];
@@ -1331,40 +1704,62 @@ function buildTeacherSchedule() {
     c++
   ) {
 
-    const periodKey =
-      normalizePeriod(
-        headerRow[c]
+    const header =
+      headerRow[c];
+
+
+    const parsed =
+      parsePeriodHeader(
+        header
       );
 
 
-    if (!periodKey) {
+    if (!parsed) {
+
       continue;
+
     }
 
 
-    const timing =
-      periodTimes[
-        periodKey
-      ];
+    /*
+       Do not create a lesson if
+       the timetable header has no
+       usable time.
 
+       We NEVER invent the time.
+    */
 
-    if (!timing) {
+    if (
+      !parsed.start ||
+      !parsed.end
+    ) {
+
+      console.warn(
+        "⚠️ Skipping period because timetable header has no usable time:",
+        header
+      );
+
       continue;
+
     }
 
 
     periodColumns.push({
 
-      column: c,
+      column:
+        c,
 
       period:
-        periodKey,
+        parsed.period,
 
       start:
-        timing.start,
+        parsed.start,
 
       end:
-        timing.end
+        parsed.end,
+
+      source:
+        parsed.source
 
     });
 
@@ -1372,13 +1767,31 @@ function buildTeacherSchedule() {
 
 
   console.log(
-    "⏰ New period timing:",
+    "⏰ PERIODS READ DIRECTLY FROM UPLOADED TIMETABLE:",
     periodColumns
   );
 
 
   /*
-     Read timetable rows.
+     If no period columns were found,
+     stop here.
+  */
+
+  if (
+    periodColumns.length === 0
+  ) {
+
+    console.warn(
+      "❌ No timed teaching periods found in timetable header."
+    );
+
+    return;
+
+  }
+
+
+  /*
+     Read each day.
   */
 
   for (
@@ -1397,7 +1810,9 @@ function buildTeacherSchedule() {
     if (
       row.length === 0
     ) {
+
       continue;
+
     }
 
 
@@ -1408,9 +1823,15 @@ function buildTeacherSchedule() {
 
 
     if (!day) {
+
       continue;
+
     }
 
+
+    /*
+       Check every period column.
+    */
 
     for (
       const periodColumn
@@ -1422,16 +1843,24 @@ function buildTeacherSchedule() {
           row[
             periodColumn.column
           ] || ""
-        ).trim();
+        )
+        .trim();
 
 
       if (!lesson) {
+
         continue;
+
       }
 
 
       /*
-         Ignore non-teaching entries.
+         Ignore assembly, breaks,
+         lunch, games, etc.
+
+         This is based on the actual
+         cell content, NOT hardcoded
+         times.
       */
 
       if (
@@ -1439,6 +1868,19 @@ function buildTeacherSchedule() {
           lesson
         )
       ) {
+
+        continue;
+
+      }
+
+
+      const cleanLesson =
+        cleanLessonText(
+          lesson
+        );
+
+
+      if (!cleanLesson) {
 
         continue;
 
@@ -1460,15 +1902,16 @@ function buildTeacherSchedule() {
           periodColumn.end,
 
         lesson:
-          cleanLessonText(
-            lesson
-          ),
+          cleanLesson,
 
         column:
           periodColumn.column,
 
         row:
-          r
+          r,
+
+        timeSource:
+          periodColumn.source
 
       });
 
@@ -1478,8 +1921,33 @@ function buildTeacherSchedule() {
 
 
   console.log(
-    "📚 Teacher schedule:",
+    "📚 FINAL TEACHER SCHEDULE:",
     teacherSchedule
+  );
+
+
+  /*
+     Extra diagnostic output.
+
+     This makes it very easy to verify
+     that the application is using the
+     DOCX times.
+  */
+
+  teacherSchedule.forEach(
+    lesson => {
+
+      console.log(
+        "TIMETABLE LESSON:",
+        lesson.day,
+        lesson.period,
+        lesson.start +
+        " – " +
+        lesson.end,
+        lesson.lesson
+      );
+
+    }
   );
 
 }
@@ -1516,23 +1984,36 @@ function isNonTeachingLesson(
 
 
   if (!value) {
+
     return true;
+
   }
 
 
   const patterns = [
 
     /^break$/i,
+
     /short break/i,
+
     /long break/i,
+
     /lunch/i,
+
     /assembly/i,
+
     /games/i,
+
     /societies/i,
+
     /clubs/i,
+
     /^prep$/i,
+
     /free period/i,
+
     /tea break/i,
+
     /registration/i
 
   ];
@@ -1596,7 +2077,7 @@ function renderSchedule() {
 
   html += "<th>Period</th>";
 
-  html += "<th>Time</th>";
+  html += "<th>Time From Uploaded Timetable</th>";
 
   html += "<th>Lesson</th>";
 
@@ -1638,10 +2119,12 @@ function renderSchedule() {
 
       html += "<tr>";
 
+
       html +=
         "<td class='schedule-day'>" +
         capitalize(day) +
         "</td>";
+
 
       html +=
         "<td>" +
@@ -1650,6 +2133,7 @@ function renderSchedule() {
         ) +
         "</td>";
 
+
       html +=
         "<td>" +
         lesson.start +
@@ -1657,12 +2141,14 @@ function renderSchedule() {
         lesson.end +
         "</td>";
 
+
       html +=
         "<td>" +
         escapeHTML(
           lesson.lesson
         ) +
         "</td>";
+
 
       html += "</tr>";
 
@@ -1674,6 +2160,13 @@ function renderSchedule() {
   html += "</tbody>";
 
   html += "</table>";
+
+
+  html +=
+    "<div class='timing-source'>" +
+    "⏱️ All lesson times shown above are read directly from the uploaded timetable. " +
+    "No lesson time is hard-coded in this application." +
+    "</div>";
 
 
   container.innerHTML =
@@ -1691,8 +2184,11 @@ function capitalize(
 ) {
 
   if (!text) {
+
     return "";
+
   }
+
 
   return (
     text.charAt(0)
@@ -1716,8 +2212,10 @@ function escapeHTML(
       "div"
     );
 
+
   div.textContent =
     text;
+
 
   return div.innerHTML;
 
@@ -1816,6 +2314,7 @@ function stopMonitoring() {
       monitoringInterval
     );
 
+
     monitoringInterval =
       null;
 
@@ -1869,7 +2368,9 @@ function checkTimetable() {
   if (
     teacherSchedule.length === 0
   ) {
+
     return;
+
   }
 
 
@@ -1901,7 +2402,8 @@ function checkTimetable() {
 
 
   /*
-     Alert 2 minutes before lesson.
+     Every lesson's start time comes
+     from the uploaded DOCX.
   */
 
   teacherSchedule
@@ -1921,18 +2423,28 @@ function checkTimetable() {
         if (
           lessonStart === null
         ) {
+
           return;
+
         }
 
+
+        /*
+           Alert two minutes before the
+           uploaded timetable start time.
+
+           Example:
+
+           DOCX:
+           11:02 – 11:42
+
+           Alert:
+           11:00
+        */
 
         const alertTime =
           lessonStart - 2;
 
-
-        /*
-           Create a unique ID for
-           today's lesson alert.
-        */
 
         const alertId =
           today +
@@ -1945,12 +2457,10 @@ function checkTimetable() {
 
 
         /*
-           Because we check every 10 seconds,
-           allow a small 1-minute window.
+           Check every 10 seconds.
 
-           This prevents missing the alert
-           if the browser checks at
-           08:18:04 or 08:18:58.
+           This gives us a small window
+           before the lesson starts.
         */
 
         if (
@@ -2053,10 +2563,6 @@ function speakText(
   }
 
 
-  /*
-     Stop previous speech first.
-  */
-
   speechSynthesis.cancel();
 
 
@@ -2123,7 +2629,9 @@ function showBrowserNotification(
   if (
     !("Notification" in window)
   ) {
+
     return;
+
   }
 
 
@@ -2135,9 +2643,11 @@ function showBrowserNotification(
     new Notification(
       title,
       {
-        body: message
+        body:
+          message
       }
     );
+
 
     return;
 
@@ -2161,7 +2671,8 @@ function showBrowserNotification(
             new Notification(
               title,
               {
-                body: message
+                body:
+                  message
               }
             );
 
@@ -2206,14 +2717,13 @@ function addAlertHistory(
       lesson.lesson,
 
     start:
-      lesson.start
+      lesson.start,
+
+    end:
+      lesson.end
 
   });
 
-
-  /*
-     Keep latest 20 alerts.
-  */
 
   alertHistory =
     alertHistory.slice(
@@ -2281,6 +2791,10 @@ function renderAlertHistory() {
             escapeHTML(
               item.start
             ) +
+            " – " +
+            escapeHTML(
+              item.end
+            ) +
             "</div>" +
 
             "<div>" +
@@ -2326,6 +2840,7 @@ function updateNextLesson() {
       "Load a timetable to see your next lesson." +
       "</div>";
 
+
     return;
 
   }
@@ -2365,7 +2880,8 @@ function updateNextLesson() {
 
 
   /*
-     Find next lesson that has not started.
+     Find the next lesson based
+     on the uploaded timetable time.
   */
 
   let next =
@@ -2379,7 +2895,7 @@ function updateNextLesson() {
 
   /*
      If today's lessons are finished,
-     find tomorrow's next lesson.
+     find the next day.
   */
 
   if (!next) {
@@ -2403,6 +2919,7 @@ function updateNextLesson() {
       "<div class='lesson-meta'>" +
       "There are no more lessons in the loaded timetable." +
       "</div>";
+
 
     return;
 
@@ -2438,11 +2955,14 @@ function updateNextLesson() {
           difference / 60
         );
 
+
       const minutes =
         difference % 60;
 
 
-      if (hours > 0) {
+      if (
+        hours > 0
+      ) {
 
         countdownText =
           hours +
@@ -2536,13 +3056,11 @@ function findNextDayLesson(
   if (
     todayIndex === -1
   ) {
+
     return null;
+
   }
 
-
-  /*
-     Search the following days.
-  */
 
   for (
     let offset = 1;
@@ -2670,5 +3188,4 @@ document.addEventListener(
 </body>
 
 </html>
-
 
