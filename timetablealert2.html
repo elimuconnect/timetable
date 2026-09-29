@@ -1511,6 +1511,17 @@ function processTimetableHTML(
 
   buildTeacherSchedule();
 
+/* ============================================================
+   SAVE SUCCESSFULLY PROCESSED TIMETABLE
+   ============================================================ */
+
+if (teacherSchedule.length > 0) {
+
+  saveTimetableToLocalStorage();
+
+}
+  
+
 
   if (
     teacherSchedule.length === 0
@@ -1553,6 +1564,247 @@ function processTimetableHTML(
 }
 
 
+
+
+
+
+
+
+
+
+/* ============================================================
+   LOCAL STORAGE — SAVE TIMETABLE
+   ============================================================ */
+
+function saveTimetableToLocalStorage() {
+
+  try {
+
+    const timetableData = {
+
+      teacherFullName:
+        teacherFullName,
+
+      extractedRows:
+        extractedRows,
+
+      teacherSchedule:
+        teacherSchedule,
+
+      editorHTML:
+        document.getElementById("editor").innerHTML,
+
+      savedAt:
+        new Date().toISOString()
+
+    };
+
+
+    localStorage.setItem(
+      "smartTimetableSavedData",
+      JSON.stringify(timetableData)
+    );
+
+
+    console.log(
+      "💾 TIMETABLE SAVED TO LOCAL STORAGE:",
+      timetableData
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "❌ Could not save timetable to local storage:",
+      error
+    );
+
+  }
+
+}
+
+
+/* ============================================================
+   LOCAL STORAGE — LOAD SAVED TIMETABLE
+   ============================================================ */
+
+function loadSavedTimetableFromLocalStorage() {
+
+  try {
+
+    const saved =
+      localStorage.getItem(
+        "smartTimetableSavedData"
+      );
+
+
+    if (!saved) {
+
+      console.log(
+        "ℹ️ No previously saved timetable found."
+      );
+
+      return false;
+
+    }
+
+
+    const timetableData =
+      JSON.parse(saved);
+
+
+    if (
+      !timetableData ||
+      !Array.isArray(
+        timetableData.teacherSchedule
+      )
+    ) {
+
+      console.warn(
+        "⚠️ Saved timetable data is invalid."
+      );
+
+      return false;
+
+    }
+
+
+    /* ----------------------------------------
+       Restore teacher name
+       ---------------------------------------- */
+
+    teacherFullName =
+      timetableData.teacherFullName || "";
+
+
+    document.getElementById(
+      "teacherName"
+    ).value =
+      teacherFullName;
+
+
+    /* ----------------------------------------
+       Restore extracted rows
+       
+       IMPORTANT:
+       This does NOT replace extractedRows.
+       It simply restores its previous value.
+       ---------------------------------------- */
+
+    extractedRows =
+      Array.isArray(
+        timetableData.extractedRows
+      )
+        ? timetableData.extractedRows
+        : [];
+
+
+    /* ----------------------------------------
+       Restore teacher schedule
+       ---------------------------------------- */
+
+    teacherSchedule =
+      timetableData.teacherSchedule;
+
+
+    /* ----------------------------------------
+       Restore original timetable preview
+       ---------------------------------------- */
+
+    if (
+      timetableData.editorHTML
+    ) {
+
+      document.getElementById(
+        "editor"
+      ).innerHTML =
+        timetableData.editorHTML;
+
+    }
+
+
+    /* ----------------------------------------
+       Update interface
+       ---------------------------------------- */
+
+    if (
+      teacherSchedule.length > 0
+    ) {
+
+      document.getElementById(
+        "status"
+      ).textContent =
+        "💾 Saved timetable restored for " +
+        teacherFullName;
+
+
+      document.getElementById(
+        "startBtn"
+      ).disabled =
+        false;
+
+    }
+
+
+    /* ----------------------------------------
+       Render restored timetable
+       ---------------------------------------- */
+
+    renderSchedule();
+
+    updateNextLesson();
+
+    renderAlertHistory();
+
+
+    console.log(
+      "📂 SAVED TIMETABLE RESTORED:"
+    );
+
+
+    console.log(
+      JSON.stringify(
+        timetableData,
+        null,
+        2
+      )
+    );
+
+
+    console.log(
+      "📅 Restored teacher schedule:",
+      teacherSchedule
+    );
+
+
+    return true;
+
+
+  } catch (error) {
+
+    console.error(
+      "❌ Could not restore saved timetable:",
+      error
+    );
+
+
+    return false;
+
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+  
 /* ============================================================
    BUILD TEACHER SCHEDULE
    ============================================================
@@ -3296,6 +3548,13 @@ teacherInput.addEventListener(
 
 
 /* ============================================================
+   RESTORE LAST SAVED TIMETABLE
+   ============================================================ */
+
+loadSavedTimetableFromLocalStorage();
+
+
+/* ============================================================
    REQUEST NOTIFICATION PERMISSION
    ============================================================ */
 
@@ -3318,7 +3577,6 @@ document.addEventListener(
     once: true
   }
 );
-
 </script>
 
 </body>
