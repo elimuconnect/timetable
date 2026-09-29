@@ -1942,9 +1942,60 @@ function buildTeacherSchedule() {
     }
   );
 
+
+  /* ============================================================
+     ADDITIONAL JSON CONSOLE OUTPUT
+     ============================================================
+
+     This does NOT replace extractedRows.
+
+     It does NOT replace teacherSchedule.
+
+     It simply creates another JSON representation
+     of the already extracted teacher timetable.
+
+     The times are still taken directly from the
+     uploaded timetable.
+     ============================================================ */
+
+  const teacherScheduleJSONRows =
+    teacherSchedule.map(
+      lesson => ({
+
+        Day:
+          capitalize(
+            lesson.day
+          ),
+
+        Period:
+          capitalize(
+            lesson.period
+          ),
+
+        Time:
+          `${lesson.start} – ${lesson.end}`,
+
+        Lesson:
+          lesson.lesson
+
+      })
+    );
+
+
+  console.log(
+    "📦 TEACHER SCHEDULE JSON ROWS:"
+  );
+
+
+  console.log(
+    JSON.stringify(
+      teacherScheduleJSONRows,
+      null,
+      2
+    )
+  );
+
 }
-
-
 /* ============================================================
    CLEAN LESSON
    ============================================================ */
