@@ -2921,6 +2921,7 @@ function buildTeacherSchedule() {
 
 
 
+
 function cleanLessonText(text) {
 
   if (!text) {
@@ -2937,33 +2938,29 @@ function cleanLessonText(text) {
     return "";
   }
 
-
   const subjectMap = {
 
-    /* CORE */
-    "MAT": "Mathematics",
-    "MATH": "Mathematics",
-    "ENG": "English",
-    "KIS": "Kiswahili",
-    "KISW": "Kiswahili",
-
-    /* SCIENCE */
     "INTSCI": "Integrated Science",
-    "INTSC": "Integrated Science",
-    "IS": "Integrated Science",
-    "SCI": "Science and Technology",
+    "PRETECH": "Pre-Technical Studies",
+    "PRETECHNICAL": "Pre-Technical Studies",
+
     "SCITECH": "Science and Technology",
 
-    /* SOCIAL STUDIES */
-    "SST": "Social Studies",
-    "SS": "Social Studies",
+    "MATH": "Mathematics",
+    "MAT": "Mathematics",
 
-    /* RELIGIOUS EDUCATION */
+    "ENG": "English",
+
+    "KISW": "Kiswahili",
+    "KIS": "Kiswahili",
+
     "CRE": "Christian Religious Education",
     "IRE": "Islamic Religious Education",
     "HRE": "Hindu Religious Education",
 
-    /* PRACTICAL */
+    "SST": "Social Studies",
+    "SS": "Social Studies",
+
     "AGR": "Agriculture",
     "AGRI": "Agriculture",
 
@@ -2971,34 +2968,31 @@ function cleanLessonText(text) {
     "CA&S": "Creative Arts and Sports",
 
     "PTS": "Pre-Technical Studies",
-    "PRETECH": "Pre-Technical Studies",
-    "PRETECHNICAL": "Pre-Technical Studies",
 
-    /* ICT */
     "ICT": "Information and Communication Technology",
+
     "COMP": "Computer Studies",
     "COMPUTER": "Computer Studies",
 
-    /* LANGUAGES */
     "KSL": "Kenyan Sign Language",
+
     "ARA": "Arabic",
     "FRE": "French",
     "GER": "German",
     "MAN": "Mandarin",
-    "MANDARIN": "Mandarin",
 
-    /* ARTS */
     "MUS": "Music",
     "MUSIC": "Music",
+
     "ART": "Creative Arts",
 
-    /* PHYSICAL / HEALTH */
     "PE": "Physical Education",
     "HE": "Health Education",
 
-    /* OTHER */
     "HSC": "Home Science",
+
     "BUS": "Business Studies",
+
     "LIT": "Literature in English"
   };
 
@@ -3008,10 +3002,10 @@ function cleanLessonText(text) {
 
 
   /*
-     Longest codes first.
-
-     This prevents INTSCI from being
-     incorrectly detected as SCI.
+     IMPORTANT:
+     Check the LONGEST codes first.
+     Therefore INTSCI is checked before SCI,
+     PRETECH before TECH, etc.
   */
 
   const codes =
@@ -3025,8 +3019,14 @@ function cleanLessonText(text) {
   for (const code of codes) {
 
     /*
-       Match the code ONLY at the
-       beginning of the timetable cell.
+       Match ONLY at the beginning.
+
+       Examples:
+
+       BUS10E
+       BUS 10E
+       BUS-10E
+       BUS/10E
     */
 
     const pattern =
@@ -3036,7 +3036,7 @@ function cleanLessonText(text) {
           /[.*+?^${}()|[\]\\]/g,
           "\\$&"
         ) +
-        "(?=$|[\\s0-9A-Z_./()\\-])",
+        "(?=$|[0-9A-Z\\s\\-_/()])",
         "i"
       );
 
@@ -3047,8 +3047,7 @@ function cleanLessonText(text) {
 
 
     /*
-       Everything after the subject
-       code is preserved.
+       Get EVERYTHING after the code.
     */
 
     const remainder =
@@ -3058,10 +3057,8 @@ function cleanLessonText(text) {
 
 
     /*
-       Subject only:
        BUS
-       becomes:
-       Business Studies
+       → Business Studies
     */
 
     if (!remainder) {
@@ -3070,30 +3067,55 @@ function cleanLessonText(text) {
 
 
     /*
-       Subject + class/code:
-       BUS10TE
-       becomes:
-       Business Studies 10TE
+       BUS10E
+       → Business Studies 10E
+
+       BUS 10E
+       → Business Studies 10E
+
+       BUS-10E
+       → Business Studies 10E
     */
+
+    const cleanedRemainder =
+      remainder
+        .replace(
+          /^[-_/]+/,
+          ""
+        )
+        .trim();
+
 
     return (
       subjectMap[code] +
-      " " +
-      remainder
+      (
+        cleanedRemainder
+          ? " " + cleanedRemainder
+          : ""
+      )
     );
-
   }
 
 
   /*
-     If it is already a full subject name
-     or an unrecognised subject, leave it
-     exactly as supplied.
+     If the cell already contains a full
+     subject name, DO NOT modify it.
+
+     Example:
+
+     Business Studies 10E
+
+     stays:
+
+     Business Studies 10E
   */
 
   return original;
 }
 
+
+
+  
 /* ============================================================
    IDENTIFY NON-TEACHING CONTENT
    ============================================================ */
@@ -3739,20 +3761,20 @@ function checkTimetable() {
   
 
 
-
 function announceLesson(lesson) {
 
-  const exactLesson =
-    cleanLessonText(
-      lesson.lesson
-    );
+  /*
+     lesson.lesson is already cleaned when
+     the timetable is loaded.
 
+     Do NOT run cleanLessonText() again here.
+  */
 
   const message =
     "Teacher " +
     teacherFullName +
     ", in 2 minutes go to " +
-    exactLesson;
+    lesson.lesson;
 
 
   console.log(
@@ -3773,10 +3795,7 @@ function announceLesson(lesson) {
 
 
   addAlertHistory(
-    {
-      ...lesson,
-      lesson: exactLesson
-    }
+    lesson
   );
 
 
