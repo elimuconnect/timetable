@@ -1180,10 +1180,12 @@ function startClock() {
 
 function normalizeSchoolNameExact(text) {
   return String(text || "")
-    .replace(/\u00a0/g, " ")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u2000-\u200B\u202F\uFEFF]/g, " ")
     .replace(/[\r\n\t]+/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .toLowerCase();
 }
 
 function setSchoolStatus(message, isSuccess = false) {
@@ -1358,21 +1360,67 @@ async function verifySchoolAgainstSupabase(zip) {
   const candidates = await extractSchoolCandidatesFromDOCX(zip);
   console.log("🏫 DOCX school-name candidates:", candidates);
 
-  const schoolMap = new Map(
-    schools
-      .filter(school => school && typeof school.name === "string")
-      .map(school => [normalizeSchoolNameExact(school.name), school])
+
+const validSchools = schools.filter(
+  school =>
+    school &&
+    typeof school.name === "string" &&
+    school.name.trim()
+);
+
+let matchedSchool = null;
+
+for (const candidate of candidates) {
+
+  const normalizedCandidate =
+    normalizeSchoolNameExact(candidate);
+
+  console.log(
+    "🔎 Checking DOCX school candidate:",
+    candidate,
+    "→",
+    normalizedCandidate
   );
 
-  let matchedSchool = null;
-  for (const candidate of candidates) {
-    const exactSchool = schoolMap.get(candidate);
-    if (exactSchool) {
-      matchedSchool = exactSchool;
+  for (const school of validSchools) {
+
+    const normalizedSupabaseName =
+      normalizeSchoolNameExact(school.name);
+
+    console.log(
+      "🏫 Comparing with Supabase:",
+      school.name,
+      "→",
+      normalizedSupabaseName
+    );
+
+    if (
+      normalizedCandidate ===
+      normalizedSupabaseName
+    ) {
+
+      matchedSchool = school;
+
+      console.log(
+        "✅ SCHOOL MATCH FOUND:",
+        {
+          docx: candidate,
+          supabase: school.name,
+          schoolId: school.id
+        }
+      );
+
       break;
     }
   }
 
+  if (matchedSchool) {
+    break;
+  }
+}
+
+
+  
   if (!matchedSchool) {
     schoolAuthorization = {
       authorized: false,
@@ -1380,13 +1428,15 @@ async function verifySchoolAgainstSupabase(zip) {
       schoolId: ""
     };
 
-    setSchoolStatus(
-      "❌ School not authorized. The school name in the DOCX header does not exactly match any school in Supabase."
-    );
+   setSchoolStatus(
+  "❌ School not authorized. No matching school was found in Supabase."
+);
 
-    throw new Error(
-      "School verification failed. The school name in the timetable header must exactly match a school name in Supabase."
-    );
+   
+      throw new Error(
+  "School verification failed. No matching school was found in Supabase."
+);
+  
   }
 
   schoolAuthorization = {
@@ -2453,35 +2503,24 @@ async function processTimetableDOCX(
    ============================================================ */
 
 if (teacherSchedule.length > 0) {
-
   saveTimetableToLocalStorage();
+}
+
+if (teacherSchedule.length === 0) {
+
+  document.getElementById("status").textContent =
+    "⚠️ Timetable loaded, but no teaching lessons were found for " +
+    teacherFullName;
+
+} else {
+
+  document.getElementById("status").textContent =
+    "✅ Timetable loaded for " +
+    teacherFullName +
+    " — " +
+    schoolAuthorization.schoolName;
 
 }
-  
-
-
-  if (
-    teacherSchedule.length === 0
-  ) {
-
-    document.getElementById(
-      "status"
-    ).textContent =
-      "⚠️ Timetable loaded, but no teaching lessons were found for " +
-      teacherFullName;
-
-  } else {
-
-    document.getElementById(
-      "status"
-    ).textContent =
-      "✅ Timetable loaded for " +
-      teacherFullName +
-      " — " +
-      schoolAuthorization.schoolName;
-
-  }
-
 
   document.getElementById(
     "startBtn"
