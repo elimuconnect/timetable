@@ -1247,10 +1247,12 @@ function normalizeGeneratorData(data) {
                     // PARALLEL GROUP
                     // ------------------------------------------------
 
-                    parallelGroup:
-                        requirement.parallel_group ||
-                        null,
-
+parallelGroup:
+    requirement.parallel_group &&
+    String(requirement.parallel_group).trim()
+        ? String(requirement.parallel_group).trim()
+        : null,
+                    
                     parallelGroupSize:
                         Number.isFinite(
                             parallelGroupSize
@@ -1391,19 +1393,11 @@ normalized.parallelBlocks =
 
 function normalizeTimetableId(value) {
 
-    if (
-        value === null ||
-        value === undefined
-    ) {
-
+    if (value === null || value === undefined) {
         return "";
-
     }
 
-
-    return String(value)
-        .trim()
-        .toLowerCase();
+    return String(value).trim().toLowerCase();
 
 }
 
@@ -2966,6 +2960,15 @@ if (
     );
 
 
+// STEP 7B — BUILD & VALIDATE SCHEDULE UNITS
+const scheduleUnits = buildScheduleUnits(lessonTasks);
+
+validateScheduleUnits(normalizedData, scheduleUnits);
+
+normalizedData.scheduleUnits = scheduleUnits;
+
+
+    
     // ========================================================
     // STEP 8 — ATTACH TASKS TO NORMALIZED DATA
     // ========================================================
@@ -3007,7 +3010,8 @@ if (
 
     generatorData.lookup =
         normalizedData.lookup;
-
+generatorData.parallelBlocks = normalizedData.parallelBlocks;
+generatorData.scheduleUnits  = normalizedData.scheduleUnits;
 
     // ========================================================
     // STEP 10 — SUMMARY
@@ -3329,6 +3333,11 @@ function createLessonTasks(
                     sequence:
                         index + 1,
 
+                    / NEW: tasks sharing this key must be placed together
+    parallelKey: requirement.parallelGroup
+        ? `${requirement.parallelGroup}::D${index + 1}`
+        : null,
+
                     placed:
                         false,
 
@@ -3368,6 +3377,11 @@ function createLessonTasks(
 
                     sequence:
                         index + 1,
+
+
+                    parallelKey: requirement.parallelGroup
+    ? `${requirement.parallelGroup}::S${index + 1}`
+    : null,
 
                     placed:
                         false,
@@ -3891,6 +3905,120 @@ const warnings = [];
 
 
 
+
+
+// ============================================================
+// BUILD SCHEDULE UNITS
+// A unit = one or more tasks that MUST occupy the same periods.
+// Normal task      -> unit of 1
+// Parallel group   -> unit of N (one task per member subject)
+// ============================================================
+
+function buildScheduleUnits(tasks) {
+
+    const unitMap = new Map();
+
+    tasks.forEach(task => {
+
+        const key = task.parallelKey || `solo::${task.taskId}`;
+
+        if (!unitMap.has(key)) {
+            unitMap.set(key, {
+                unitId: key,
+                parallelGroup: task.parallelGroup || null,
+                taskType: task.taskType,
+                duration: task.duration,
+                tasks: [],
+                placed: false,
+                periodIds: []
+            });
+        }
+
+        unitMap.get(key).tasks.push(task);
+    });
+
+    const units = [...unitMap.values()];
+
+    units.forEach(unit => {
+        unit.isParallel = unit.tasks.length > 1;
+        unit.streamIds = [...new Set(unit.tasks.map(t => t.streamId))];
+        unit.teacherIds = [...new Set(unit.tasks.map(t => t.teacherId).filter(Boolean))];
+        unit.roomTasks = unit.tasks.filter(t => t.requiresRoom);
+    });
+
+    // Most constrained first:
+    // 1. parallel units (bigger first)  2. doubles  3. room-needing  4. rest
+    units.sort((a, b) => {
+
+        if (a.isParallel !== b.isParallel) return a.isParallel ? -1 : 1;
+        if (a.tasks.length !== b.tasks.length) return b.tasks.length - a.tasks.length;
+        if (a.duration !== b.duration) return b.duration - a.duration;
+        if (a.roomTasks.length !== b.roomTasks.length) return b.roomTasks.length - a.roomTasks.length;
+
+        return 0;
+    });
+
+    console.log("Schedule units:", {
+        total: units.length,
+        parallel: units.filter(u => u.isParallel).length,
+        solo: units.filter(u => !u.isParallel).length
+    });
+
+    return units;
+}
+
+
+// ============================================================
+// VALIDATE SCHEDULE UNITS
+// ============================================================
+
+function validateScheduleUnits(data, units) {
+
+    const errors = [];
+
+    units.forEach(unit => {
+
+        if (!unit.isParallel) return;
+
+        const block = data.lookup.parallelBlocks.get(unit.parallelGroup);
+
+        // every member subject must be present in every unit
+        if (block && unit.tasks.length !== block.requirements.length) {
+            errors.push(
+                `Parallel unit ${unit.unitId} has ${unit.tasks.length} lessons ` +
+                `but group "${unit.parallelGroup}" has ${block.requirements.length} members.`
+            );
+        }
+
+        // same teacher twice in one unit is impossible
+        const seen = new Set();
+        unit.tasks.forEach(t => {
+            if (!t.teacherId) return;
+            if (seen.has(t.teacherId)) {
+                errors.push(
+                    `Parallel unit ${unit.unitId} uses the same teacher twice.`
+                );
+            }
+            seen.add(t.teacherId);
+        });
+
+        // all tasks in a unit must share a duration
+        if (new Set(unit.tasks.map(t => t.duration)).size > 1) {
+            errors.push(`Parallel unit ${unit.unitId} mixes single and double lessons.`);
+        }
+    });
+
+    if (errors.length) {
+        throw new Error("Schedule unit validation failed:\n\n" + errors.join("\n"));
+    }
+
+    console.log("Schedule unit validation: PASSED");
+    return true;
+}
+
+
+
+
 // ============================================================
 // PART 3 — SLOT AVAILABILITY & OCCUPANCY ENGINE
 // ============================================================
@@ -3933,25 +4061,6 @@ function shuffleArray(array) {
 
 }
 
-
-// ============================================================
-// NORMALIZE ID
-// ============================================================
-
-function normalizeTimetableId(value) {
-
-    if (
-        value === null ||
-        value === undefined
-    ) {
-
-        return "";
-
-    }
-
-    return String(value);
-
-}
 
 
 // ============================================================
