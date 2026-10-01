@@ -3240,16 +3240,199 @@ function buildTeacherSchedule() {
    CLEAN LESSON
    ============================================================ */
 
-function cleanLessonText(
-  text
-) {
 
-  return text
-    .replace(/\n+/g, ", ")
-    .replace(/\s+/g, " ")
-    .trim();
 
+function cleanLessonText(text) {
+
+  if (!text) {
+    return "";
+  }
+
+  const original =
+    String(text)
+      .replace(/\n+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (!original) {
+    return "";
+  }
+
+  const subjectMap = {
+
+    "INTSCI": "Integrated Science",
+    "PRETECH": "Pre-Technical Studies",
+    "PRETECHNICAL": "Pre-Technical Studies",
+
+    "SCITECH": "Science and Technology",
+
+    "MATH": "Mathematics",
+    "MAT": "Mathematics",
+
+    "ENG": "English",
+
+    "KISW": "Kiswahili",
+    "KIS": "Kiswahili",
+
+    "CRE": "Christian Religious Education",
+    "IRE": "Islamic Religious Education",
+    "HRE": "Hindu Religious Education",
+
+    "SST": "Social Studies",
+    "SS": "Social Studies",
+
+    "AGR": "Agriculture",
+    "AGRI": "Agriculture",
+
+    "CAS": "Creative Arts and Sports",
+    "CA&S": "Creative Arts and Sports",
+
+    "PTS": "Pre-Technical Studies",
+
+    "ICT": "Information and Communication Technology",
+
+    "COMP": "Computer Studies",
+    "COMPUTER": "Computer Studies",
+
+    "KSL": "Kenyan Sign Language",
+
+    "ARA": "Arabic",
+    "FRE": "French",
+    "GER": "German",
+    "MAN": "Mandarin",
+
+    "MUS": "Music",
+    "MUSIC": "Music",
+
+    "ART": "Creative Arts",
+
+    "PE": "Physical Education",
+    "HE": "Health Education",
+
+    "HSC": "Home Science",
+
+    "BUS": "Business Studies",
+
+    "LIT": "Literature in English"
+  };
+
+
+  const upper =
+    original.toUpperCase();
+
+
+  /*
+     IMPORTANT:
+     Check the LONGEST codes first.
+     Therefore INTSCI is checked before SCI,
+     PRETECH before TECH, etc.
+  */
+
+  const codes =
+    Object.keys(subjectMap)
+      .sort(
+        (a, b) =>
+          b.length - a.length
+      );
+
+
+  for (const code of codes) {
+
+    /*
+       Match ONLY at the beginning.
+
+       Examples:
+
+       BUS10E
+       BUS 10E
+       BUS-10E
+       BUS/10E
+    */
+
+    const pattern =
+      new RegExp(
+        "^" +
+        code.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        ) +
+        "(?=$|[0-9A-Z\\s\\-_/()])",
+        "i"
+      );
+
+
+    if (!pattern.test(upper)) {
+      continue;
+    }
+
+
+    /*
+       Get EVERYTHING after the code.
+    */
+
+    const remainder =
+      original
+        .substring(code.length)
+        .trim();
+
+
+    /*
+       BUS
+       → Business Studies
+    */
+
+    if (!remainder) {
+      return subjectMap[code];
+    }
+
+
+    /*
+       BUS10E
+       → Business Studies 10E
+
+       BUS 10E
+       → Business Studies 10E
+
+       BUS-10E
+       → Business Studies 10E
+    */
+
+    const cleanedRemainder =
+      remainder
+        .replace(
+          /^[-_/]+/,
+          ""
+        )
+        .trim();
+
+
+    return (
+      subjectMap[code] +
+      (
+        cleanedRemainder
+          ? " " + cleanedRemainder
+          : ""
+      )
+    );
+  }
+
+
+  /*
+     If the cell already contains a full
+     subject name, DO NOT modify it.
+
+     Example:
+
+     Business Studies 10E
+
+     stays:
+
+     Business Studies 10E
+  */
+
+  return original;
 }
+  
 
 
 /* ============================================================
@@ -3910,9 +4093,14 @@ function checkTimetable() {
    ANNOUNCE LESSON
    ============================================================ */
 
-function announceLesson(
-  lesson
-) {
+function announceLesson(lesson) {
+
+  /*
+     lesson.lesson is already cleaned when
+     the timetable is loaded.
+
+     Do NOT run cleanLessonText() again here.
+  */
 
   const message =
     "Teacher " +
@@ -3950,7 +4138,6 @@ function announceLesson(
     message;
 
 }
-
 
 /* ============================================================
    SPEAK
