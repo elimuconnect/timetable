@@ -3334,7 +3334,7 @@ function createLessonTasks(
                     sequence:
                         index + 1,
 
-                    / NEW: tasks sharing this key must be placed together
+                   
     parallelKey: requirement.parallelGroup
         ? `${requirement.parallelGroup}::D${index + 1}`
         : null,
