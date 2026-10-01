@@ -2,7 +2,7 @@
 // ============================================================
 // SMART TIMETABLE GENERATOR
 // STAGE 2 — DATA MODEL, LOADING, NORMALIZATION & VALIDATION
-// ============================================================
+// ===========================================================
 
 let generatedTimetableEntries = [];
 
