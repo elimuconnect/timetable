@@ -1328,9 +1328,8 @@ async function verifySchoolAgainstSupabase(zip) {
   setSchoolStatus(
     "🌐 First-time school authorization: Checking Supabase..."
   );
-
-  const response = await fetch(
-    SUPABASE_URL + "/rest/v1/schools?select=id,name",
+const response = await fetch(
+  SUPABASE_URL + "/rest/v1/timetable_schools?select=id,name",
     {
       method: "GET",
       headers: {
