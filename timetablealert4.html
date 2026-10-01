@@ -2923,8 +2923,14 @@ function buildTeacherSchedule() {
 
 
 /* ============================================================
-   CLEAN + EXPAND SUBJECT NAME
+   CLEAN + CONVERT SUBJECT CODE
    PRIMARY + JSS COMPREHENSIVE SCHOOL
+   Handles codes such as:
+   BUS10E
+   MAT7A
+   ENG8B
+   KIS6A
+   CRE9C
    ============================================================ */
 
 function cleanLessonText(text) {
@@ -2933,183 +2939,226 @@ function cleanLessonText(text) {
     return "";
   }
 
-  let value = text
+  let value = String(text)
     .replace(/\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  /*
-     Subject codes used in Primary and JSS
-  */
+  if (!value) {
+    return "";
+  }
 
   const subjectMap = {
 
-    /* CORE SUBJECTS */
-    "mat": "Mathematics",
-    "math": "Mathematics",
-    "mathematics": "Mathematics",
+    /* CORE */
+    "MAT": "Mathematics",
+    "MATH": "Mathematics",
 
-    "eng": "English",
-    "english": "English",
+    "ENG": "English",
 
-    "kis": "Kiswahili",
-    "kisw": "Kiswahili",
-    "kiswahili": "Kiswahili",
+    "KIS": "Kiswahili",
+    "KISW": "Kiswahili",
 
-    "int sci": "Integrated Science",
-    "int. sci": "Integrated Science",
-    "intsci": "Integrated Science",
-    "is": "Integrated Science",
-    "integrated sci": "Integrated Science",
-    "integrated science": "Integrated Science",
+    "INTSCI": "Integrated Science",
+    "INTSC": "Integrated Science",
+    "SCI": "Integrated Science",
+    "IS": "Integrated Science",
 
-    "sci": "Science",
-    "science": "Science",
-
-    "sst": "Social Studies",
-    "ss": "Social Studies",
-    "social studies": "Social Studies",
+    "SST": "Social Studies",
+    "SS": "Social Studies",
 
     /* RELIGIOUS EDUCATION */
-    "cre": "Christian Religious Education",
-    "c.r.e": "Christian Religious Education",
-    "christian religious education": "Christian Religious Education",
+    "CRE": "Christian Religious Education",
+    "IRE": "Islamic Religious Education",
+    "HRE": "Hindu Religious Education",
 
-    "ire": "Islamic Religious Education",
-    "i.r.e": "Islamic Religious Education",
-    "islamic religious education": "Islamic Religious Education",
+    /* PRACTICAL */
+    "AGR": "Agriculture",
+    "AGRI": "Agriculture",
 
-    "hre": "Hindu Religious Education",
-    "h.r.e": "Hindu Religious Education",
-    "hindu religious education": "Hindu Religious Education",
+    "CAS": "Creative Arts and Sports",
+    "CA&S": "Creative Arts and Sports",
 
-    /* PRACTICAL / CBC */
-    "agr": "Agriculture",
-    "agri": "Agriculture",
-    "agriculture": "Agriculture",
+    "PTS": "Pre-Technical Studies",
+    "PRETECH": "Pre-Technical Studies",
+    "PRETECHNICAL": "Pre-Technical Studies",
 
-    "cas": "Creative Arts and Sports",
-    "ca&s": "Creative Arts and Sports",
-    "ca & s": "Creative Arts and Sports",
-    "creative arts and sports": "Creative Arts and Sports",
-
-    "ca": "Creative Arts",
-    "creative arts": "Creative Arts",
-
-    "pts": "Pre-Technical Studies",
-    "pre tech": "Pre-Technical Studies",
-    "pre-tech": "Pre-Technical Studies",
-    "pre technical": "Pre-Technical Studies",
-    "pre-technical": "Pre-Technical Studies",
-    "pre technical studies": "Pre-Technical Studies",
-    "pre-technical studies": "Pre-Technical Studies",
-
-    /* ICT / COMPUTER */
-    "ict": "Information and Communication Technology",
-    "computer": "Computer Studies",
-    "computers": "Computer Studies",
-    "comp": "Computer Studies",
-    "computer studies": "Computer Studies",
+    /* ICT */
+    "ICT": "Information and Communication Technology",
+    "COMP": "Computer Studies",
+    "COMPUTER": "Computer Studies",
 
     /* LANGUAGES */
-    "ksl": "Kenyan Sign Language",
-    "kenyan sign language": "Kenyan Sign Language",
-
-    "ara": "Arabic",
-    "arabic": "Arabic",
-
-    "fre": "French",
-    "french": "French",
-
-    "ger": "German",
-    "german": "German",
+    "KSL": "Kenyan Sign Language",
+    "ARA": "Arabic",
+    "FRE": "French",
+    "GER": "German",
 
     /* ARTS */
-    "music": "Music",
-    "mus": "Music",
-
-    "art": "Art",
-    "arts": "Art",
+    "MUS": "Music",
+    "MUSIC": "Music",
+    "ART": "Art",
 
     /* PHYSICAL / HEALTH */
-    "pe": "Physical Education",
-    "p.e": "Physical Education",
-    "physical education": "Physical Education",
+    "PE": "Physical Education",
+    "HE": "Health Education",
 
-    "he": "Health Education",
-    "health education": "Health Education",
-
-    /* HOME / BUSINESS */
-    "hsc": "Home Science",
-    "h&s": "Home Science",
-    "home science": "Home Science",
-
-    "bus": "Business Studies",
-    "business": "Business Studies",
-    "business studies": "Business Studies",
-
-    /* LITERATURE */
-    "lit": "Literature in English",
-    "literature": "Literature in English",
-    "literature in english": "Literature in English"
-
+    /* OTHER */
+    "HSC": "Home Science",
+    "BUS": "Business Studies",
+    "LIT": "Literature in English"
   };
 
-  /*
-     First try the COMPLETE cell.
-  */
 
-  const normalized = value
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  /* ==========================================================
+     FIRST: EXACT MATCH
+     ========================================================== */
 
-  if (subjectMap[normalized]) {
-    return subjectMap[normalized];
+  const upperValue =
+    value
+      .toUpperCase()
+      .trim();
+
+  if (subjectMap[upperValue]) {
+    return subjectMap[upperValue];
   }
 
-  /*
-     If the timetable cell contains additional information,
-     identify the subject code/name inside it.
 
+  /* ==========================================================
+     SECOND: MATCH SUBJECT WHEN THERE IS A SPACE
+     
      Examples:
+       BUS 10E
+       MAT 7A
+       ENG 8B
+     ========================================================== */
 
-     MAT G7A
-     ENG - Mr John
-     CRE 7B
-     INT SCIENCE
-  */
-
-  const subjectKeys = Object.keys(subjectMap)
-    .sort(
-      (a, b) => b.length - a.length
+  const separatedMatch =
+    upperValue.match(
+      /^([A-Z&]+)\s+(.+)$/
     );
 
-  for (const key of subjectKeys) {
+  if (separatedMatch) {
 
-    const pattern =
-      new RegExp(
-        "(^|\\s|[-/()])" +
-        key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
-        "(?=\\s|$|[-/()])",
-        "i"
-      );
+    const code =
+      separatedMatch[1];
 
-    if (pattern.test(normalized)) {
-      return subjectMap[key];
+    if (subjectMap[code]) {
+
+      return subjectMap[code];
+
     }
 
   }
 
-  /*
-     If no recognised subject code is found,
-     keep the original timetable text.
-  */
+
+  /* ==========================================================
+     THIRD: MATCH SUBJECT CODE DIRECTLY AT THE BEGINNING
+     
+     This is the IMPORTANT part.
+
+     Examples:
+       BUS10E
+       MAT7A
+       ENG8B
+       KIS6A
+       CRE9C
+     ========================================================== */
+
+  const codes =
+    Object.keys(subjectMap)
+      .sort(
+        (a, b) =>
+          b.length - a.length
+      );
+
+
+  for (const code of codes) {
+
+    if (
+      upperValue.startsWith(code)
+    ) {
+
+      /*
+         Make sure this is actually
+         a subject code followed by
+         something such as:
+
+         10E
+         7A
+         G7A
+         -10E
+         /10E
+      */
+
+      const remainder =
+        upperValue
+          .substring(
+            code.length
+          )
+          .trim();
+
+
+      if (
+        remainder === "" ||
+        /^[0-9A-Z]/.test(remainder) ||
+        /^[-/()]/.test(remainder)
+      ) {
+
+        return subjectMap[code];
+
+      }
+
+    }
+
+  }
+
+
+  /* ==========================================================
+     FOURTH: SEARCH INSIDE TEXT
+     
+     Handles:
+       "BUS10E - Mr Brian"
+       "MAT7A Solomon"
+     ========================================================== */
+
+  for (const code of codes) {
+
+    const escapedCode =
+      code.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+    const pattern =
+      new RegExp(
+        "(^|\\s|[-/()])" +
+        escapedCode +
+        "(?=\\s|[0-9A-Z]|[-/()]|$)",
+        "i"
+      );
+
+    if (
+      pattern.test(
+        upperValue
+      )
+    ) {
+
+      return subjectMap[code];
+
+    }
+
+  }
+
+
+  /* ==========================================================
+     NOTHING RECOGNISED
+     ========================================================== */
 
   return value;
 }
 
-
+      
 
 
 /* ============================================================
@@ -3761,16 +3810,16 @@ function checkTimetable() {
    ANNOUNCE LESSON
    ============================================================ */
 
-/* ============================================================
-   ANNOUNCE LESSON
-   ============================================================ */
-
 function announceLesson(lesson) {
 
   /*
-     lesson.lesson has already passed through
-     cleanLessonText(), so it should now contain
-     the full subject name.
+     Convert the raw timetable code again here.
+
+     This is intentional.
+
+     Even if an old timetable was restored
+     from localStorage containing BUS10E,
+     the alert will still convert it.
   */
 
   const exactSubject =
@@ -3778,25 +3827,30 @@ function announceLesson(lesson) {
       lesson.lesson
     );
 
+
   const message =
     "Teacher " +
     teacherFullName +
     ", in 2 minutes go to " +
     exactSubject;
 
+
   console.log(
     "🔔 SPEAK:",
     message
   );
 
+
   speakText(
     message
   );
+
 
   showBrowserNotification(
     "Upcoming Lesson",
     message
   );
+
 
   addAlertHistory(
     {
@@ -3805,6 +3859,7 @@ function announceLesson(lesson) {
     }
   );
 
+
   document.getElementById(
     "status"
   ).textContent =
@@ -3812,7 +3867,6 @@ function announceLesson(lesson) {
     message;
 
 }
-
 /* ============================================================
    SPEAK
    ============================================================ */
