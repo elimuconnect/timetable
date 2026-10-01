@@ -2921,49 +2921,40 @@ function buildTeacherSchedule() {
 
 
 
-
-/* ============================================================
-   CLEAN + CONVERT SUBJECT CODE
-   PRIMARY + JSS COMPREHENSIVE SCHOOL
-   Handles codes such as:
-   BUS10E
-   MAT7A
-   ENG8B
-   KIS6A
-   CRE9C
-   ============================================================ */
-
 function cleanLessonText(text) {
 
   if (!text) {
     return "";
   }
 
-  let value = String(text)
-    .replace(/\n+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const original =
+    String(text)
+      .replace(/\n+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-  if (!value) {
+  if (!original) {
     return "";
   }
+
 
   const subjectMap = {
 
     /* CORE */
     "MAT": "Mathematics",
     "MATH": "Mathematics",
-
     "ENG": "English",
-
     "KIS": "Kiswahili",
     "KISW": "Kiswahili",
 
+    /* SCIENCE */
     "INTSCI": "Integrated Science",
     "INTSC": "Integrated Science",
-    "SCI": "Integrated Science",
     "IS": "Integrated Science",
+    "SCI": "Science and Technology",
+    "SCITECH": "Science and Technology",
 
+    /* SOCIAL STUDIES */
     "SST": "Social Studies",
     "SS": "Social Studies",
 
@@ -2993,11 +2984,13 @@ function cleanLessonText(text) {
     "ARA": "Arabic",
     "FRE": "French",
     "GER": "German",
+    "MAN": "Mandarin",
+    "MANDARIN": "Mandarin",
 
     /* ARTS */
     "MUS": "Music",
     "MUSIC": "Music",
-    "ART": "Art",
+    "ART": "Creative Arts",
 
     /* PHYSICAL / HEALTH */
     "PE": "Physical Education",
@@ -3010,60 +3003,16 @@ function cleanLessonText(text) {
   };
 
 
-  /* ==========================================================
-     FIRST: EXACT MATCH
-     ========================================================== */
-
-  const upperValue =
-    value
-      .toUpperCase()
-      .trim();
-
-  if (subjectMap[upperValue]) {
-    return subjectMap[upperValue];
-  }
+  const upper =
+    original.toUpperCase();
 
 
-  /* ==========================================================
-     SECOND: MATCH SUBJECT WHEN THERE IS A SPACE
-     
-     Examples:
-       BUS 10E
-       MAT 7A
-       ENG 8B
-     ========================================================== */
+  /*
+     Longest codes first.
 
-  const separatedMatch =
-    upperValue.match(
-      /^([A-Z&]+)\s+(.+)$/
-    );
-
-  if (separatedMatch) {
-
-    const code =
-      separatedMatch[1];
-
-    if (subjectMap[code]) {
-
-      return subjectMap[code];
-
-    }
-
-  }
-
-
-  /* ==========================================================
-     THIRD: MATCH SUBJECT CODE DIRECTLY AT THE BEGINNING
-     
-     This is the IMPORTANT part.
-
-     Examples:
-       BUS10E
-       MAT7A
-       ENG8B
-       KIS6A
-       CRE9C
-     ========================================================== */
+     This prevents INTSCI from being
+     incorrectly detected as SCI.
+  */
 
   const codes =
     Object.keys(subjectMap)
@@ -3075,91 +3024,75 @@ function cleanLessonText(text) {
 
   for (const code of codes) {
 
-    if (
-      upperValue.startsWith(code)
-    ) {
-
-      /*
-         Make sure this is actually
-         a subject code followed by
-         something such as:
-
-         10E
-         7A
-         G7A
-         -10E
-         /10E
-      */
-
-      const remainder =
-        upperValue
-          .substring(
-            code.length
-          )
-          .trim();
-
-
-      if (
-        remainder === "" ||
-        /^[0-9A-Z]/.test(remainder) ||
-        /^[-/()]/.test(remainder)
-      ) {
-
-        return subjectMap[code];
-
-      }
-
-    }
-
-  }
-
-
-  /* ==========================================================
-     FOURTH: SEARCH INSIDE TEXT
-     
-     Handles:
-       "BUS10E - Mr Brian"
-       "MAT7A Solomon"
-     ========================================================== */
-
-  for (const code of codes) {
-
-    const escapedCode =
-      code.replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&"
-      );
+    /*
+       Match the code ONLY at the
+       beginning of the timetable cell.
+    */
 
     const pattern =
       new RegExp(
-        "(^|\\s|[-/()])" +
-        escapedCode +
-        "(?=\\s|[0-9A-Z]|[-/()]|$)",
+        "^" +
+        code.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        ) +
+        "(?=$|[\\s0-9A-Z_./()\\-])",
         "i"
       );
 
-    if (
-      pattern.test(
-        upperValue
-      )
-    ) {
 
-      return subjectMap[code];
-
+    if (!pattern.test(upper)) {
+      continue;
     }
+
+
+    /*
+       Everything after the subject
+       code is preserved.
+    */
+
+    const remainder =
+      original
+        .substring(code.length)
+        .trim();
+
+
+    /*
+       Subject only:
+       BUS
+       becomes:
+       Business Studies
+    */
+
+    if (!remainder) {
+      return subjectMap[code];
+    }
+
+
+    /*
+       Subject + class/code:
+       BUS10TE
+       becomes:
+       Business Studies 10TE
+    */
+
+    return (
+      subjectMap[code] +
+      " " +
+      remainder
+    );
 
   }
 
 
-  /* ==========================================================
-     NOTHING RECOGNISED
-     ========================================================== */
+  /*
+     If it is already a full subject name
+     or an unrecognised subject, leave it
+     exactly as supplied.
+  */
 
-  return value;
+  return original;
 }
-
-      
-
 
 /* ============================================================
    IDENTIFY NON-TEACHING CONTENT
@@ -3806,23 +3739,10 @@ function checkTimetable() {
   
 
 
-/* ============================================================
-   ANNOUNCE LESSON
-   ============================================================ */
 
 function announceLesson(lesson) {
 
-  /*
-     Convert the raw timetable code again here.
-
-     This is intentional.
-
-     Even if an old timetable was restored
-     from localStorage containing BUS10E,
-     the alert will still convert it.
-  */
-
-  const exactSubject =
+  const exactLesson =
     cleanLessonText(
       lesson.lesson
     );
@@ -3832,7 +3752,7 @@ function announceLesson(lesson) {
     "Teacher " +
     teacherFullName +
     ", in 2 minutes go to " +
-    exactSubject;
+    exactLesson;
 
 
   console.log(
@@ -3855,7 +3775,7 @@ function announceLesson(lesson) {
   addAlertHistory(
     {
       ...lesson,
-      lesson: exactSubject
+      lesson: exactLesson
     }
   );
 
@@ -3867,6 +3787,8 @@ function announceLesson(lesson) {
     message;
 
 }
+
+  
 /* ============================================================
    SPEAK
    ============================================================ */
