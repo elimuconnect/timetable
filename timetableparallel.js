@@ -1451,24 +1451,25 @@ function validateParallelBlocks(data) {
             });
         }
 
-        // Same teacher cannot teach two parallel subjects
-        const teacherCount = new Map();
-        reqs.forEach(r => {
-            if (!r.teacherId) return;
-            teacherCount.set(r.teacherId, (teacherCount.get(r.teacherId) || 0) + 1);
-        });
+        // Same teacher may repeat only for the SAME subject
+const teacherSubjects = new Map();
+reqs.forEach(r => {
+    if (!r.teacherId) return;
+    if (!teacherSubjects.has(r.teacherId)) teacherSubjects.set(r.teacherId, new Set());
+    teacherSubjects.get(r.teacherId).add(r.subjectId);
+});
 
-        teacherCount.forEach((count, teacherId) => {
-            if (count > 1) {
-                const t = data.lookup.teachers.get(teacherId);
-                errors.push({
-                    type: "PARALLEL_TEACHER_CONFLICT",
-                    groupId: id,
-                    teacherId,
-                    message: `${getTimetableTeacherName(t)} is assigned to ${count} subjects in parallel group "${id}" and cannot teach them at the same time.`
-                });
-            }
+teacherSubjects.forEach((subjects, teacherId) => {
+    if (subjects.size > 1) {
+        const t = data.lookup.teachers.get(teacherId);
+        errors.push({
+            type: "PARALLEL_TEACHER_CONFLICT",
+            groupId: id,
+            teacherId,
+            message: `${getTimetableTeacherName(t)} teaches ${subjects.size} different subjects in parallel group "${id}" and cannot teach them at the same time.`
         });
+    }
+});
 
         // Enough rooms of each type for simultaneous lessons
         const roomDemand = new Map();
@@ -3990,17 +3991,15 @@ function validateScheduleUnits(data, units) {
             );
         }
 
-        // same teacher twice in one unit is impossible
-        const seen = new Set();
-        unit.tasks.forEach(t => {
-            if (!t.teacherId) return;
-            if (seen.has(t.teacherId)) {
-                errors.push(
-                    `Parallel unit ${unit.unitId} uses the same teacher twice.`
-                );
-            }
-            seen.add(t.teacherId);
-        });
+       const teacherSubject = new Map();
+unit.tasks.forEach(t => {
+    if (!t.teacherId) return;
+    const prev = teacherSubject.get(t.teacherId);
+    if (prev && prev !== t.subjectId) {
+        errors.push(`Parallel unit ${unit.unitId} gives one teacher two different subjects.`);
+    }
+    teacherSubject.set(t.teacherId, t.subjectId);
+});
 
         // all tasks in a unit must share a duration
         if (new Set(unit.tasks.map(t => t.duration)).size > 1) {
@@ -4063,9 +4062,6 @@ function shuffleArray(array) {
 
 
 
-// ============================================================
-// CHECK IF TWO PERIODS ARE CONSECUTIVE
-// ============================================================
 
 
 // ============================================================
@@ -4550,26 +4546,9 @@ function createOccupancyIndexes(
     // NORMALIZE KEY
     // ========================================================
 
-    function normalizeKey(
-        value
-    ) {
-
-        if (
-            value === null ||
-            value === undefined
-        ) {
-
-            return "";
-
-        }
-
-
-        return String(
-            value
-        ).trim();
-
+        function normalizeKey(value) {
+        return normalizeTimetableId(value);
     }
-
 
     // ========================================================
     // PERIOD LOOKUP
