@@ -4165,54 +4165,26 @@ const warnings = [];
 
 // ============================================================
 // BUILD SCHEDULE UNITS
-// A unit = one or more tasks that MUST occupy the same periods.
-// Normal task      -> unit of 1
-// Parallel group   -> unit of N (one task per member subject)
+//
+// A unit = one scheduling decision.
+//
+// Parallel tasks with the same parallelKey MUST be placed
+// together in the same period(s).
+//
+// Tasks without a parallelKey remain completely independent.
 // ============================================================
 
 function buildScheduleUnits(tasks) {
-
-    // ============================================================
-    // BUILD SCHEDULE UNITS
-    // ============================================================
-    //
-    // ARCHITECTURE:
-    //
-    // A schedule unit represents one scheduling decision.
-    //
-    // Parallel tasks with the same parallelKey are placed
-    // together and MUST receive the same day + period.
-    //
-    // Tasks without a parallelKey remain completely independent.
-    //
-    // IMPORTANT:
-    //
-    // A parallel group contains ONLY the requirements that
-    // actually belong to that group.
-    //
-    // Example:
-    //
-    //   10A -> RE -> RE/GE/BS::D1
-    //   10B -> GE -> RE/GE/BS::D1
-    //   10C -> BS -> RE/GE/BS::D1
-    //   10E -> RE -> RE/GE/BS::D1
-    //
-    //   10D -> Mathematics -> null
-    //
-    // Therefore 10D is NOT included in the parallel unit.
-    //
-    // ============================================================
 
     if (!Array.isArray(tasks)) {
         return [];
     }
 
-
     const unitMap = new Map();
 
 
     // ============================================================
-    // GROUP TASKS INTO UNITS
+    // GROUP TASKS
     // ============================================================
 
     tasks.forEach(task => {
@@ -4222,41 +4194,16 @@ function buildScheduleUnits(tasks) {
         }
 
 
-        // --------------------------------------------------------
-        // PARALLEL TASK
-        // --------------------------------------------------------
-        //
-        // The parallelKey must already have been created by
-        // createLessonTasks().
-        //
-        // Example:
-        //
-        // RE/GE/BS::D1
-        //
-        // --------------------------------------------------------
-
         const parallelKey =
             task.parallelKey
                 ? String(task.parallelKey).trim()
                 : null;
 
 
-        // --------------------------------------------------------
-        // SOLO TASK
-        // --------------------------------------------------------
-        //
-        // Every task without a parallelKey gets its own unit.
-        //
-        // This is what keeps unrelated streams independent.
-        //
         const key =
             parallelKey ||
             `solo::${task.taskId}`;
 
-
-        // --------------------------------------------------------
-        // CREATE UNIT
-        // --------------------------------------------------------
 
         if (!unitMap.has(key)) {
 
@@ -4265,15 +4212,13 @@ function buildScheduleUnits(tasks) {
                 {
                     unitId: key,
 
-                    parallelKey:
-                        parallelKey,
+                    parallelKey,
 
                     parallelGroup:
-                        task.parallelGroup
-                            ? normalizeParallelGroup(
-                                task.parallelGroup
-                            )
-                            : null,
+                        normalizeParallelGroup(
+                            task.parallelGroup ??
+                            task.parallel_group
+                        ) || null,
 
                     taskType:
                         task.taskType,
@@ -4291,10 +4236,6 @@ function buildScheduleUnits(tasks) {
 
         }
 
-
-        // --------------------------------------------------------
-        // ADD TASK
-        // --------------------------------------------------------
 
         unitMap
             .get(key)
@@ -4327,39 +4268,57 @@ function buildScheduleUnits(tasks) {
 
 
         // --------------------------------------------------------
-        // PARTICIPATING STREAMS
+        // STREAMS
         // --------------------------------------------------------
 
         unit.streamIds = [
             ...new Set(
                 unit.tasks
-                    .map(task => task.streamId)
+                    .map(
+                        task =>
+                            normalizeTimetableId(
+                                task.streamId ??
+                                task.stream_id
+                            )
+                    )
                     .filter(Boolean)
             )
         ];
 
 
         // --------------------------------------------------------
-        // PARTICIPATING REQUIREMENTS
+        // REQUIREMENTS
         // --------------------------------------------------------
 
         unit.requirementIds = [
             ...new Set(
                 unit.tasks
-                    .map(task => task.requirementId)
+                    .map(
+                        task =>
+                            normalizeTimetableId(
+                                task.requirementId ??
+                                task.requirement_id
+                            )
+                    )
                     .filter(Boolean)
             )
         ];
 
 
         // --------------------------------------------------------
-        // PARTICIPATING TEACHERS
+        // TEACHERS
         // --------------------------------------------------------
 
         unit.teacherIds = [
             ...new Set(
                 unit.tasks
-                    .map(task => task.teacherId)
+                    .map(
+                        task =>
+                            normalizeTimetableId(
+                                task.teacherId ??
+                                task.teacher_id
+                            )
+                    )
                     .filter(Boolean)
             )
         ];
@@ -4376,16 +4335,12 @@ function buildScheduleUnits(tasks) {
             );
 
 
-        // --------------------------------------------------------
-        // ROOM REQUIREMENT COUNT
-        // --------------------------------------------------------
-
         unit.roomRequirementCount =
             unit.roomTasks.length;
 
 
         // --------------------------------------------------------
-        // PARALLEL GROUP SIZE
+        // PARALLEL SIZE
         // --------------------------------------------------------
 
         unit.parallelSize =
@@ -4393,8 +4348,190 @@ function buildScheduleUnits(tasks) {
                 ? unit.tasks.length
                 : 1;
 
+
+        // --------------------------------------------------------
+        // VALIDATE INTERNAL CONSISTENCY
+        // --------------------------------------------------------
+
+        const durations =
+            new Set(
+                unit.tasks.map(
+                    task =>
+                        Number(task.duration) || 1
+                )
+            );
+
+
+        if (durations.size === 1) {
+
+            unit.duration =
+                [...durations][0];
+
+        }
+
+
+        const taskTypes =
+            new Set(
+                unit.tasks.map(
+                    task =>
+                        task.taskType
+                )
+            );
+
+
+        if (taskTypes.size === 1) {
+
+            unit.taskType =
+                [...taskTypes][0];
+
+        }
+
     });
 
+
+    // ============================================================
+    // SORT UNITS
+    //
+    // Hardest units first:
+    //
+    // 1. Parallel units
+    // 2. Larger parallel units
+    // 3. Double lessons
+    // 4. Room-required units
+    // ============================================================
+
+    units.sort(
+        (a, b) => {
+
+            if (
+                Number(b.isParallel) !==
+                Number(a.isParallel)
+            ) {
+
+                return (
+                    Number(b.isParallel) -
+                    Number(a.isParallel)
+                );
+
+            }
+
+
+            if (
+                b.parallelSize !==
+                a.parallelSize
+            ) {
+
+                return (
+                    b.parallelSize -
+                    a.parallelSize
+                );
+
+            }
+
+
+            if (
+                Number(b.duration) !==
+                Number(a.duration)
+            ) {
+
+                return (
+                    Number(b.duration) -
+                    Number(a.duration)
+                );
+
+            }
+
+
+            if (
+                b.roomRequirementCount !==
+                a.roomRequirementCount
+            ) {
+
+                return (
+                    b.roomRequirementCount -
+                    a.roomRequirementCount
+                );
+
+            }
+
+
+            return String(a.unitId)
+                .localeCompare(
+                    String(b.unitId)
+                );
+
+        }
+    );
+
+
+    // ============================================================
+    // DIAGNOSTIC
+    // ============================================================
+
+    console.log(
+        "Schedule units built:",
+        {
+            totalUnits:
+                units.length,
+
+            parallelUnits:
+                units.filter(
+                    unit =>
+                        unit.isParallel
+                ).length,
+
+            soloUnits:
+                units.filter(
+                    unit =>
+                        !unit.isParallel
+                ).length
+        }
+    );
+
+
+    console.table(
+        units.map(
+            unit => ({
+
+                unitId:
+                    unit.unitId,
+
+                parallel:
+                    unit.isParallel,
+
+                parallelGroup:
+                    unit.parallelGroup,
+
+                parallelKey:
+                    unit.parallelKey,
+
+                taskCount:
+                    unit.tasks.length,
+
+                taskType:
+                    unit.taskType,
+
+                duration:
+                    unit.duration,
+
+                streams:
+                    unit.streamIds.join(", "),
+
+                requirements:
+                    unit.requirementIds.join(", ")
+
+            })
+        )
+    );
+
+
+    // ============================================================
+    // RETURN UNITS
+    // ============================================================
+
+    return units;
+
+}
 
 
 
@@ -4999,6 +5136,13 @@ function validateScheduleUnits(data, units) {
 
 
 
+
+
+
+
+
+
+            
 
 // ============================================================
 // PART 3 — SLOT AVAILABILITY & OCCUPANCY ENGINE
@@ -17949,6 +18093,661 @@ const existingParallelGroup =
 // ============================================================
 
 
+// ============================================================
+// GET CANDIDATE PERIOD IDS
+//
+// Handles both single and double candidate structures.
+// ============================================================
+
+function getSmartCandidatePeriodIds(candidate) {
+
+    if (!candidate) {
+        return [];
+    }
+
+
+    // Double candidate
+    if (
+        Array.isArray(candidate.periodIds) &&
+        candidate.periodIds.length > 0
+    ) {
+
+        return candidate.periodIds
+            .map(
+                id =>
+                    normalizeTimetableId(id)
+            )
+            .filter(Boolean);
+
+    }
+
+
+    // Single candidate
+    if (candidate.periodId) {
+
+        return [
+            normalizeTimetableId(
+                candidate.periodId
+            )
+        ].filter(Boolean);
+
+    }
+
+
+    if (candidate.period?.id) {
+
+        return [
+            normalizeTimetableId(
+                candidate.period.id
+            )
+        ].filter(Boolean);
+
+    }
+
+
+    if (candidate.startPeriodId) {
+
+        const ids = [
+            normalizeTimetableId(
+                candidate.startPeriodId
+            )
+        ];
+
+
+        if (candidate.endPeriodId) {
+
+            ids.push(
+                normalizeTimetableId(
+                    candidate.endPeriodId
+                )
+            );
+
+        }
+
+
+        return ids.filter(Boolean);
+
+    }
+
+
+    return [];
+
+}
+
+
+// ============================================================
+// CREATE PERIOD KEY
+//
+// Single:
+//     P5
+//
+// Double:
+//     P5|P6
+// ============================================================
+
+function getSmartCandidatePeriodKey(candidate) {
+
+    return getSmartCandidatePeriodIds(
+        candidate
+    ).join("|");
+
+}
+
+
+// ============================================================
+// GET COMMON PARALLEL CANDIDATES
+//
+// Every task in the parallel unit must have a candidate
+// covering EXACTLY the same period(s).
+//
+// We do NOT simply choose the first candidate for each task.
+// We first calculate the intersection.
+// ============================================================
+
+function getScoredParallelUnitCandidates(
+    unit,
+    data,
+    indexes
+) {
+
+    if (
+        !unit ||
+        !Array.isArray(unit.tasks) ||
+        unit.tasks.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    // ------------------------------------------------------------
+    // SOLO UNIT
+    // ------------------------------------------------------------
+
+    if (!unit.isParallel) {
+
+        const task =
+            unit.tasks[0];
+
+
+        if (!task) {
+            return [];
+        }
+
+
+        return getSmartCandidatesForTask(
+            task,
+            data,
+            indexes
+        );
+
+    }
+
+
+    // ------------------------------------------------------------
+    // GET CANDIDATES FOR EVERY TASK
+    // ------------------------------------------------------------
+
+    const taskCandidates =
+        new Map();
+
+
+    for (
+        const task of unit.tasks
+    ) {
+
+        const candidates =
+            getSmartCandidatesForTask(
+                task,
+                data,
+                indexes
+            );
+
+
+        if (
+            !Array.isArray(candidates) ||
+            candidates.length === 0
+        ) {
+
+            return [];
+
+        }
+
+
+        taskCandidates.set(
+            task.taskId,
+            candidates
+        );
+
+    }
+
+
+    // ------------------------------------------------------------
+    // FIND PERIODS AVAILABLE TO EVERY TASK
+    // ------------------------------------------------------------
+
+    const firstTask =
+        unit.tasks[0];
+
+
+    const firstCandidates =
+        taskCandidates.get(
+            firstTask.taskId
+        ) || [];
+
+
+    const commonMap =
+        new Map();
+
+
+    firstCandidates.forEach(
+        candidate => {
+
+            const key =
+                getSmartCandidatePeriodKey(
+                    candidate
+                );
+
+
+            if (!key) {
+                return;
+            }
+
+
+            commonMap.set(
+                key,
+                {
+                    periodKey: key,
+
+                    candidates: new Map([
+                        [
+                            firstTask.taskId,
+                            candidate
+                        ]
+                    ]),
+
+                    score:
+                        Number(
+                            candidate.score
+                        ) || 0
+                }
+            );
+
+        }
+    );
+
+
+    // ------------------------------------------------------------
+    // INTERSECT WITH EVERY OTHER TASK
+    // ------------------------------------------------------------
+
+    for (
+        let i = 1;
+        i < unit.tasks.length;
+        i++
+    ) {
+
+        const task =
+            unit.tasks[i];
+
+
+        const candidates =
+            taskCandidates.get(
+                task.taskId
+            ) || [];
+
+
+        const candidateMap =
+            new Map();
+
+
+        candidates.forEach(
+            candidate => {
+
+                const key =
+                    getSmartCandidatePeriodKey(
+                        candidate
+                    );
+
+
+                if (!key) {
+                    return;
+                }
+
+
+                candidateMap.set(
+                    key,
+                    candidate
+                );
+
+            }
+        );
+
+
+        for (
+            const [
+                periodKey,
+                common
+            ] of commonMap
+        ) {
+
+            const candidate =
+                candidateMap.get(
+                    periodKey
+                );
+
+
+            if (!candidate) {
+
+                commonMap.delete(
+                    periodKey
+                );
+
+                continue;
+
+            }
+
+
+            common.candidates.set(
+                task.taskId,
+                candidate
+            );
+
+
+            common.score +=
+                Number(
+                    candidate.score
+                ) || 0;
+
+        }
+
+    }
+
+
+    // ------------------------------------------------------------
+    // CONVERT TO ARRAY
+    // ------------------------------------------------------------
+
+    const results = [
+        ...commonMap.values()
+    ];
+
+
+    // ------------------------------------------------------------
+    // ONLY ACCEPT COMPLETE UNIT CANDIDATES
+    // ------------------------------------------------------------
+
+    const completeResults =
+        results.filter(
+            item =>
+                item.candidates.size ===
+                unit.tasks.length
+        );
+
+
+    // ------------------------------------------------------------
+    // SORT BEST FIRST
+    // ------------------------------------------------------------
+
+    completeResults.sort(
+        (a, b) =>
+            b.score -
+            a.score
+    );
+
+
+    return completeResults;
+
+}
+
+
+// ============================================================
+// PLACE PARALLEL UNIT
+//
+// Every task must be placed successfully.
+//
+// If ANY task fails, everything already reserved for this unit
+// is rolled back.
+// ============================================================
+
+function placeSelectedParallelUnit(
+    unit,
+    candidate,
+    indexes
+) {
+
+    if (
+        !unit ||
+        !unit.isParallel ||
+        !candidate ||
+        !(candidate.candidates instanceof Map)
+    ) {
+
+        return {
+            placed: false,
+            entries: [],
+            reason:
+                "Invalid parallel unit candidate."
+        };
+
+    }
+
+
+    const placements = [];
+
+
+    // ============================================================
+    // PLACE EACH TASK
+    // ============================================================
+
+    for (
+        const task of unit.tasks
+    ) {
+
+        const taskCandidate =
+            candidate.candidates.get(
+                task.taskId
+            );
+
+
+        if (!taskCandidate) {
+
+            // Roll back everything already placed
+            placements
+                .slice()
+                .reverse()
+                .forEach(
+                    placement => {
+
+                        if (
+                            Array.isArray(
+                                placement.periods
+                            )
+                        ) {
+
+                            placement.periods.forEach(
+                                period =>
+                                    releaseReservedSlot(
+                                        placement.task,
+                                        period,
+                                        placement.room,
+                                        indexes
+                                    )
+                            );
+
+                        }
+
+                    }
+                );
+
+
+            return {
+                placed: false,
+                entries: [],
+                reason:
+                    `No candidate found for parallel task ${task.taskId}.`
+            };
+
+        }
+
+
+        const attempt =
+            placeSelectedSmartTask(
+                {
+                    task,
+                    candidate:
+                        taskCandidate
+                },
+                indexes
+            );
+
+
+        if (
+            !attempt ||
+            !attempt.placed
+        ) {
+
+            // ----------------------------------------------------
+            // ROLLBACK PREVIOUS TASKS
+            // ----------------------------------------------------
+
+            placements
+                .slice()
+                .reverse()
+                .forEach(
+                    placement => {
+
+                        if (
+                            Array.isArray(
+                                placement.periods
+                            )
+                        ) {
+
+                            placement.periods.forEach(
+                                period =>
+                                    releaseReservedSlot(
+                                        placement.task,
+                                        period,
+                                        placement.room,
+                                        indexes
+                                    )
+                            );
+
+                        }
+
+                    }
+                );
+
+
+            return {
+                placed: false,
+                entries: [],
+                reason:
+                    `Parallel unit ${unit.unitId} failed because ` +
+                    `task ${task.taskId} could not be placed: ` +
+                    (
+                        attempt?.reason ||
+                        "Unknown placement failure."
+                    )
+            };
+
+        }
+
+
+        // --------------------------------------------------------
+        // TRACK SUCCESSFUL TASK
+        // --------------------------------------------------------
+
+        const periods =
+            Array.isArray(task.periodIds)
+                ? task.periodIds
+                    .map(
+                        periodId =>
+                            dataPeriodFromCandidate(
+                                taskCandidate,
+                                periodId
+                            )
+                    )
+                    .filter(Boolean)
+                : [];
+
+
+        placements.push({
+
+            task,
+
+            attempt,
+
+            candidate:
+                taskCandidate,
+
+            periods,
+
+            room:
+                task.roomId
+                    ? indexes.rooms?.get?.(
+                        normalizeTimetableId(
+                            task.roomId
+                        )
+                    ) || null
+                    : null
+
+        });
+
+    }
+
+
+    // ============================================================
+    // COMPLETE
+    // ============================================================
+
+    return {
+
+        placed: true,
+
+        entries:
+            placements.flatMap(
+                placement =>
+                    Array.isArray(
+                        placement.attempt.entries
+                    )
+                        ? placement.attempt.entries
+                        : []
+            ),
+
+        placements
+
+    };
+
+}
+
+
+// ============================================================
+// RESOLVE PERIOD OBJECT FROM CANDIDATE / INDEXES
+//
+// Used only for rollback support.
+// ============================================================
+
+function dataPeriodFromCandidate(
+    candidate,
+    periodId
+) {
+
+    if (!periodId) {
+        return null;
+    }
+
+
+    if (
+        candidate?.periods &&
+        Array.isArray(candidate.periods)
+    ) {
+
+        const found =
+            candidate.periods.find(
+                period =>
+                    normalizeTimetableId(
+                        period?.id
+                    ) ===
+                    normalizeTimetableId(
+                        periodId
+                    )
+            );
+
+
+        if (found) {
+            return found;
+        }
+
+    }
+
+
+    if (candidate?.period?.id) {
+
+        if (
+            normalizeTimetableId(
+                candidate.period.id
+            ) ===
+            normalizeTimetableId(
+                periodId
+            )
+        ) {
+
+            return candidate.period;
+
+        }
+
+    }
+
+
+    return {
+        id:
+            periodId
+    };
+
+}
+
 
 
 
@@ -18115,138 +18914,292 @@ function generateSmartTimetable(
         );
 
 
+
+
+
+// ========================================================
+// BUILD SCHEDULE UNITS
+// ========================================================
+//
+// IMPORTANT:
+//
+// The generator now makes scheduling decisions at UNIT level.
+//
+// Parallel tasks sharing the same parallelKey become ONE unit.
+//
+// Example:
+//
+// RE/GE/BS::S1
+//   10A RE
+//   10B GE
+//   10C BS
+//   10E RE
+//
+// These four tasks MUST be scheduled at the same period.
+//
+// 10D, if it has no parallelKey, remains a separate solo unit.
+// ========================================================
+
+let remainingUnits =
+    buildScheduleUnits(
+        remainingTasks
+    );
+
+
+// ========================================================
+// VALIDATE SCHEDULE UNITS
+// ========================================================
+
+validateScheduleUnits(
+    data,
+    remainingUnits
+);
+
+
+console.log(
+    "STAGE 6F — SCHEDULE UNITS READY:",
+    {
+        totalUnits:
+            remainingUnits.length,
+
+        parallelUnits:
+            remainingUnits.filter(
+                unit =>
+                    unit.isParallel
+            ).length,
+
+        soloUnits:
+            remainingUnits.filter(
+                unit =>
+                    !unit.isParallel
+            ).length
+    }
+);
+
+
+
+
+
+
+
+
+    
+
     // ========================================================
     // SAFETY LIMIT
     // ========================================================
 
-    const maximumIterations =
-        Math.max(
-            remainingTasks.length * 50,
-            5000
-        );
+  
+const maximumIterations =
+    Math.max(
+        remainingUnits.length * 50,
+        5000
+    );
+
 
 
     let iteration =
         0;
 
 
-    // ========================================================
-    // MAIN PLACEMENT LOOP
-    // ========================================================
+// ========================================================
+// MAIN PLACEMENT LOOP
+// ========================================================
+//
+// IMPORTANT:
+//
+// We now schedule SCHEDULE UNITS rather than individual tasks.
+//
+// Parallel unit:
+//
+//     RE/GE/BS::S1
+//       10A RE
+//       10B GE
+//       10C BS
+//       10E RE
+//
+// All must receive the SAME period.
+//
+// Solo unit:
+//
+//     10D Mathematics
+//
+// Remains completely independent.
+// ========================================================
 
-    while (
-        remainingTasks.length > 0 &&
-        iteration < maximumIterations
+while (
+    remainingUnits.length > 0 &&
+    iteration < maximumIterations
+) {
+
+    iteration++;
+
+
+    // ====================================================
+    // TAKE NEXT UNIT
+    // ====================================================
+
+    const unit =
+        remainingUnits.shift();
+
+
+    if (
+        !unit ||
+        !Array.isArray(unit.tasks) ||
+        unit.tasks.length === 0
     ) {
 
-        iteration++;
+        continue;
+
+    }
 
 
-        // ====================================================
-        // SELECT NEXT TASK
-        // ====================================================
+    // ====================================================
+    // PARALLEL UNIT
+    // ====================================================
 
-        const selection =
-            selectNextSmartTask(
-                remainingTasks,
+    if (
+        unit.isParallel
+    ) {
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "SMART PARALLEL UNIT"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            {
+                unitId:
+                    unit.unitId,
+
+                parallelGroup:
+                    unit.parallelGroup,
+
+                parallelKey:
+                    unit.parallelKey,
+
+                taskCount:
+                    unit.tasks.length,
+
+                tasks:
+                    unit.tasks.map(
+                        task => ({
+
+                            taskId:
+                                task.taskId,
+
+                            streamId:
+                                task.streamId,
+
+                            subjectId:
+                                task.subjectId,
+
+                            teacherId:
+                                task.teacherId,
+
+                            requirementId:
+                                task.requirementId,
+
+                            taskType:
+                                task.taskType
+
+                        })
+                    )
+
+            }
+        );
+
+
+        // ==================================================
+        // FIND COMMON CANDIDATES
+        // ==================================================
+        //
+        // This is the critical synchronization step.
+        //
+        // A candidate is valid ONLY when every task in the
+        // parallel unit has a candidate for the SAME period
+        // or SAME consecutive period pair.
+        //
+        // ==================================================
+
+        const parallelCandidates =
+            getScoredParallelUnitCandidates(
+                unit,
                 data,
                 indexes
             );
 
 
-        // ====================================================
-        // NO TASK
-        // ====================================================
+        // ==================================================
+        // NO COMMON PERIOD
+        // ==================================================
 
         if (
-            !selection
+            !Array.isArray(
+                parallelCandidates
+            ) ||
+            parallelCandidates.length === 0
         ) {
 
-            break;
+            const reason =
+                "No common valid period exists for the complete parallel unit.";
 
-        }
-
-
-        const task =
-            selection.task;
-
-
-        // ====================================================
-        // NO CANDIDATES
-        // ====================================================
-
-        if (
-            selection.candidateCount === 0
-        ) {
 
             console.warn(
-                "SMART PLACEMENT — NO CANDIDATE:",
+                "SMART PARALLEL UNIT — NO COMMON CANDIDATE:",
                 {
 
-                    taskId:
-                        task.taskId,
+                    unitId:
+                        unit.unitId,
 
-                    taskType:
-                        task.taskType,
+                    parallelGroup:
+                        unit.parallelGroup,
 
-                    streamId:
-                        task.streamId,
+                    parallelKey:
+                        unit.parallelKey,
 
-                    subjectId:
-                        task.subjectId,
+                    tasks:
+                        unit.tasks.map(
+                            task =>
+                                task.taskId
+                        ),
 
-                    teacherId:
-                        task.teacherId,
-
-                    requirementId:
-                        task.requirementId
+                    reason
 
                 }
             );
 
 
-            result.failedTasks.push({
+            unit.tasks.forEach(
+                task => {
 
-                task,
+                    result.failedTasks.push({
 
-                reason:
-                    "No valid placement candidate exists."
+                        task,
 
-            });
+                        reason
 
-
-            task.placed =
-                false;
+                    });
 
 
-            task.periodIds =
-                [];
+                    task.placed =
+                        false;
 
+                    task.periodIds =
+                        [];
 
-            task.roomId =
-                null;
+                    task.roomId =
+                        null;
 
-
-            // ------------------------------------------------
-            // REMOVE FROM ACTIVE TASKS
-            // ------------------------------------------------
-
-            const failedIndex =
-                remainingTasks.indexOf(
-                    task
-                );
-
-
-            if (
-                failedIndex >= 0
-            ) {
-
-                remainingTasks.splice(
-                    failedIndex,
-                    1
-                );
-
-            }
+                }
+            );
 
 
             continue;
@@ -18254,19 +19207,11 @@ function generateSmartTimetable(
         }
 
 
-        // ====================================================
-        // TRY ALL RANKED CANDIDATES
-        // ====================================================
-        //
-        // IMPORTANT:
-        //
-        // We do NOT fail the task after candidate #1 fails.
-        //
-        // We try every candidate returned by 6C / 6D.
-        //
-        // ====================================================
+        // ==================================================
+        // TRY COMMON CANDIDATES
+        // ==================================================
 
-        let successfulPlacement =
+        let successfulUnit =
             null;
 
 
@@ -18275,44 +19220,58 @@ function generateSmartTimetable(
 
 
         let lastFailureReason =
-            "All candidates failed.";
+            "All common parallel candidates failed.";
 
 
         for (
-            const candidate of selection.candidates
+            const parallelCandidate
+            of parallelCandidates
         ) {
 
-            const candidateSelection = {
+            console.log(
+                "Trying parallel candidate:",
+                {
 
-                task,
+                    unitId:
+                        unit.unitId,
 
-                candidate
+                    periodKey:
+                        parallelCandidate.periodKey,
 
-            };
+                    score:
+                        parallelCandidate.score
 
+                }
+            );
+
+
+            // ------------------------------------------------
+            // PLACE THE COMPLETE UNIT
+            // ------------------------------------------------
 
             const attempt =
-                placeSelectedSmartTask(
-                    candidateSelection,
+                placeSelectedParallelUnit(
+                    unit,
+                    parallelCandidate,
                     indexes
                 );
 
 
-            // =================================================
+            // ------------------------------------------------
             // SUCCESS
-            // =================================================
+            // ------------------------------------------------
 
             if (
                 attempt &&
                 attempt.placed
             ) {
 
-                successfulPlacement =
+                successfulUnit =
                     attempt;
 
 
                 successfulCandidate =
-                    candidate;
+                    parallelCandidate;
 
 
                 break;
@@ -18320,9 +19279,9 @@ function generateSmartTimetable(
             }
 
 
-            // =================================================
-            // FAILED CANDIDATE
-            // =================================================
+            // ------------------------------------------------
+            // FAILURE
+            // ------------------------------------------------
 
             lastFailureReason =
                 attempt?.reason ||
@@ -18330,17 +19289,17 @@ function generateSmartTimetable(
 
 
             console.warn(
-                "SMART CANDIDATE REJECTED:",
+                "SMART PARALLEL CANDIDATE REJECTED:",
                 {
 
-                    taskId:
-                        task.taskId,
+                    unitId:
+                        unit.unitId,
 
-                    taskType:
-                        task.taskType,
+                    periodKey:
+                        parallelCandidate.periodKey,
 
-                    candidateScore:
-                        candidate?.score,
+                    score:
+                        parallelCandidate.score,
 
                     reason:
                         attempt?.reason ||
@@ -18352,114 +19311,131 @@ function generateSmartTimetable(
         }
 
 
-        // ====================================================
-        // SUCCESSFUL TASK
-        // ====================================================
+        // ==================================================
+        // PARALLEL UNIT SUCCESS
+        // ==================================================
 
         if (
-            successfulPlacement &&
-            successfulPlacement.placed
+            successfulUnit &&
+            successfulUnit.placed
         ) {
 
             // ------------------------------------------------
-            // ADD GENERATED ENTRIES
+            // ADD ALL GENERATED ENTRIES
             // ------------------------------------------------
 
             if (
                 Array.isArray(
-                    successfulPlacement.entries
+                    successfulUnit.entries
                 )
             ) {
 
                 result.entries.push(
-                    ...successfulPlacement.entries
+                    ...successfulUnit.entries
                 );
 
             }
 
 
             // ------------------------------------------------
-            // TRACK PLACED TASK
+            // TRACK EVERY TASK
             // ------------------------------------------------
 
-            result.placedTasks.push({
+            unit.tasks.forEach(
+                task => {
 
-                task,
-
-                entries:
-                    successfulPlacement.entries,
-
-                candidate:
-                    successfulCandidate
-
-            });
+                    const placement =
+                        successfulUnit.placements?.find(
+                            item =>
+                                item?.task === task
+                        );
 
 
-            result.statistics.placedTasks++;
+                    result.placedTasks.push({
+
+                        task,
+
+                        entries:
+                            placement?.attempt?.entries ||
+                            [],
+
+                        candidate:
+                            placement?.candidate ||
+                            successfulCandidate
+
+                    });
 
 
-            // =================================================
-            // TASK DURATION IS AUTHORITATIVE
-            // =================================================
-            //
-            // Single:
-            //     duration = 1
-            //
-            // Double:
-            //     duration = 2
-            //
-            // =================================================
-
-            result.statistics.totalPeriodsPlaced +=
-                Number(
-                    task.duration
-                ) || 0;
+                    result.statistics.placedTasks++;
 
 
-            // -------------------------------------------------
-            // REMOVE PLACED TASK
-            // -------------------------------------------------
+                    result.statistics.totalPeriodsPlaced +=
+                        Number(
+                            task.duration
+                        ) || 0;
 
-            const placedIndex =
-                remainingTasks.indexOf(
-                    task
-                );
+                }
+            );
 
 
-            if (
-                placedIndex >= 0
-            ) {
+            // ------------------------------------------------
+            // MARK UNIT PLACED
+            // ------------------------------------------------
 
-                remainingTasks.splice(
-                    placedIndex,
-                    1
-                );
+            unit.placed =
+                true;
 
-            }
+
+            unit.periodIds =
+                unit.tasks[0]?.periodIds ||
+                [];
 
 
             console.log(
-                "SMART PLACEMENT SUCCESS:",
+                "======================================"
+            );
+
+            console.log(
+                "SMART PARALLEL UNIT SUCCESS"
+            );
+
+            console.log(
+                "======================================"
+            );
+
+            console.log(
                 {
 
-                    taskId:
-                        task.taskId,
+                    unitId:
+                        unit.unitId,
 
-                    type:
-                        task.taskType,
+                    parallelGroup:
+                        unit.parallelGroup,
 
-                    requirementId:
-                        task.requirementId,
+                    parallelKey:
+                        unit.parallelKey,
 
-                    periods:
-                        task.periodIds,
+                    synchronizedPeriods:
+                        unit.periodIds,
 
-                    room:
-                        task.roomId,
+                    tasks:
+                        unit.tasks.map(
+                            task => ({
 
-                    score:
-                        successfulCandidate?.score ??
-                        null
+                                taskId:
+                                    task.taskId,
+
+                                streamId:
+                                    task.streamId,
+
+                                subjectId:
+                                    task.subjectId,
+
+                                periods:
+                                    task.periodIds
+
+                            })
+                        )
 
                 }
             );
@@ -18470,25 +19446,22 @@ function generateSmartTimetable(
         }
 
 
-        // ====================================================
-        // ALL CANDIDATES FAILED
-        // ====================================================
+        // ==================================================
+        // PARALLEL UNIT FAILED
+        // ==================================================
 
         console.warn(
-            "SMART PLACEMENT — ALL CANDIDATES FAILED:",
+            "SMART PARALLEL UNIT — ALL CANDIDATES FAILED:",
             {
 
-                taskId:
-                    task.taskId,
+                unitId:
+                    unit.unitId,
 
-                taskType:
-                    task.taskType,
+                parallelGroup:
+                    unit.parallelGroup,
 
-                requirementId:
-                    task.requirementId,
-
-                teacherId:
-                    task.teacherId,
+                parallelKey:
+                    unit.parallelKey,
 
                 reason:
                     lastFailureReason
@@ -18497,80 +19470,15 @@ function generateSmartTimetable(
         );
 
 
-        result.failedTasks.push({
-
-            task,
-
-            reason:
-                lastFailureReason
-
-        });
-
-
-        task.placed =
-            false;
-
-
-        task.periodIds =
-            [];
-
-
-        task.roomId =
-            null;
-
-
-        // ----------------------------------------------------
-        // REMOVE FAILED TASK
-        // ----------------------------------------------------
-
-        const failedIndex =
-            remainingTasks.indexOf(
-                task
-            );
-
-
-        if (
-            failedIndex >= 0
-        ) {
-
-            remainingTasks.splice(
-                failedIndex,
-                1
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // HANDLE SAFETY LIMIT
-    // ========================================================
-
-    if (
-        iteration >=
-        maximumIterations &&
-        remainingTasks.length > 0
-    ) {
-
-        remainingTasks.forEach(
+        unit.tasks.forEach(
             task => {
-
-                if (
-                    !task
-                ) {
-
-                    return;
-
-                }
-
 
                 result.failedTasks.push({
 
                     task,
 
                     reason:
-                        "Generator safety iteration limit reached."
+                        lastFailureReason
 
                 });
 
@@ -18590,15 +19498,392 @@ function generateSmartTimetable(
         );
 
 
-        // ----------------------------------------------------
-        // Make sure the active queue does not retain tasks
-        // after they have been recorded as failed.
-        // ----------------------------------------------------
-
-        remainingTasks.length =
-            0;
+        continue;
 
     }
+
+
+    // ====================================================
+    // SOLO UNIT
+    // ====================================================
+    //
+    // A task without a parallelKey is still handled using
+    // the existing smart-placement system.
+    //
+    // Therefore unrelated streams remain independent.
+    // ====================================================
+
+    const task =
+        unit.tasks[0];
+
+
+    if (!task) {
+        continue;
+    }
+
+
+    // ====================================================
+    // SELECT SOLO TASK
+    // ====================================================
+
+    const selection =
+        selectNextSmartTask(
+            [task],
+            data,
+            indexes
+        );
+
+
+    // ====================================================
+    // NO CANDIDATES
+    // ====================================================
+
+    if (
+        !selection ||
+        selection.candidateCount === 0
+    ) {
+
+        console.warn(
+            "SMART PLACEMENT — NO CANDIDATE:",
+            {
+
+                taskId:
+                    task.taskId,
+
+                taskType:
+                    task.taskType,
+
+                streamId:
+                    task.streamId,
+
+                subjectId:
+                    task.subjectId,
+
+                teacherId:
+                    task.teacherId,
+
+                requirementId:
+                    task.requirementId
+
+            }
+        );
+
+
+        result.failedTasks.push({
+
+            task,
+
+            reason:
+                "No valid placement candidate exists."
+
+        });
+
+
+        task.placed =
+            false;
+
+
+        task.periodIds =
+            [];
+
+
+        task.roomId =
+            null;
+
+
+        continue;
+
+    }
+
+
+    // ====================================================
+    // TRY ALL SOLO CANDIDATES
+    // ====================================================
+
+    let successfulPlacement =
+        null;
+
+
+    let successfulCandidate =
+        null;
+
+
+    let lastFailureReason =
+        "All candidates failed.";
+
+
+    for (
+        const candidate
+        of selection.candidates
+    ) {
+
+        const candidateSelection = {
+
+            task,
+
+            candidate
+
+        };
+
+
+        const attempt =
+            placeSelectedSmartTask(
+                candidateSelection,
+                indexes
+            );
+
+
+        // ------------------------------------------------
+        // SUCCESS
+        // ------------------------------------------------
+
+        if (
+            attempt &&
+            attempt.placed
+        ) {
+
+            successfulPlacement =
+                attempt;
+
+
+            successfulCandidate =
+                candidate;
+
+
+            break;
+
+        }
+
+
+        // ------------------------------------------------
+        // FAILURE
+        // ------------------------------------------------
+
+        lastFailureReason =
+            attempt?.reason ||
+            lastFailureReason;
+
+
+        console.warn(
+            "SMART CANDIDATE REJECTED:",
+            {
+
+                taskId:
+                    task.taskId,
+
+                taskType:
+                    task.taskType,
+
+                candidateScore:
+                    candidate?.score,
+
+                reason:
+                    attempt?.reason ||
+                    "Candidate rejected."
+
+            }
+        );
+
+    }
+
+
+    // ====================================================
+    // SOLO SUCCESS
+    // ====================================================
+
+    if (
+        successfulPlacement &&
+        successfulPlacement.placed
+    ) {
+
+        if (
+            Array.isArray(
+                successfulPlacement.entries
+            )
+        ) {
+
+            result.entries.push(
+                ...successfulPlacement.entries
+            );
+
+        }
+
+
+        result.placedTasks.push({
+
+            task,
+
+            entries:
+                successfulPlacement.entries,
+
+            candidate:
+                successfulCandidate
+
+        });
+
+
+        result.statistics.placedTasks++;
+
+
+        result.statistics.totalPeriodsPlaced +=
+            Number(
+                task.duration
+            ) || 0;
+
+
+        console.log(
+            "SMART PLACEMENT SUCCESS:",
+            {
+
+                taskId:
+                    task.taskId,
+
+                type:
+                    task.taskType,
+
+                requirementId:
+                    task.requirementId,
+
+                periods:
+                    task.periodIds,
+
+                room:
+                    task.roomId,
+
+                score:
+                    successfulCandidate?.score ??
+                    null
+
+            }
+        );
+
+
+        continue;
+
+    }
+
+
+    // ====================================================
+    // SOLO FAILURE
+    // ====================================================
+
+    console.warn(
+        "SMART PLACEMENT — ALL CANDIDATES FAILED:",
+        {
+
+            taskId:
+                task.taskId,
+
+            taskType:
+                task.taskType,
+
+            requirementId:
+                task.requirementId,
+
+            teacherId:
+                task.teacherId,
+
+            reason:
+                lastFailureReason
+
+        }
+    );
+
+
+    result.failedTasks.push({
+
+        task,
+
+        reason:
+            lastFailureReason
+
+    });
+
+
+    task.placed =
+        false;
+
+
+    task.periodIds =
+        [];
+
+
+    task.roomId =
+        null;
+
+}
+
+
+
+```js
+// ========================================================
+// HANDLE SAFETY LIMIT
+// ========================================================
+
+if (
+    iteration >=
+    maximumIterations &&
+    remainingUnits.length > 0
+) {
+
+    remainingUnits.forEach(
+        unit => {
+
+            if (
+                !unit ||
+                !Array.isArray(unit.tasks)
+            ) {
+
+                return;
+
+            }
+
+
+            unit.tasks.forEach(
+                task => {
+
+                    if (!task) {
+                        return;
+                    }
+
+
+                    result.failedTasks.push({
+
+                        task,
+
+                        reason:
+                            "Generator safety iteration limit reached."
+
+                    });
+
+
+                    task.placed =
+                        false;
+
+
+                    task.periodIds =
+                        [];
+
+
+                    task.roomId =
+                        null;
+
+                }
+            );
+
+        }
+    );
+
+
+    // ----------------------------------------------------
+    // Clear active units
+    // ----------------------------------------------------
+
+    remainingUnits.length =
+        0;
+
+}
+```
 
 
     // ========================================================
