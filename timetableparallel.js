@@ -1725,8 +1725,29 @@ function validateParallelBlocks(data) {
 
     data.parallelBlocks.forEach(block => {
 
+        if (
+            !block ||
+            typeof block !== "object"
+        ) {
+
+            errors.push({
+
+                type:
+                    "INVALID_PARALLEL_GROUP",
+
+                message:
+                    "A parallel block is invalid."
+
+            });
+
+            return;
+
+        }
+
+
         const id =
             block.groupId;
+
 
         const reqs =
             Array.isArray(block.requirements)
@@ -1747,6 +1768,30 @@ function validateParallelBlocks(data) {
 
                 message:
                     "A parallel block has no group ID."
+
+            });
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // EMPTY GROUP
+        // ====================================================
+
+        if (reqs.length === 0) {
+
+            errors.push({
+
+                type:
+                    "EMPTY_PARALLEL_GROUP",
+
+                groupId:
+                    id,
+
+                message:
+                    `Parallel group "${id}" has no requirements.`
 
             });
 
@@ -1784,9 +1829,6 @@ function validateParallelBlocks(data) {
         //
         // The size of a parallel group is based on the number
         // of UNIQUE STREAMS participating.
-        //
-        // This prevents unrelated streams from being treated
-        // as part of the parallel block.
         // ====================================================
 
         const streamIds = [
@@ -1794,6 +1836,7 @@ function validateParallelBlocks(data) {
                 reqs
                     .map(
                         requirement =>
+                            requirement &&
                             requirement.streamId
                     )
                     .filter(Boolean)
@@ -1809,17 +1852,6 @@ function validateParallelBlocks(data) {
 
         // ====================================================
         // DUPLICATE STREAM DETECTION
-        //
-        // A stream should normally appear only once in a
-        // particular parallel group.
-        //
-        // Example of INVALID configuration:
-        //
-        //   10A -> RE
-        //   10A -> GE
-        //
-        // because one stream cannot participate twice in the
-        // same synchronized parallel block.
         // ====================================================
 
         const streamRequirementCounts =
@@ -1828,9 +1860,15 @@ function validateParallelBlocks(data) {
 
         reqs.forEach(requirement => {
 
-            if (!requirement.streamId) {
+            if (
+                !requirement ||
+                !requirement.streamId
+            ) {
+
                 return;
+
             }
+
 
             const streamId =
                 normalizeTimetableId(
@@ -1856,8 +1894,12 @@ function validateParallelBlocks(data) {
         streamRequirementCounts.forEach(
             (count, streamId) => {
 
-                if (count <= 1) {
+                if (
+                    count <= 1
+                ) {
+
                     return;
+
                 }
 
 
@@ -1866,8 +1908,9 @@ function validateParallelBlocks(data) {
                         streamId
                     ) ||
                     data.lookup?.streams?.get(
-                        streamId
-                    );
+                        String(streamId)
+                    ) ||
+                    null;
 
 
                 errors.push({
@@ -1906,11 +1949,264 @@ function validateParallelBlocks(data) {
                 );
 
 
-            i
+            if (
+                !Number.isFinite(
+                    declaredSize
+                ) ||
+                declaredSize < 1
+            ) {
+
+                errors.push({
+
+                    type:
+                        "INVALID_PARALLEL_GROUP_SIZE",
+
+                    groupId:
+                        id,
+
+                    declaredSize:
+                        block.declaredSize,
+
+                    message:
+                        `Parallel group "${id}" has an invalid declared size.`
+
+                });
+
+            }
+
+            else if (
+                declaredSize !==
+                streamIds.length
+            ) {
+
+                errors.push({
+
+                    type:
+                        "PARALLEL_GROUP_SIZE_MISMATCH",
+
+                    groupId:
+                        id,
+
+                    declaredSize,
+
+                    actualSize:
+                        streamIds.length,
+
+                    message:
+                        `Parallel group "${id}" declares ${declaredSize} participating streams, but ${streamIds.length} unique streams actually participate.`
+
+                });
+
+            }
+
+        }
 
 
+        // ====================================================
+        // REQUIREMENT VALIDATION
+        // ====================================================
+
+        reqs.forEach(
+            requirement => {
+
+                if (
+                    !requirement ||
+                    typeof requirement !== "object"
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "INVALID_PARALLEL_REQUIREMENT",
+
+                        groupId:
+                            id,
+
+                        message:
+                            `Parallel group "${id}" contains an invalid requirement.`
+
+                    });
+
+                    return;
+
+                }
 
 
+                if (
+                    !requirement.requirementId
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "INVALID_PARALLEL_REQUIREMENT",
+
+                        groupId:
+                            id,
+
+                        message:
+                            `Parallel group "${id}" contains a requirement without an ID.`
+
+                    });
+
+                }
+
+
+                if (
+                    !requirement.streamId
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "PARALLEL_REQUIREMENT_NO_STREAM",
+
+                        groupId:
+                            id,
+
+                        requirementId:
+                            requirement.requirementId || null,
+
+                        message:
+                            `A requirement in parallel group "${id}" has no stream assigned.`
+
+                    });
+
+                }
+
+
+                const requirementGroup =
+                    normalizeParallelGroup(
+                        requirement.parallelGroup
+                    );
+
+
+                const normalizedGroup =
+                    normalizeParallelGroup(
+                        id
+                    );
+
+
+                if (
+                    requirementGroup &&
+                    requirementGroup !==
+                    normalizedGroup
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "PARALLEL_GROUP_MISMATCH",
+
+                        groupId:
+                            id,
+
+                        requirementId:
+                            requirement.requirementId,
+
+                        requirementParallelGroup:
+                            requirementGroup,
+
+                        message:
+                            `Requirement "${requirement.requirementId}" references parallel group "${requirementGroup}" but is stored in parallel block "${normalizedGroup}".`
+
+                    });
+
+                }
+
+            }
+        );
+
+
+        // ====================================================
+        // SUBJECT / TEACHER CONSISTENCY
+        // ====================================================
+
+        const subjectsInBlock = [
+            ...new Set(
+                reqs
+                    .map(
+                        requirement =>
+                            requirement &&
+                            requirement.subjectId
+                    )
+                    .filter(Boolean)
+                    .map(
+                        subjectId =>
+                            normalizeTimetableId(
+                                subjectId
+                            )
+                    )
+            )
+        ];
+
+
+        if (
+            subjectsInBlock.length > 1
+        ) {
+
+            warnings.push({
+
+                type:
+                    "MULTIPLE_SUBJECTS_IN_PARALLEL_GROUP",
+
+                groupId:
+                    id,
+
+                subjectIds:
+                    subjectsInBlock,
+
+                message:
+                    `Parallel group "${id}" contains multiple subjects. This is allowed only when the requirements are intentionally synchronized.`
+
+            });
+
+        }
+
+
+        // ====================================================
+        // GROUP SIZE SAFETY
+        // ====================================================
+
+        if (
+            streamIds.length < 2 &&
+            reqs.length >= 2
+        ) {
+
+            errors.push({
+
+                type:
+                    "PARALLEL_NO_MULTIPLE_STREAMS",
+
+                groupId:
+                    id,
+
+                message:
+                    `Parallel group "${id}" contains multiple requirements but they do not represent multiple unique streams.`
+
+            });
+
+        }
+
+    });
+
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    return {
+
+        valid:
+            errors.length === 0,
+
+        errors,
+
+        warnings
+
+    };
+
+}
 
 
 // ============================================================
@@ -9693,10 +9989,6 @@ function checkDoubleLessonConflict(
 
 }
 
-
-// ============================================================
-// PLACE ONE DOUBLE LESSON
-// ============================================================
 
 // ============================================================
 // PLACE ONE DOUBLE LESSON
@@ -23703,28 +23995,6 @@ function auditRequirementWeeklyTotals(
 
 }
 
-// ============================================================
-// AUDIT DAILY REQUIREMENT LIMITS
-// ============================================================
-
-
-
-// ============================================================
-// AUDIT DAILY REQUIREMENT LIMITS
-// ============================================================
-//
-// Requirement daily limits count LESSONS, not timetable
-// periods.
-//
-// Therefore:
-//
-//     single lesson = 1 lesson
-//     double lesson = 1 lesson
-//
-// A double lesson creates TWO generated entries, but both
-// entries share the same taskId.
-//
-// ============================================================
 
 function auditDailyRequirementLimits(
     data,
@@ -26316,11 +26586,10 @@ function auditGeneratedTimetable(
     ) {
 
         auditParallelSynchronization(
-            data,
-            result,
-            audit,
-            lookups
-        );
+    data,
+    entries,
+    audit
+);
 
     }
     else {
