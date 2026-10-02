@@ -21833,7 +21833,9 @@ function createTimetableAuditResult() {
                 true,
 
             periodReferences:
-                true
+                true,
+            parallelSynchronization:
+    true,
 
         },
 
@@ -21952,21 +21954,6 @@ function addTimetableAuditWarning(
 // ============================================================
 
 
-// ============================================================
-// NORMALIZE GENERATED ENTRY
-// ============================================================
-//
-// Accepts BOTH:
-//
-//     camelCase
-//     snake_case
-//
-// This keeps Stage 6F and Stage 6G independent of whether
-// generated entries are still in generator format or have
-// already been converted to database format.
-//
-// ============================================================
-
 
 function normalizeGeneratedTimetableEntry(
     entry
@@ -22032,17 +22019,22 @@ function normalizeGeneratedTimetableEntry(
                 entry.task_id
             ),
 
+        // IMPORTANT:
+        // parallelGroup is a GROUP VALUE, not an ID.
+        // Example: RE/GE/BS
         parallelGroup:
-            normalizeTimetableId(
+            normalizeParallelGroup(
                 entry.parallelGroup ??
                 entry.parallel_group
-            )
+            ) || null
 
     };
 
 }
 
 
+
+            
 // ============================================================
 // BUILD AUDIT LOOKUPS
 // ============================================================
@@ -22698,8 +22690,28 @@ function auditStreamPeriodConflicts(
 
 
 
+
+
 // ============================================================
 // AUDIT TEACHER / PERIOD CONFLICTS
+// ============================================================
+//
+// A teacher may teach multiple streams concurrently ONLY when:
+//
+//     1. The subject is the same
+//     2. The parallel group is the same and explicit
+//
+// Therefore:
+//
+//     SAME TEACHER
+//     SAME PERIOD
+//     SAME SUBJECT
+//     SAME PARALLEL GROUP
+//
+// is allowed.
+//
+// Everything else is a teacher conflict.
+//
 // ============================================================
 
 function auditTeacherPeriodConflicts(
@@ -22758,21 +22770,54 @@ function auditTeacherPeriodConflicts(
                 );
 
 
-            // ------------------------------------------------
-            // SAME TEACHER + SAME PERIOD
-            //
-            // Same subject is allowed because the teacher may
-            // teach the same subject concurrently to multiple
-            // streams/classes.
-            //
-            // Different subjects are a real teacher conflict.
-            // ------------------------------------------------
+            // ====================================================
+            // CHECK EACH EXISTING LESSON FOR THIS TEACHER/PERIOD
+            // ====================================================
 
             const conflictingEntry =
                 existingEntries.find(
-                    existing =>
-                        existing.subjectId !==
-                        normalized.subjectId
+                    existing => {
+
+                        const sameSubject =
+                            Boolean(
+                                existing.subjectId &&
+                                normalized.subjectId &&
+                                existing.subjectId ===
+                                normalized.subjectId
+                            );
+
+
+                        const sameParallelGroup =
+                            Boolean(
+                                existing.parallelGroup &&
+                                normalized.parallelGroup &&
+                                existing.parallelGroup ===
+                                normalized.parallelGroup
+                            );
+
+
+                        // ------------------------------------------------
+                        // SAME SUBJECT + SAME EXPLICIT PARALLEL GROUP
+                        // = ALLOWED CONCURRENT TEACHING
+                        // ------------------------------------------------
+
+                        if (
+                            sameSubject &&
+                            sameParallelGroup
+                        ) {
+
+                            return false;
+
+                        }
+
+
+                        // ------------------------------------------------
+                        // EVERYTHING ELSE IS A CONFLICT
+                        // ------------------------------------------------
+
+                        return true;
+
+                    }
                 );
 
 
@@ -22783,8 +22828,9 @@ function auditTeacherPeriodConflicts(
                 addTimetableAuditError(
                     audit,
                     "teacherConflicts",
-                    "Teacher has different lessons in the same period.",
+                    "Teacher has conflicting lessons in the same period.",
                     {
+
                         teacherId:
                             normalized.teacherId,
 
@@ -22801,7 +22847,13 @@ function auditTeacherPeriodConflicts(
                             conflictingEntry.subjectId,
 
                         secondSubjectId:
-                            normalized.subjectId
+                            normalized.subjectId,
+
+                        firstParallelGroup:
+                            conflictingEntry.parallelGroup,
+
+                        secondParallelGroup:
+                            normalized.parallelGroup
 
                     }
                 );
@@ -22809,13 +22861,20 @@ function auditTeacherPeriodConflicts(
             }
 
 
+            // ====================================================
+            // STORE THIS LESSON
+            // ====================================================
+
             existingEntries.push({
 
                 entryIndex:
                     index,
 
                 subjectId:
-                    normalized.subjectId
+                    normalized.subjectId,
+
+                parallelGroup:
+                    normalized.parallelGroup
 
             });
 
@@ -22826,6 +22885,502 @@ function auditTeacherPeriodConflicts(
 
 
 
+            
+
+// ============================================================
+// AUDIT PARALLEL SYNCHRONIZATION
+// ============================================================
+//
+// Every parallel occurrence must place ALL participating
+// requirements in the SAME period.
+//
+// Example:
+//
+//     RE/GE/BS
+//
+//     10A -> RE
+//     10B -> GE
+//     10C -> BS
+//     10E -> RE
+//
+// If this occurrence is P5:
+//
+//     10A RE -> P5
+//     10B GE -> P5
+//     10C BS -> P5
+//     10E RE -> P5
+//
+// 10D is NOT part of the group and must NOT be required here.
+//
+// ============================================================
+
+function auditParallelSynchronization(
+    data,
+    entries,
+    audit
+) {
+
+    const parallelEntries =
+        new Map();
+
+
+    // ========================================================
+    // COLLECT ENTRIES BY PARALLEL GROUP + TASK
+    // ========================================================
+
+    entries.forEach(
+        (
+            entry,
+            index
+        ) => {
+
+            const normalized =
+                normalizeGeneratedTimetableEntry(
+                    entry
+                );
+
+
+            if (
+                !normalized ||
+                !normalized.parallelGroup ||
+                !normalized.periodId
+            ) {
+
+                return;
+
+            }
+
+
+            const group =
+                normalized.parallelGroup;
+
+
+            if (
+                !parallelEntries.has(
+                    group
+                )
+            ) {
+
+                parallelEntries.set(
+                    group,
+                    []
+                );
+
+            }
+
+
+            parallelEntries.get(
+                group
+            ).push({
+
+                index,
+
+                entry,
+
+                normalized
+
+            });
+
+        }
+    );
+
+
+    // ========================================================
+    // BUILD EXPECTED PARTICIPANTS FROM REQUIREMENTS
+    // ========================================================
+
+    const requirementsByGroup =
+        new Map();
+
+
+    (data.requirements || [])
+        .forEach(
+            requirement => {
+
+                const group =
+                    normalizeParallelGroup(
+                        requirement?.parallelGroup ??
+                        requirement?.parallel_group
+                    );
+
+
+                if (
+                    !group
+                ) {
+
+                    return;
+
+                }
+
+
+                const requirementId =
+                    normalizeTimetableId(
+                        requirement?.requirementId
+                    );
+
+
+                const streamId =
+                    normalizeTimetableId(
+                        requirement?.streamId ??
+                        requirement?.stream_id
+                    );
+
+
+                if (
+                    !requirementId ||
+                    !streamId
+                ) {
+
+                    return;
+
+                }
+
+
+                if (
+                    !requirementsByGroup.has(
+                        group
+                    )
+                ) {
+
+                    requirementsByGroup.set(
+                        group,
+                        []
+                    );
+
+                }
+
+
+                requirementsByGroup.get(
+                    group
+                ).push({
+
+                    requirementId,
+
+                    streamId,
+
+                    subjectId:
+                        normalizeTimetableId(
+                            requirement?.subjectId ??
+                            requirement?.subject_id
+                        )
+
+                });
+
+            }
+        );
+
+
+    // ========================================================
+    // CHECK EACH PARALLEL GROUP
+    // ========================================================
+
+    requirementsByGroup.forEach(
+        (
+            expectedMembers,
+            group
+        ) => {
+
+            const groupEntries =
+                parallelEntries.get(
+                    group
+                ) || [];
+
+
+            // ------------------------------------------------
+            // UNIQUE EXPECTED STREAMS
+            // ------------------------------------------------
+
+            const expectedStreams =
+                new Map();
+
+
+            expectedMembers.forEach(
+                member => {
+
+                    if (
+                        !expectedStreams.has(
+                            member.streamId
+                        )
+                    ) {
+
+                        expectedStreams.set(
+                            member.streamId,
+                            member
+                        );
+
+                    }
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // GROUP ENTRIES BY TASK OCCURRENCE
+            //
+            // taskId removes the two-entry problem for doubles.
+            // ------------------------------------------------
+
+            const occurrences =
+                new Map();
+
+
+            groupEntries.forEach(
+                item => {
+
+                    const taskKey =
+                        item.normalized.taskId ||
+                        [
+                            item.normalized.requirementId,
+                            item.normalized.periodId
+                        ].join("__");
+
+
+                    if (
+                        !occurrences.has(
+                            taskKey
+                        )
+                    ) {
+
+                        occurrences.set(
+                            taskKey,
+                            []
+                        );
+
+                    }
+
+
+                    occurrences.get(
+                        taskKey
+                    ).push(
+                        item
+                    );
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // IMPORTANT:
+            //
+            // Instead of assuming task IDs are identical across
+            // requirements, build occurrences by period.
+            //
+            // This allows:
+            //
+            //     10A RE
+            //     10B GE
+            //     10C BS
+            //
+            // to be treated as one parallel occurrence.
+            // ------------------------------------------------
+
+            const byPeriod =
+                new Map();
+
+
+            groupEntries.forEach(
+                item => {
+
+                    const periodId =
+                        item.normalized.periodId;
+
+
+                    if (
+                        !byPeriod.has(
+                            periodId
+                        )
+                    ) {
+
+                        byPeriod.set(
+                            periodId,
+                            []
+                        );
+
+                    }
+
+
+                    byPeriod.get(
+                        periodId
+                    ).push(
+                        item
+                    );
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // EACH PERIOD CONTAINING A GROUP MEMBER
+            // MUST CONTAIN ALL PARTICIPATING STREAMS.
+            //
+            // This is deliberately based ONLY on streams that
+            // actually have requirements in this parallel group.
+            // ------------------------------------------------
+
+            byPeriod.forEach(
+                (
+                    periodEntries,
+                    periodId
+                ) => {
+
+                    const actualStreams =
+                        new Set();
+
+
+                    periodEntries.forEach(
+                        item => {
+
+                            if (
+                                item.normalized.streamId
+                            ) {
+
+                                actualStreams.add(
+                                    item.normalized.streamId
+                                );
+
+                            }
+
+                        }
+                    );
+
+
+                    const expectedStreamIds =
+                        new Set(
+                            expectedStreams.keys()
+                        );
+
+
+                    // ------------------------------------------------
+                    // Missing participants
+                    // ------------------------------------------------
+
+                    const missingStreams =
+                        [
+                            ...expectedStreamIds
+                        ]
+                        .filter(
+                            streamId =>
+                                !actualStreams.has(
+                                    streamId
+                                )
+                        );
+
+
+                    // ------------------------------------------------
+                    // Extra streams are NOT automatically errors.
+                    //
+                    // An unrelated stream such as 10D may have an
+                    // independent lesson in the same period.
+                    // ------------------------------------------------
+
+                    if (
+                        missingStreams.length > 0
+                    ) {
+
+                        addTimetableAuditError(
+                            audit,
+                            "parallelSynchronization",
+                            "Parallel group is not synchronized: one or more participating streams are missing from the period.",
+                            {
+
+                                parallelGroup:
+                                    group,
+
+                                periodId,
+
+                                expectedStreams:
+                                    [
+                                        ...expectedStreamIds
+                                    ],
+
+                                actualStreams:
+                                    [
+                                        ...actualStreams
+                                    ],
+
+                                missingStreams
+
+                            }
+                        );
+
+                    }
+
+                }
+            );
+
+
+            // ------------------------------------------------
+            // ALSO DETECT PARTIAL / SPLIT OCCURRENCES.
+            //
+            // If the group has entries but no single period
+            // contains all participants, report it.
+            // ------------------------------------------------
+
+            if (
+                groupEntries.length > 0
+            ) {
+
+                const completePeriod =
+                    [
+                        ...byPeriod.entries()
+                    ]
+                    .find(
+                        (
+                            [
+                                periodId,
+                                periodEntries
+                            ]
+                        ) => {
+
+                            const streams =
+                                new Set(
+                                    periodEntries
+                                        .map(
+                                            item =>
+                                                item.normalized.streamId
+                                        )
+                                        .filter(Boolean)
+                                );
+
+
+                            return (
+                                streams.size ===
+                                expectedStreams.size
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    !completePeriod
+                ) {
+
+                    addTimetableAuditError(
+                        audit,
+                        "parallelSynchronization",
+                        "Parallel group has no period containing all participating streams.",
+                        {
+
+                            parallelGroup:
+                                group,
+
+                            expectedStreams:
+                                [
+                                    ...expectedStreams.keys()
+                                ]
+
+                        }
+                    );
+
+                }
+
+            }
+
+        }
+    );
+
+}
 
 
 
@@ -23466,10 +24021,10 @@ function auditDailyRequirementLimits(
 
 
 
+
 // ============================================================
 // AUDIT TEACHER DAILY LIMITS
 // ============================================================
-
 
 function auditTeacherDailyLimits(
     data,
@@ -23482,20 +24037,13 @@ function auditTeacherDailyLimits(
     // COUNT UNIQUE TEACHER SESSIONS
     // ========================================================
     //
-    // IMPORTANT:
-    //
     // A teacher may legitimately appear in multiple streams
-    // during the same period when teaching the same subject
-    // concurrently.
+    // during the same period when teaching the SAME SUBJECT
+    // as part of the SAME explicit parallel group.
     //
-    // Therefore we must NOT count raw timetable entries.
+    // Therefore a teacher session is identified by:
     //
-    // One teacher session is identified by:
-    //
-    //     teacher + period + subject
-    //
-    // Multiple streams/classes using that same session count
-    // as ONE teacher lesson.
+    //     teacher + period + subject + parallelGroup
     //
     // ========================================================
 
@@ -23543,17 +24091,35 @@ function auditTeacherDailyLimits(
                 "NO_SUBJECT";
 
 
+            // IMPORTANT:
+            // Use normalized parallel group.
+            //
+            // Null/empty means this is NOT an explicit
+            // parallel teaching session.
+
+            const parallelGroup =
+                normalizeParallelGroup(
+                    normalized.parallelGroup
+                );
+
+
+            const parallelKey =
+                parallelGroup ||
+                "NO_PARALLEL_GROUP";
+
+
             const sessionKey =
                 `${normalized.teacherId}__` +
                 `${normalized.periodId}__` +
-                `${subjectId}`;
+                `${subjectId}__` +
+                `${parallelKey}`;
 
 
             if (
                 !sessions.has(
                     sessionKey
                 )
-            ) {
+            {
 
                 sessions.set(
                     sessionKey,
@@ -23570,7 +24136,11 @@ function auditTeacherDailyLimits(
                                 period.day_number
                             ),
 
-                        subjectId
+                        subjectId,
+
+                        parallelGroup:
+                            parallelGroup || null
+
                     }
                 );
 
@@ -23702,6 +24272,8 @@ function auditTeacherDailyLimits(
 
 
 
+
+            
 // ============================================================
 // AUDIT TEACHER WEEKLY LIMITS
 // ============================================================
@@ -23716,8 +24288,12 @@ function auditTeacherWeeklyLimits(
     // UNIQUE TEACHER SESSIONS
     // ========================================================
     //
-    // Same teacher + same subject + same period across
-    // multiple streams = ONE teacher session.
+    // Same teacher + same subject + same period + same
+    // explicit parallel group across multiple streams
+    // = ONE teacher session.
+    //
+    // Same subject without the same explicit parallel group
+    // remains a separate session.
     //
     // ========================================================
 
@@ -23750,10 +24326,22 @@ function auditTeacherWeeklyLimits(
                 "NO_SUBJECT";
 
 
+            const parallelGroup =
+                normalizeParallelGroup(
+                    normalized.parallelGroup
+                );
+
+
+            const parallelKey =
+                parallelGroup ||
+                "NO_PARALLEL_GROUP";
+
+
             const sessionKey =
                 `${normalized.teacherId}__` +
                 `${normalized.periodId}__` +
-                `${subjectId}`;
+                `${subjectId}__` +
+                `${parallelKey}`;
 
 
             sessions.add(
@@ -23867,6 +24455,9 @@ function auditTeacherWeeklyLimits(
     );
 
 }
+
+
+            
 
 
 // ============================================================
@@ -24132,6 +24723,9 @@ function auditTeacherConsecutiveLimits(
 // Each double task must have exactly TWO entries belonging
 // to the same task and requirement, using the same
 // teacher/stream/subject/room and consecutive teaching periods.
+//
+// Parallel doubles must also keep the SAME parallel group
+// across both periods.
 //
 // ============================================================
 
@@ -24535,9 +25129,23 @@ function auditDoubleLessonStructure(
             // SAME DAY
             // ------------------------------------------------
 
+            const firstDayNumber =
+                Number(
+                    firstPeriod.dayNumber ??
+                    firstPeriod.day_number
+                );
+
+
+            const secondDayNumber =
+                Number(
+                    secondPeriod.dayNumber ??
+                    secondPeriod.day_number
+                );
+
+
             if (
-                Number(firstPeriod.dayNumber) !==
-                Number(secondPeriod.dayNumber)
+                firstDayNumber !==
+                secondDayNumber
             ) {
 
                 addTimetableAuditError(
@@ -24728,6 +25336,64 @@ function auditDoubleLessonStructure(
 
             }
 
+
+            // ------------------------------------------------
+            // SAME PARALLEL GROUP
+            // ------------------------------------------------
+            //
+            // A double lesson must not enter or leave a
+            // parallel group between its two periods.
+            //
+            // Example:
+            //
+            // Period 1: RE/GE/BS
+            // Period 2: RE/GE/BS
+            //
+            // is valid.
+            //
+            // Period 1: RE/GE/BS
+            // Period 2: NULL
+            //
+            // is invalid.
+            //
+            // Normalization is important because values such
+            // as "RE / GE / BS" and "RE/GE/BS" represent the
+            // same parallel group.
+            // ------------------------------------------------
+
+            const firstParallelGroup =
+                normalizeParallelGroup(
+                    first.parallelGroup
+                ) || null;
+
+
+            const secondParallelGroup =
+                normalizeParallelGroup(
+                    second.parallelGroup
+                ) || null;
+
+
+            if (
+                firstParallelGroup !==
+                secondParallelGroup
+            ) {
+
+                addTimetableAuditError(
+                    audit,
+                    "doubleLessons",
+                    "Double lesson changes parallel group between its two periods.",
+                    {
+                        taskId,
+
+                        firstParallelGroup,
+
+                        secondParallelGroup
+
+                    }
+                );
+
+            }
+
         }
     );
 
@@ -24735,6 +25401,7 @@ function auditDoubleLessonStructure(
 
 
 
+            
 // ============================================================
 // AUDIT ROOM TYPE REQUIREMENTS
 // ============================================================
@@ -25618,6 +26285,56 @@ function auditGeneratedTimetable(
 
 
     // ========================================================
+    // 13. PARALLEL SYNCHRONIZATION
+    // ========================================================
+    //
+    // This is the dedicated parallel audit.
+    //
+    // It verifies that:
+    //
+    //   RE/GE/BS
+    //
+    // only synchronizes streams that actually have a
+    // requirement in that parallel group.
+    //
+    // Example:
+    //
+    // 10A → RE
+    // 10B → GE
+    // 10C → BS
+    // 10E → RE
+    //
+    // 10D has no RE/GE/BS requirement and therefore must
+    // NOT be required to participate.
+    //
+    // For doubles, the participating streams must share
+    // the same two consecutive periods.
+    //
+    // --------------------------------------------------------
+
+    if (
+        typeof auditParallelSynchronization ===
+        "function"
+    ) {
+
+        auditParallelSynchronization(
+            data,
+            result,
+            audit,
+            lookups
+        );
+
+    }
+    else {
+
+        console.warn(
+            "Parallel synchronization audit function is not available."
+        );
+
+    }
+
+
+    // ========================================================
     // BUILD HUMAN-READABLE TABLE
     // ========================================================
 
@@ -25697,6 +26414,9 @@ function auditGeneratedTimetable(
 
         "Double lessons":
             audit.checks.doubleLessons,
+
+        "Parallel synchronization":
+            audit.checks.parallelSynchronization,
 
         "Stream conflicts":
             audit.checks.streamConflicts,
@@ -25856,6 +26576,7 @@ function auditGeneratedTimetable(
     return audit;
 
 }
+
 
 
 
