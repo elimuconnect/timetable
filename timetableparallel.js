@@ -2209,6 +2209,248 @@ function validateParallelBlocks(data) {
 }
 
 
+
+function validateTimetablePeriods(data) {
+
+    const errors = [];
+
+    const warnings = [];
+
+
+    if (
+        !data ||
+        !Array.isArray(data.periods)
+    ) {
+
+        return {
+
+            valid: false,
+
+            errors: [
+                "No timetable periods are available."
+            ],
+
+            warnings
+
+        };
+
+    }
+
+
+    const periodIds =
+        new Set();
+
+
+    const duplicateIds =
+        new Set();
+
+
+    // ========================================================
+    // VALIDATE EACH PERIOD
+    // ========================================================
+
+    data.periods.forEach(
+        period => {
+
+            const periodId =
+                period.id ||
+                null;
+
+
+            // ------------------------------------------------
+            // ID
+            // ------------------------------------------------
+
+            if (!periodId) {
+
+                errors.push(
+                    "A timetable period has no ID."
+                );
+
+            }
+            else {
+
+                if (
+                    periodIds.has(
+                        periodId
+                    )
+                ) {
+
+                    duplicateIds.add(
+                        periodId
+                    );
+
+                }
+
+                periodIds.add(
+                    periodId
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // DAY
+            // ------------------------------------------------
+
+            if (
+                !period.dayName &&
+                (!period.dayNumber ||
+                    period.dayNumber <= 0)
+            ) {
+
+                errors.push(
+                    `Period ${periodId || "[unknown]"} has no valid day information.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // PERIOD ORDER
+            // ------------------------------------------------
+
+            if (
+                !Number.isFinite(
+                    period.periodOrder
+                ) ||
+                period.periodOrder <= 0
+            ) {
+
+                errors.push(
+                    `Period ${periodId || "[unknown]"} has an invalid period order.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // PERIOD NUMBER
+            // ------------------------------------------------
+
+            if (
+                !Number.isFinite(
+                    period.periodNumber
+                ) ||
+                period.periodNumber <= 0
+            ) {
+
+                warnings.push(
+                    `Period ${periodId || "[unknown]"} has no valid period number.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // PERIOD TYPE
+            // ------------------------------------------------
+
+            if (
+                !period.periodType
+            ) {
+
+                warnings.push(
+                    `Period ${periodId || "[unknown]"} has no period type.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // TIME RANGE
+            // ------------------------------------------------
+
+            if (
+                !period.startTime ||
+                !period.endTime
+            ) {
+
+                warnings.push(
+                    `Period ${periodId || "[unknown]"} has incomplete time information.`
+                );
+
+            }
+
+        }
+    );
+
+
+    // ========================================================
+    // DUPLICATE IDS
+    // ========================================================
+
+    duplicateIds.forEach(
+        id => {
+
+            errors.push(
+                `Duplicate timetable period ID detected: ${id}`
+            );
+
+        }
+    );
+
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    const result = {
+
+        valid:
+            errors.length === 0,
+
+        errors,
+
+        warnings
+
+    };
+
+
+    console.log(
+        "Timetable period validation:",
+        {
+            valid:
+                result.valid,
+
+            errors:
+                result.errors.length,
+
+            warnings:
+                result.warnings.length
+        }
+    );
+
+
+    if (
+        result.errors.length
+    ) {
+
+        console.error(
+            "Timetable period validation errors:",
+            result.errors
+        );
+
+    }
+
+
+    if (
+        result.warnings.length
+    ) {
+
+        console.warn(
+            "Timetable period validation warnings:",
+            result.warnings
+        );
+
+    }
+
+
+    return result;
+
+}
+
+
 // ============================================================
 // VALIDATE GENERATOR RELATIONSHIPS
 // ============================================================
