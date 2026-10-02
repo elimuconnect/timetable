@@ -24113,13 +24113,11 @@ function auditTeacherDailyLimits(
                 `${normalized.periodId}__` +
                 `${subjectId}__` +
                 `${parallelKey}`;
-
-
-            if (
-                !sessions.has(
-                    sessionKey
-                )
-            {
+if (
+    !sessions.has(
+        sessionKey
+    )
+) {
 
                 sessions.set(
                     sessionKey,
