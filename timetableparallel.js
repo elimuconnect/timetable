@@ -18084,19 +18084,25 @@ const existingParallelGroup =
 
 
 
-// ============================================================
-// SMART TIMETABLE GENERATION
-// ============================================================
-//
-// Main Stage 6F engine.
-//
-// ============================================================
-
 
 // ============================================================
-// GET CANDIDATE PERIOD IDS
+// GET PERIOD IDS FROM A SMART CANDIDATE
+// ============================================================
 //
-// Handles both single and double candidate structures.
+// Your single candidate structure is:
+//
+// {
+//     taskId,
+//     period,
+//     room,
+//     score,
+//     reasons
+// }
+//
+// Therefore the period comes from candidate.period.id.
+//
+// For future double-lesson candidates, this helper also supports
+// periodIds / startPeriodId / endPeriodId if those are present.
 // ============================================================
 
 function getSmartCandidatePeriodIds(candidate) {
@@ -18106,44 +18112,27 @@ function getSmartCandidatePeriodIds(candidate) {
     }
 
 
-    // Double candidate
+    // --------------------------------------------
+    // Double candidate / multi-period candidate
+    // --------------------------------------------
+
     if (
         Array.isArray(candidate.periodIds) &&
         candidate.periodIds.length > 0
     ) {
 
         return candidate.periodIds
-            .map(
-                id =>
-                    normalizeTimetableId(id)
+            .map(id =>
+                normalizeTimetableId(id)
             )
             .filter(Boolean);
 
     }
 
 
-    // Single candidate
-    if (candidate.periodId) {
-
-        return [
-            normalizeTimetableId(
-                candidate.periodId
-            )
-        ].filter(Boolean);
-
-    }
-
-
-    if (candidate.period?.id) {
-
-        return [
-            normalizeTimetableId(
-                candidate.period.id
-            )
-        ].filter(Boolean);
-
-    }
-
+    // --------------------------------------------
+    // Explicit start/end period IDs
+    // --------------------------------------------
 
     if (candidate.startPeriodId) {
 
@@ -18170,19 +18159,47 @@ function getSmartCandidatePeriodIds(candidate) {
     }
 
 
+    // --------------------------------------------
+    // Normal single lesson candidate
+    // --------------------------------------------
+
+    if (
+        candidate.period &&
+        candidate.period.id
+    ) {
+
+        return [
+            normalizeTimetableId(
+                candidate.period.id
+            )
+        ];
+
+    }
+
+
+    // --------------------------------------------
+    // Fallback
+    // --------------------------------------------
+
+    if (candidate.periodId) {
+
+        return [
+            normalizeTimetableId(
+                candidate.periodId
+            )
+        ];
+
+    }
+
+
     return [];
 
 }
 
 
+
 // ============================================================
-// CREATE PERIOD KEY
-//
-// Single:
-//     P5
-//
-// Double:
-//     P5|P6
+// BUILD A UNIQUE PERIOD KEY FOR A CANDIDATE
 // ============================================================
 
 function getSmartCandidatePeriodKey(candidate) {
@@ -18194,14 +18211,32 @@ function getSmartCandidatePeriodKey(candidate) {
 }
 
 
+
 // ============================================================
-// GET COMMON PARALLEL CANDIDATES
+// GET SCORED PARALLEL UNIT CANDIDATES
+// ============================================================
 //
-// Every task in the parallel unit must have a candidate
-// covering EXACTLY the same period(s).
+// IMPORTANT:
 //
-// We do NOT simply choose the first candidate for each task.
-// We first calculate the intersection.
+// This function does NOT place anything.
+//
+// It finds periods that are simultaneously available to
+// EVERY task inside the parallel schedule unit.
+//
+// Example:
+//
+// RE/GE/BS:
+//
+// 10A → RE
+// 10B → GE
+// 10C → BS
+// 10E → RE
+//
+// All four tasks must have a candidate for the SAME period.
+//
+// 10D is not part of the unit and is therefore completely
+// independent.
+//
 // ============================================================
 
 function getScoredParallelUnitCandidates(
@@ -18213,7 +18248,9 @@ function getScoredParallelUnitCandidates(
     if (
         !unit ||
         !Array.isArray(unit.tasks) ||
-        unit.tasks.length === 0
+        unit.tasks.length === 0 ||
+        !data ||
+        !indexes
     ) {
 
         return [];
@@ -18221,40 +18258,33 @@ function getScoredParallelUnitCandidates(
     }
 
 
-    // ------------------------------------------------------------
-    // SOLO UNIT
-    // ------------------------------------------------------------
-
-    if (!unit.isParallel) {
-
-        const task =
-            unit.tasks[0];
-
-
-        if (!task) {
-            return [];
-        }
-
-
-        return getSmartCandidatesForTask(
-            task,
-            data,
-            indexes
+    const tasks =
+        unit.tasks.filter(
+            task =>
+                task &&
+                !task.placed
         );
+
+
+    if (
+        tasks.length === 0
+    ) {
+
+        return [];
 
     }
 
 
-    // ------------------------------------------------------------
+    // ========================================================
     // GET CANDIDATES FOR EVERY TASK
-    // ------------------------------------------------------------
+    // ========================================================
 
-    const taskCandidates =
-        new Map();
+    const taskCandidateSets =
+        [];
 
 
     for (
-        const task of unit.tasks
+        const task of tasks
     ) {
 
         const candidates =
@@ -18275,478 +18305,608 @@ function getScoredParallelUnitCandidates(
         }
 
 
-        taskCandidates.set(
-            task.taskId,
-            candidates
-        );
-
-    }
-
-
-    // ------------------------------------------------------------
-    // FIND PERIODS AVAILABLE TO EVERY TASK
-    // ------------------------------------------------------------
-
-    const firstTask =
-        unit.tasks[0];
-
-
-    const firstCandidates =
-        taskCandidates.get(
-            firstTask.taskId
-        ) || [];
-
-
-    const commonMap =
-        new Map();
-
-
-    firstCandidates.forEach(
-        candidate => {
-
-            const key =
-                getSmartCandidatePeriodKey(
-                    candidate
-                );
-
-
-            if (!key) {
-                return;
-            }
-
-
-            commonMap.set(
-                key,
-                {
-                    periodKey: key,
-
-                    candidates: new Map([
-                        [
-                            firstTask.taskId,
-                            candidate
-                        ]
-                    ]),
-
-                    score:
-                        Number(
-                            candidate.score
-                        ) || 0
-                }
-            );
-
-        }
-    );
-
-
-    // ------------------------------------------------------------
-    // INTERSECT WITH EVERY OTHER TASK
-    // ------------------------------------------------------------
-
-    for (
-        let i = 1;
-        i < unit.tasks.length;
-        i++
-    ) {
-
-        const task =
-            unit.tasks[i];
-
-
-        const candidates =
-            taskCandidates.get(
-                task.taskId
-            ) || [];
-
-
-        const candidateMap =
-            new Map();
-
-
-        candidates.forEach(
-            candidate => {
-
-                const key =
-                    getSmartCandidatePeriodKey(
-                        candidate
-                    );
-
-
-                if (!key) {
-                    return;
-                }
-
-
-                candidateMap.set(
-                    key,
-                    candidate
-                );
-
-            }
-        );
-
-
-        for (
-            const [
-                periodKey,
-                common
-            ] of commonMap
-        ) {
-
-            const candidate =
-                candidateMap.get(
-                    periodKey
-                );
-
-
-            if (!candidate) {
-
-                commonMap.delete(
-                    periodKey
-                );
-
-                continue;
-
-            }
-
-
-            common.candidates.set(
-                task.taskId,
-                candidate
-            );
-
-
-            common.score +=
-                Number(
-                    candidate.score
-                ) || 0;
-
-        }
-
-    }
-
-
-    // ------------------------------------------------------------
-    // CONVERT TO ARRAY
-    // ------------------------------------------------------------
-
-    const results = [
-        ...commonMap.values()
-    ];
-
-
-    // ------------------------------------------------------------
-    // ONLY ACCEPT COMPLETE UNIT CANDIDATES
-    // ------------------------------------------------------------
-
-    const completeResults =
-        results.filter(
-            item =>
-                item.candidates.size ===
-                unit.tasks.length
-        );
-
-
-    // ------------------------------------------------------------
-    // SORT BEST FIRST
-    // ------------------------------------------------------------
-
-    completeResults.sort(
-        (a, b) =>
-            b.score -
-            a.score
-    );
-
-
-    return completeResults;
-
-}
-
-
-// ============================================================
-// PLACE PARALLEL UNIT
-//
-// Every task must be placed successfully.
-//
-// If ANY task fails, everything already reserved for this unit
-// is rolled back.
-// ============================================================
-
-function placeSelectedParallelUnit(
-    unit,
-    candidate,
-    indexes
-) {
-
-    if (
-        !unit ||
-        !unit.isParallel ||
-        !candidate ||
-        !(candidate.candidates instanceof Map)
-    ) {
-
-        return {
-            placed: false,
-            entries: [],
-            reason:
-                "Invalid parallel unit candidate."
-        };
-
-    }
-
-
-    const placements = [];
-
-
-    // ============================================================
-    // PLACE EACH TASK
-    // ============================================================
-
-    for (
-        const task of unit.tasks
-    ) {
-
-        const taskCandidate =
-            candidate.candidates.get(
-                task.taskId
-            );
-
-
-        if (!taskCandidate) {
-
-            // Roll back everything already placed
-            placements
-                .slice()
-                .reverse()
-                .forEach(
-                    placement => {
-
-                        if (
-                            Array.isArray(
-                                placement.periods
-                            )
-                        ) {
-
-                            placement.periods.forEach(
-                                period =>
-                                    releaseReservedSlot(
-                                        placement.task,
-                                        period,
-                                        placement.room,
-                                        indexes
-                                    )
-                            );
-
-                        }
-
-                    }
-                );
-
-
-            return {
-                placed: false,
-                entries: [],
-                reason:
-                    `No candidate found for parallel task ${task.taskId}.`
-            };
-
-        }
-
-
-        const attempt =
-            placeSelectedSmartTask(
-                {
-                    task,
-                    candidate:
-                        taskCandidate
-                },
-                indexes
-            );
-
-
-        if (
-            !attempt ||
-            !attempt.placed
-        ) {
-
-            // ----------------------------------------------------
-            // ROLLBACK PREVIOUS TASKS
-            // ----------------------------------------------------
-
-            placements
-                .slice()
-                .reverse()
-                .forEach(
-                    placement => {
-
-                        if (
-                            Array.isArray(
-                                placement.periods
-                            )
-                        ) {
-
-                            placement.periods.forEach(
-                                period =>
-                                    releaseReservedSlot(
-                                        placement.task,
-                                        period,
-                                        placement.room,
-                                        indexes
-                                    )
-                            );
-
-                        }
-
-                    }
-                );
-
-
-            return {
-                placed: false,
-                entries: [],
-                reason:
-                    `Parallel unit ${unit.unitId} failed because ` +
-                    `task ${task.taskId} could not be placed: ` +
-                    (
-                        attempt?.reason ||
-                        "Unknown placement failure."
-                    )
-            };
-
-        }
-
-
-        // --------------------------------------------------------
-        // TRACK SUCCESSFUL TASK
-        // --------------------------------------------------------
-
-        const periods =
-            Array.isArray(task.periodIds)
-                ? task.periodIds
-                    .map(
-                        periodId =>
-                            dataPeriodFromCandidate(
-                                taskCandidate,
-                                periodId
-                            )
-                    )
-                    .filter(Boolean)
-                : [];
-
-
-        placements.push({
+        taskCandidateSets.push({
 
             task,
 
-            attempt,
-
-            candidate:
-                taskCandidate,
-
-            periods,
-
-            room:
-                task.roomId
-                    ? indexes.rooms?.get?.(
-                        normalizeTimetableId(
-                            task.roomId
-                        )
-                    ) || null
-                    : null
+            candidates
 
         });
 
     }
 
 
-    // ============================================================
-    // COMPLETE
-    // ============================================================
+    // ========================================================
+    // BUILD COMMON PERIOD MAP
+    // ========================================================
+    //
+    // Each task may have several candidate rooms for the
+    // same period.
+    //
+    // We group candidates by period key so that:
+    //
+    // Period P5:
+    //
+    // 10A → candidate
+    // 10B → candidate
+    // 10C → candidate
+    // 10E → candidate
+    //
+    // becomes one synchronized placement option.
+    //
+    // ========================================================
+
+    const periodMaps =
+        taskCandidateSets.map(
+            ({ candidates }) => {
+
+                const map =
+                    new Map();
+
+
+                candidates.forEach(
+                    candidate => {
+
+                        const periodKey =
+                            getSmartCandidatePeriodKey(
+                                candidate
+                            );
+
+
+                        if (
+                            !periodKey
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !map.has(
+                                periodKey
+                            )
+                        ) {
+
+                            map.set(
+                                periodKey,
+                                []
+                            );
+
+                        }
+
+
+                        map.get(
+                            periodKey
+                        ).push(
+                            candidate
+                        );
+
+                    }
+                );
+
+
+                return map;
+
+            }
+        );
+
+
+    if (
+        periodMaps.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // FIND PERIODS COMMON TO ALL TASKS
+    // ========================================================
+
+    const firstPeriodMap =
+        periodMaps[0];
+
+
+    const commonPeriodKeys =
+        [];
+
+
+    for (
+        const periodKey of
+        firstPeriodMap.keys()
+    ) {
+
+        const availableForEveryTask =
+            periodMaps.every(
+                map =>
+                    map.has(
+                        periodKey
+                    )
+            );
+
+
+        if (
+            availableForEveryTask
+        ) {
+
+            commonPeriodKeys.push(
+                periodKey
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // BUILD SYNCHRONIZED CANDIDATES
+    // ========================================================
+
+    const synchronizedCandidates =
+        [];
+
+
+    commonPeriodKeys.forEach(
+        periodKey => {
+
+            const taskCandidates =
+                [];
+
+
+            let totalScore =
+                0;
+
+
+            let valid =
+                true;
+
+
+            for (
+                const {
+                    task,
+                    candidates
+                }
+                of taskCandidateSets
+            ) {
+
+                const matchingCandidates =
+                    candidates.filter(
+                        candidate =>
+                            getSmartCandidatePeriodKey(
+                                candidate
+                            ) === periodKey
+                    );
+
+
+                if (
+                    matchingCandidates.length === 0
+                ) {
+
+                    valid = false;
+
+                    break;
+
+                }
+
+
+                // ------------------------------------------------
+                // Pick the best room/candidate for this task
+                // within the SAME synchronized period.
+                // ------------------------------------------------
+
+                matchingCandidates.sort(
+                    (
+                        a,
+                        b
+                    ) => {
+
+                        return (
+                            (Number(b.score) || 0) -
+                            (Number(a.score) || 0)
+                        );
+
+                    }
+                );
+
+
+                const bestCandidate =
+                    matchingCandidates[0];
+
+
+                taskCandidates.push({
+
+                    task,
+
+                    candidate:
+                        bestCandidate
+
+                });
+
+
+                totalScore +=
+                    Number(
+                        bestCandidate.score
+                    ) || 0;
+
+            }
+
+
+            if (
+                !valid
+            ) {
+
+                return;
+
+            }
+
+
+            synchronizedCandidates.push({
+
+                periodKey,
+
+                tasks:
+                    taskCandidates,
+
+                score:
+                    totalScore,
+
+                reasons: [
+                    `All ${taskCandidates.length} parallel tasks can be placed in ${periodKey}.`
+                ]
+
+            });
+
+        }
+    );
+
+
+    // ========================================================
+    // BEST SYNCHRONIZED PERIOD FIRST
+    // ========================================================
+
+    synchronizedCandidates.sort(
+        (
+            a,
+            b
+        ) => {
+
+            if (
+                b.score !==
+                a.score
+            ) {
+
+                return (
+                    b.score -
+                    a.score
+                );
+
+            }
+
+
+            return (
+                a.periodKey.localeCompare(
+                    b.periodKey
+                )
+            );
+
+        }
+    );
+
+
+    return synchronizedCandidates;
+
+}
+
+
+
+// ============================================================
+// PLACE A COMPLETE PARALLEL UNIT
+// ============================================================
+//
+// This function places ALL tasks in the unit.
+//
+// It is deliberately transactional:
+//
+// 1. Validate every task first.
+// 2. Place tasks one by one.
+// 3. If ANY task fails, roll back everything already placed.
+// 4. Only return success when the WHOLE parallel unit is placed.
+//
+// ============================================================
+
+function placeSelectedParallelUnit(
+    unit,
+    parallelCandidate,
+    indexes
+) {
+
+    if (
+        !unit ||
+        !parallelCandidate ||
+        !Array.isArray(
+            parallelCandidate.tasks
+        )
+    ) {
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                "Invalid parallel unit or candidate."
+
+        };
+
+    }
+
+
+    const placedResults =
+        [];
+
+
+    const placedEntries =
+        [];
+
+
+    // ========================================================
+    // FIRST PASS — PLACE EACH TASK
+    // ========================================================
+
+    for (
+        const item of
+        parallelCandidate.tasks
+    ) {
+
+        if (
+            !item ||
+            !item.task ||
+            !item.candidate
+        ) {
+
+            // Roll back anything already placed.
+
+            for (
+                let i =
+                    placedResults.length - 1;
+                i >= 0;
+                i--
+            ) {
+
+                const rollback =
+                    placedResults[i];
+
+
+                if (
+                    rollback &&
+                    rollback.task &&
+                    rollback.candidate
+                ) {
+
+                    const periods =
+                        getSmartCandidatePeriodIds(
+                            rollback.candidate
+                        );
+
+
+                    periods.forEach(
+                        periodId => {
+
+                            const period =
+                                indexes.periods?.get(
+                                    normalizeTimetableId(
+                                        periodId
+                                    )
+                                );
+
+
+                            if (
+                                period
+                            ) {
+
+                                releaseReservedSlot(
+                                    rollback.task,
+                                    period,
+                                    rollback.candidate.room,
+                                    indexes
+                                );
+
+                            }
+
+                        }
+                    );
+
+                }
+
+            }
+
+
+            return {
+
+                placed: false,
+
+                entries: [],
+
+                reason:
+                    "Parallel candidate contained an invalid task."
+
+            };
+
+        }
+
+
+        const result =
+            placeSelectedSmartTask(
+                {
+                    task:
+                        item.task,
+
+                    candidate:
+                        item.candidate
+
+                },
+                indexes
+            );
+
+
+        if (
+            !result ||
+            !result.placed
+        ) {
+
+            // =================================================
+            // ROLLBACK EVERYTHING ALREADY PLACED
+            // =================================================
+
+            for (
+                let i =
+                    placedResults.length - 1;
+                i >= 0;
+                i--
+            ) {
+
+                const rollback =
+                    placedResults[i];
+
+
+                if (
+                    rollback &&
+                    rollback.task &&
+                    rollback.candidate
+                ) {
+
+                    const periods =
+                        getSmartCandidatePeriodIds(
+                            rollback.candidate
+                        );
+
+
+                    periods.forEach(
+                        periodId => {
+
+                            const period =
+                                indexes.periods?.get(
+                                    normalizeTimetableId(
+                                        periodId
+                                    )
+                                );
+
+
+                            if (
+                                period
+                            ) {
+
+                                releaseReservedSlot(
+                                    rollback.task,
+                                    period,
+                                    rollback.candidate.room,
+                                    indexes
+                                );
+
+                            }
+
+                        }
+                    );
+
+                }
+
+            }
+
+
+            return {
+
+                placed: false,
+
+                entries: [],
+
+                reason:
+                    result?.reason ||
+                    `Parallel placement failed for task ${
+                        item.task.taskId
+                    }.`
+
+            };
+
+        }
+
+
+        placedResults.push({
+
+            task:
+                item.task,
+
+            candidate:
+                item.candidate,
+
+            result
+
+        });
+
+
+        if (
+            Array.isArray(
+                result.entries
+            )
+        ) {
+
+            placedEntries.push(
+                ...result.entries
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // FINAL UNIT VALIDATION
+    // ========================================================
+
+    if (
+        placedResults.length !==
+        parallelCandidate.tasks.length
+    ) {
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                "Not all tasks in the parallel unit were placed."
+
+        };
+
+    }
+
 
     return {
 
         placed: true,
 
         entries:
-            placements.flatMap(
-                placement =>
-                    Array.isArray(
-                        placement.attempt.entries
-                    )
-                        ? placement.attempt.entries
-                        : []
+            placedEntries,
+
+        tasks:
+            placedResults.map(
+                item =>
+                    item.task
             ),
 
-        placements
+        results:
+            placedResults
 
     };
 
 }
 
 
-// ============================================================
-// RESOLVE PERIOD OBJECT FROM CANDIDATE / INDEXES
-//
-// Used only for rollback support.
-// ============================================================
 
-function dataPeriodFromCandidate(
-    candidate,
-    periodId
-) {
-
-    if (!periodId) {
-        return null;
-    }
-
-
-    if (
-        candidate?.periods &&
-        Array.isArray(candidate.periods)
-    ) {
-
-        const found =
-            candidate.periods.find(
-                period =>
-                    normalizeTimetableId(
-                        period?.id
-                    ) ===
-                    normalizeTimetableId(
-                        periodId
-                    )
-            );
-
-
-        if (found) {
-            return found;
-        }
-
-    }
-
-
-    if (candidate?.period?.id) {
-
-        if (
-            normalizeTimetableId(
-                candidate.period.id
-            ) ===
-            normalizeTimetableId(
-                periodId
-            )
-        ) {
-
-            return candidate.period;
-
-        }
-
-    }
-
-
-    return {
-        id:
-            periodId
-    };
-
-}
+            
 
 
 
