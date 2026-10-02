@@ -5664,7 +5664,12 @@ function incrementDailyRequirementLessonCount(
     );
 
 }
-function createOccupancyIndexes(
+
+            
+            
+            
+            
+            function createOccupancyIndexes(
     data
 ) {
 
