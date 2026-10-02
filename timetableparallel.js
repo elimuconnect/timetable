@@ -28194,11 +28194,13 @@ function getStage7PlacedParallelUnitTasks(
 // STAGE 7 — RELEASE A COMPLETE PARALLEL UNIT
 // ================================================================
 //
-// This is deliberately transactional.
-// Every already-placed member is released before we search for
-// a new synchronized location.
+// Transactional release.
 //
-// If anything goes wrong, the caller restores the original state.
+// IMPORTANT:
+// If ANY member of the parallel unit cannot be released,
+// everything already released is immediately restored.
+//
+// This prevents BIO/PHY from being left partially released.
 // ================================================================
 
 function releaseStage7ParallelUnit(
@@ -28208,8 +28210,21 @@ function releaseStage7ParallelUnit(
 
     if (
         !unit ||
+        !Array.isArray(unit.tasks) ||
+        unit.tasks.length < 2 ||
         !generatorData?.indexes
     ) {
+
+        console.error(
+            "STAGE 7: Invalid parallel unit supplied for release:",
+            {
+                unit,
+                hasIndexes:
+                    Boolean(
+                        generatorData?.indexes
+                    )
+            }
+        );
 
         return {
             released: false,
@@ -28231,9 +28246,61 @@ function releaseStage7ParallelUnit(
         );
 
 
+    // ============================================================
+    // DIAGNOSTIC
+    // ============================================================
+
+    console.log(
+        "STAGE 7: Parallel unit release inspection:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            parallelGroup:
+                unit.parallelGroup,
+
+            totalUnitTasks:
+                unit.tasks.length,
+
+            placedItems:
+                placedItems.length,
+
+            unitTaskIds:
+                unit.tasks.map(
+                    task =>
+                        task?.taskId ||
+                        task?.id
+                ),
+
+            placedTaskIds:
+                placedItems.map(
+                    item =>
+                        item?.task?.taskId ||
+                        item?.task?.id
+                )
+        }
+    );
+
+
     if (
         placedItems.length === 0
     ) {
+
+        console.error(
+            "STAGE 7: No placed members were found for parallel unit:",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                taskIds:
+                    unit.tasks.map(
+                        task =>
+                            task?.taskId ||
+                            task?.id
+                    )
+            }
+        );
+
 
         return {
             released: false,
@@ -28244,10 +28311,96 @@ function releaseStage7ParallelUnit(
     }
 
 
+    // ============================================================
+    // IMPORTANT:
+    //
+    // Every task in a synchronized unit should normally be placed.
+    //
+    // If only part of the unit is placed, we do NOT attempt a
+    // partial relocation.
+    // ============================================================
+
+    const placedTaskIds =
+        new Set(
+            placedItems
+                .map(
+                    item =>
+                        normalizeTimetableId(
+                            item?.task?.taskId ??
+                            item?.task?.task_id ??
+                            item?.task?.id
+                        )
+                )
+                .filter(Boolean)
+        );
+
+
+    const missingPlacedTasks =
+        unit.tasks.filter(
+            task => {
+
+                const taskId =
+                    normalizeTimetableId(
+                        task?.taskId ??
+                        task?.task_id ??
+                        task?.id
+                    );
+
+                return (
+                    taskId &&
+                    !placedTaskIds.has(
+                        taskId
+                    )
+                );
+
+            }
+        );
+
+
+    if (
+        missingPlacedTasks.length > 0
+    ) {
+
+        console.error(
+            "STAGE 7: Parallel unit is only partially placed. Refusing relocation.",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                placed:
+                    placedItems.map(
+                        item =>
+                            item?.task?.taskId ||
+                            item?.task?.id
+                    ),
+
+                missing:
+                    missingPlacedTasks.map(
+                        task =>
+                            task?.taskId ||
+                            task?.id
+                    )
+            }
+        );
+
+
+        return {
+            released: false,
+            snapshots: [],
+            placedItems
+        };
+
+    }
+
+
     const snapshots = [];
 
 
     try {
+
+        // ========================================================
+        // FIRST: BUILD COMPLETE SNAPSHOT
+        // ========================================================
 
         placedItems.forEach(
             item => {
@@ -28256,18 +28409,27 @@ function releaseStage7ParallelUnit(
                     item?.task ||
                     item;
 
-
                 const candidate =
                     item?.candidate;
 
 
                 if (
-                    !task ||
+                    !task
+                ) {
+
+                    throw new Error(
+                        "Parallel unit contains a placed item without a task."
+                    );
+
+                }
+
+
+                if (
                     !candidate
                 ) {
 
                     throw new Error(
-                        "Parallel unit member is missing task or candidate."
+                        `Parallel task ${task.taskId || task.id} has no placement candidate.`
                     );
 
                 }
@@ -28279,84 +28441,235 @@ function releaseStage7ParallelUnit(
                     );
 
 
+                if (
+                    !Array.isArray(periodIds) ||
+                    periodIds.length === 0
+                ) {
+
+                    throw new Error(
+                        `Parallel task ${task.taskId || task.id} has no valid candidate period IDs.`
+                    );
+
+                }
+
+
                 snapshots.push({
                     task,
                     candidate,
-                    placed: task.placed,
+
+                    placed:
+                        task.placed,
+
                     periodIds:
-                        Array.isArray(task.periodIds)
-                            ? [...task.periodIds]
+                        Array.isArray(
+                            task.periodIds
+                        )
+                            ? [
+                                ...task.periodIds
+                            ]
                             : [],
+
                     periodId:
                         task.periodId ??
                         null,
+
                     roomId:
                         task.roomId ??
                         null,
+
                     lessonId:
                         task.lessonId ??
                         null,
+
                     entries:
-                        Array.isArray(item.entries)
-                            ? [...item.entries]
-                            : []
+                        Array.isArray(
+                            item.entries
+                        )
+                            ? [
+                                ...item.entries
+                            ]
+                            : [],
+
+                    releasedPeriodIds:
+                        []
                 });
 
 
-                // ==================================================
-                // Release every occupied period belonging to this
-                // task.
-                // ==================================================
+                console.log(
+                    "STAGE 7: Prepared release snapshot:",
+                    {
+                        taskId:
+                            task.taskId ||
+                            task.id,
 
-                periodIds.forEach(
-                    periodId => {
+                        parallelKey:
+                            unit.parallelKey,
 
-                        const period =
-                            getParallelUnitPeriod(
-                                indexes,
-                                periodId
-                            );
+                        periodIds,
 
-
-                        if (!period) {
-
-                            throw new Error(
-                                `Could not resolve period ${periodId} while releasing parallel unit.`
-                            );
-
-                        }
-
-
-                        releaseReservedSlot(
-                            task,
-                            period,
-                            candidate.room,
-                            indexes
-                        );
-
+                        roomId:
+                            candidate?.room?.id ||
+                            candidate?.roomId ||
+                            task.roomId ||
+                            null
                     }
                 );
-
-
-                // ==================================================
-                // Mark task as temporarily unplaced.
-                // ==================================================
-
-                task.placed = false;
-
-                task.periodIds = [];
-
-                task.periodId = null;
-
-                task.roomId = null;
-
-                task.lessonId = null;
 
             }
         );
 
 
-        // Remove these tasks from the Stage 7 placed-task list.
+        // ========================================================
+        // SECOND: RELEASE EVERY MEMBER
+        // ========================================================
+
+        for (
+            const snapshot of snapshots
+        ) {
+
+            const task =
+                snapshot.task;
+
+            const candidate =
+                snapshot.candidate;
+
+
+            const periodIds =
+                getSmartCandidatePeriodIds(
+                    candidate
+                );
+
+
+            console.log(
+                "STAGE 7: Releasing parallel task:",
+                {
+                    taskId:
+                        task.taskId ||
+                        task.id,
+
+                    parallelKey:
+                        unit.parallelKey,
+
+                    periodIds,
+
+                    room:
+                        candidate?.room?.id ||
+                        candidate?.roomId ||
+                        task.roomId ||
+                        null
+                }
+            );
+
+
+            for (
+                const periodId of periodIds
+            ) {
+
+                const period =
+                    getParallelUnitPeriod(
+                        indexes,
+                        periodId
+                    );
+
+
+                if (
+                    !period
+                ) {
+
+                    throw new Error(
+                        `Could not resolve period ${periodId} while releasing task ${task.taskId || task.id}.`
+                    );
+
+                }
+
+
+                console.log(
+                    "STAGE 7: Releasing reserved slot:",
+                    {
+                        taskId:
+                            task.taskId ||
+                            task.id,
+
+                        periodId,
+
+                        periodOrder:
+                            period.periodOrder ??
+                            null,
+
+                        roomId:
+                            candidate?.room?.id ||
+                            candidate?.roomId ||
+                            task.roomId ||
+                            null
+                    }
+                );
+
+
+                const releaseResult =
+                    releaseReservedSlot(
+                        task,
+                        period,
+                        candidate.room,
+                        indexes
+                    );
+
+
+                console.log(
+                    "STAGE 7: releaseReservedSlot result:",
+                    {
+                        taskId:
+                            task.taskId ||
+                            task.id,
+
+                        periodId,
+
+                        result:
+                            releaseResult
+                    }
+                );
+
+
+                snapshot.releasedPeriodIds.push(
+                    periodId
+                );
+
+            }
+
+
+            // ====================================================
+            // ONLY MARK THE TASK UNPLACED AFTER ALL ITS PERIODS
+            // HAVE BEEN SUCCESSFULLY RELEASED.
+            // ====================================================
+
+            task.placed =
+                false;
+
+            task.periodIds =
+                [];
+
+            task.periodId =
+                null;
+
+            task.roomId =
+                null;
+
+            task.lessonId =
+                null;
+
+
+            console.log(
+                "STAGE 7: Parallel task successfully released:",
+                task.taskId ||
+                task.id
+            );
+
+        }
+
+
+        // ========================================================
+        // REMOVE RELEASED TASKS FROM placedTasks
+        // ========================================================
+
         generatorData.placedTasks =
             generatorData.placedTasks.filter(
                 item => {
@@ -28364,7 +28677,6 @@ function releaseStage7ParallelUnit(
                     const itemTask =
                         item?.task ||
                         item;
-
 
                     const itemTaskId =
                         normalizeTimetableId(
@@ -28399,31 +28711,253 @@ function releaseStage7ParallelUnit(
             );
 
 
+        console.log(
+            "STAGE 7: COMPLETE PARALLEL UNIT RELEASED:",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                releasedTasks:
+                    snapshots.map(
+                        snapshot =>
+                            snapshot.task.taskId ||
+                            snapshot.task.id
+                    )
+            }
+        );
+
+
         return {
-            released: true,
+            released:
+                true,
+
             snapshots,
+
             placedItems
+
         };
 
     } catch (error) {
 
         console.error(
-            "STAGE 7: Failed to release parallel unit:",
-            error
+            "STAGE 7: FAILED TO RELEASE PARALLEL UNIT:",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                error:
+                    error?.message ||
+                    error,
+
+                stack:
+                    error?.stack ||
+                    null
+            }
         );
 
 
+        // ========================================================
+        // CRITICAL ROLLBACK
+        //
+        // If one member failed after another member had already
+        // been released, restore EVERYTHING that was released.
+        // ========================================================
+
+        try {
+
+            snapshots.forEach(
+                snapshot => {
+
+                    const task =
+                        snapshot.task;
+
+                    const candidate =
+                        snapshot.candidate;
+
+
+                    const releasedPeriodIds =
+                        Array.isArray(
+                            snapshot.releasedPeriodIds
+                        )
+                            ? snapshot.releasedPeriodIds
+                            : [];
+
+
+                    releasedPeriodIds.forEach(
+                        periodId => {
+
+                            const period =
+                                getParallelUnitPeriod(
+                                    indexes,
+                                    periodId
+                                );
+
+
+                            if (
+                                !period
+                            ) {
+
+                                console.error(
+                                    "STAGE 7 ROLLBACK: Could not resolve period:",
+                                    periodId
+                                );
+
+                                return;
+
+                            }
+
+
+                            try {
+
+                                reserveSlot(
+                                    task,
+                                    period,
+                                    candidate.room,
+                                    indexes
+                                );
+
+                            } catch (
+                                restoreError
+                            ) {
+
+                                console.error(
+                                    "STAGE 7 ROLLBACK: Failed to restore slot:",
+                                    {
+                                        taskId:
+                                            task.taskId ||
+                                            task.id,
+
+                                        periodId,
+
+                                        error:
+                                            restoreError?.message ||
+                                            restoreError
+                                    }
+                                );
+
+                            }
+
+                        }
+                    );
+
+
+                    task.placed =
+                        snapshot.placed;
+
+                    task.periodIds =
+                        Array.isArray(
+                            snapshot.periodIds
+                        )
+                            ? [
+                                ...snapshot.periodIds
+                            ]
+                            : [];
+
+                    task.periodId =
+                        snapshot.periodId;
+
+                    task.roomId =
+                        snapshot.roomId;
+
+                    task.lessonId =
+                        snapshot.lessonId;
+
+                }
+            );
+
+
+            // ====================================================
+            // RESTORE placed-task wrappers.
+            // ====================================================
+
+            snapshots.forEach(
+                snapshot => {
+
+                    const task =
+                        snapshot.task;
+
+
+                    const taskId =
+                        normalizeTimetableId(
+                            task?.taskId ??
+                            task?.task_id ??
+                            task?.id
+                        );
+
+
+                    const exists =
+                        generatorData.placedTasks.some(
+                            item => {
+
+                                const itemTask =
+                                    item?.task ||
+                                    item;
+
+                                const itemId =
+                                    normalizeTimetableId(
+                                        itemTask?.taskId ??
+                                        itemTask?.task_id ??
+                                        itemTask?.id
+                                    );
+
+
+                                return (
+                                    itemId &&
+                                    taskId &&
+                                    itemId ===
+                                    taskId
+                                );
+
+                            }
+                        );
+
+
+                    if (
+                        !exists
+                    ) {
+
+                        generatorData.placedTasks.push({
+                            task,
+                            entries:
+                                snapshot.entries ||
+                                [],
+                            candidate:
+                                snapshot.candidate
+                        });
+
+                    }
+
+                }
+            );
+
+
+        } catch (
+            rollbackError
+        ) {
+
+            console.error(
+                "STAGE 7: PARALLEL UNIT ROLLBACK FAILED:",
+                rollbackError
+            );
+
+        }
+
+
         return {
-            released: false,
+            released:
+                false,
+
             snapshots,
+
             placedItems,
+
             error
+
         };
 
     }
 
 }
-
 
 // ================================================================
 // STAGE 7 — RESTORE COMPLETE PARALLEL UNIT
