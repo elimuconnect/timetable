@@ -943,50 +943,341 @@ function buildTimetableLookupMaps(data) {
 
 
 // ============================================================
+// NORMALIZE PARALLEL GROUP
+// Converts values such as:
+//   "RE / GE / BS"
+//   "RE/GE/BS"
+// into a consistent representation.
+//
+// IMPORTANT:
+// This does NOT sort the group.
+// The declared order may be meaningful for display/debugging.
+// ============================================================
+
+function normalizeParallelGroup(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
+
+    return String(value)
+        .trim()
+        .replace(/\s*\/\s*/g, "/")
+        .replace(/\s+/g, " ")
+        .toUpperCase();
+
+}
+
+
+// ============================================================
 // BUILD PARALLEL BLOCKS
-// Requirements sharing the same parallelGroup are scheduled
-// together in the same slot.
+//
+// A parallel block represents ONE synchronized scheduling group.
+//
+// IMPORTANT RULE:
+//
+// Only streams that actually have a requirement belonging to
+// this parallel group participate in the block.
+//
+// Example:
+//
+//     RE/GE/BS
+//
+// If:
+//     10A -> RE
+//     10B -> GE
+//     10C -> BS
+//     10D -> no member
+//
+// Then only 10A, 10B and 10C are synchronized.
+//
+// 10D remains completely independent.
 // ============================================================
 
 function buildParallelBlocks(requirements) {
 
     const groups = new Map();
 
-    (requirements || []).forEach(req => {
+    (requirements || []).forEach(requirement => {
 
-        const key = req.parallelGroup
-            ? String(req.parallelGroup).trim()
-            : "";
+        const groupId =
+            normalizeParallelGroup(
+                requirement?.parallelGroup
+            );
 
-        if (!key) return;
+        if (!groupId) {
+            return;
+        }
 
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(req);
+        if (!groups.has(groupId)) {
+            groups.set(groupId, []);
+        }
+
+        groups.get(groupId).push(requirement);
+
     });
+
 
     const blocks = [];
 
-    groups.forEach((reqs, groupId) => {
 
-        blocks.push({
-            groupId,
-            requirements: reqs,
-            requirementIds: reqs.map(r => r.requirementId),
+    groups.forEach(
+        (reqs, groupId) => {
 
-            // lessons are validated to match, so the first is safe
-            lessonsPerWeek: reqs[0].lessonsPerWeek,
-            doubleLessonsPerWeek: reqs[0].doubleLessonsPerWeek,
-            maxLessonsPerDay: Math.min(...reqs.map(r => r.maxLessonsPerDay)),
+            // ====================================================
+            // PARTICIPATING STREAMS
+            // ====================================================
 
-            streamIds: [...new Set(reqs.map(r => r.streamId).filter(Boolean))],
-            teacherIds: [...new Set(reqs.map(r => r.teacherId).filter(Boolean))],
+            const streamIds = [
+                ...new Set(
+                    reqs
+                        .map(req => req.streamId)
+                        .filter(Boolean)
+                )
+            ];
 
-            declaredSize: reqs[0].parallelGroupSize
-        });
-    });
+
+            // ====================================================
+            // REQUIREMENTS BY STREAM
+            //
+            // This is extremely important for the new rule.
+            //
+            // Later the scheduler can ask:
+            //
+            // block.requirementsByStream.get(streamId)
+            //
+            // and know whether that stream participates.
+            // ====================================================
+
+            const requirementsByStream =
+                new Map();
+
+
+            reqs.forEach(requirement => {
+
+                if (!requirement.streamId) {
+                    return;
+                }
+
+
+                if (
+                    !requirementsByStream.has(
+                        requirement.streamId
+                    )
+                ) {
+
+                    requirementsByStream.set(
+                        requirement.streamId,
+                        []
+                    );
+
+                }
+
+
+                requirementsByStream
+                    .get(requirement.streamId)
+                    .push(requirement);
+
+            });
+
+
+            // ====================================================
+            // DUPLICATE STREAM DETECTION
+            //
+            // Normally one stream should have ONE requirement
+            // inside a particular parallel group.
+            //
+            // Example of a suspicious configuration:
+            //
+            // 10A -> RE
+            // 10A -> GE
+            //
+            // That would mean the same stream is being asked to
+            // participate twice in the same parallel block.
+            // ====================================================
+
+            const duplicateStreamIds = [
+                ...requirementsByStream.entries()
+            ]
+                .filter(
+                    ([, streamRequirements]) =>
+                        streamRequirements.length > 1
+                )
+                .map(
+                    ([streamId]) => streamId
+                );
+
+
+            // ====================================================
+            // TEACHERS
+            // ====================================================
+
+            const teacherIds = [
+                ...new Set(
+                    reqs
+                        .map(req => req.teacherId)
+                        .filter(Boolean)
+                )
+            ];
+
+
+            // ====================================================
+            // SUBJECTS
+            // ====================================================
+
+            const subjectIds = [
+                ...new Set(
+                    reqs
+                        .map(req => req.subjectId)
+                        .filter(Boolean)
+                )
+            ];
+
+
+            // ====================================================
+            // LESSON COUNTS
+            // ====================================================
+
+            const lessonsPerWeekValues = [
+                ...new Set(
+                    reqs.map(
+                        req => req.lessonsPerWeek
+                    )
+                )
+            ];
+
+
+            const doubleLessonsPerWeekValues = [
+                ...new Set(
+                    reqs.map(
+                        req =>
+                            req.doubleLessonsPerWeek
+                    )
+                )
+            ];
+
+
+            // ====================================================
+            // DAILY LIMIT
+            // ====================================================
+
+            const dailyLimits =
+                reqs
+                    .map(
+                        req =>
+                            Number(
+                                req.maxLessonsPerDay
+                            )
+                    )
+                    .filter(
+                        Number.isFinite
+                    );
+
+
+            // ====================================================
+            // BUILD BLOCK
+            // ====================================================
+
+            blocks.push({
+
+                // ------------------------------------------------
+                // IDENTITY
+                // ------------------------------------------------
+
+                groupId,
+
+                // ------------------------------------------------
+                // ALL REQUIREMENTS
+                // ------------------------------------------------
+
+                requirements:
+                    reqs,
+
+                requirementIds:
+                    reqs
+                        .map(
+                            req =>
+                                req.requirementId
+                        )
+                        .filter(Boolean),
+
+                // ------------------------------------------------
+                // PARTICIPATING STREAMS ONLY
+                // ------------------------------------------------
+
+                streamIds,
+
+                streamCount:
+                    streamIds.length,
+
+                // ------------------------------------------------
+                // REQUIREMENTS BY STREAM
+                // ------------------------------------------------
+
+                requirementsByStream,
+
+                // ------------------------------------------------
+                // DUPLICATE STREAMS
+                // ------------------------------------------------
+
+                duplicateStreamIds,
+
+                // ------------------------------------------------
+                // SUBJECTS / TEACHERS
+                // ------------------------------------------------
+
+                subjectIds,
+
+                teacherIds,
+
+                // ------------------------------------------------
+                // LESSON COUNTS
+                // ------------------------------------------------
+
+                lessonsPerWeek:
+                    lessonsPerWeekValues.length === 1
+                        ? lessonsPerWeekValues[0]
+                        : null,
+
+                lessonsPerWeekValues,
+
+                doubleLessonsPerWeek:
+                    doubleLessonsPerWeekValues.length === 1
+                        ? doubleLessonsPerWeekValues[0]
+                        : null,
+
+                doubleLessonsPerWeekValues,
+
+                // ------------------------------------------------
+                // DAILY LIMIT
+                // ------------------------------------------------
+
+                maxLessonsPerDay:
+                    dailyLimits.length > 0
+                        ? Math.min(...dailyLimits)
+                        : 1,
+
+                // ------------------------------------------------
+                // DATABASE DECLARED SIZE
+                // ------------------------------------------------
+
+                declaredSize:
+                    reqs[0]?.parallelGroupSize ??
+                    null
+
+            });
+
+        }
+    );
+
 
     return blocks;
+
 }
+
 
 
 
@@ -1248,10 +1539,9 @@ function normalizeGeneratorData(data) {
                     // ------------------------------------------------
 
 parallelGroup:
-    requirement.parallel_group &&
-    String(requirement.parallel_group).trim()
-        ? String(requirement.parallel_group).trim()
-        : null,
+    normalizeParallelGroup(
+        requirement.parallel_group
+    ) || null,
                     
                     parallelGroupSize:
                         Number.isFinite(
@@ -1401,8 +1691,8 @@ function normalizeTimetableId(value) {
 
 }
 
-// ============================================================
-// VALIDATE PARALLEL BLOCKS
+
+
 // ============================================================
 
 function validateParallelBlocks(data) {
@@ -1410,112 +1700,251 @@ function validateParallelBlocks(data) {
     const errors = [];
     const warnings = [];
 
-    (data.parallelBlocks || []).forEach(block => {
 
-        const id = block.groupId;
-        const reqs = block.requirements;
+    // ========================================================
+    // SAFETY CHECK
+    // ========================================================
+
+    if (
+        !data ||
+        !Array.isArray(data.parallelBlocks)
+    ) {
+
+        return {
+            valid: true,
+            errors,
+            warnings
+        };
+
+    }
+
+
+    // ========================================================
+    // VALIDATE EACH PARALLEL BLOCK
+    // ========================================================
+
+    data.parallelBlocks.forEach(block => {
+
+        const id =
+            block.groupId;
+
+        const reqs =
+            Array.isArray(block.requirements)
+                ? block.requirements
+                : [];
+
+
+        // ====================================================
+        // BASIC BLOCK VALIDATION
+        // ====================================================
+
+        if (!id) {
+
+            errors.push({
+
+                type:
+                    "INVALID_PARALLEL_GROUP",
+
+                message:
+                    "A parallel block has no group ID."
+
+            });
+
+            return;
+
+        }
+
+
+        // ====================================================
+        // SINGLE MEMBER GROUP
+        // ====================================================
 
         if (reqs.length < 2) {
+
             warnings.push({
-                type: "SINGLE_MEMBER_GROUP",
-                groupId: id,
-                message: `Parallel group "${id}" has only one requirement, so nothing runs in parallel.`
+
+                type:
+                    "SINGLE_MEMBER_GROUP",
+
+                groupId:
+                    id,
+
+                message:
+                    `Parallel group "${id}" has only one requirement, so nothing runs in parallel.`
+
             });
+
         }
 
-        // Declared size vs actual
-        if (block.declaredSize && block.declaredSize !== reqs.length) {
-            warnings.push({
-                type: "GROUP_SIZE_MISMATCH",
-                groupId: id,
-                message: `Parallel group "${id}" declares size ${block.declaredSize} but has ${reqs.length} requirements.`
-            });
-        }
 
-        // All members must have the same lesson counts
-        const lessons = new Set(reqs.map(r => r.lessonsPerWeek));
-        if (lessons.size > 1) {
-            errors.push({
-                type: "PARALLEL_LESSON_MISMATCH",
-                groupId: id,
-                message: `Parallel group "${id}" has different lessons per week: ${[...lessons].join(", ")}.`
-            });
-        }
+        // ====================================================
+        // PARTICIPATING STREAMS
+        //
+        // IMPORTANT:
+        //
+        // The size of a parallel group is based on the number
+        // of UNIQUE STREAMS participating.
+        //
+        // This prevents unrelated streams from being treated
+        // as part of the parallel block.
+        // ====================================================
 
-        const doubles = new Set(reqs.map(r => r.doubleLessonsPerWeek));
-        if (doubles.size > 1) {
-            errors.push({
-                type: "PARALLEL_DOUBLE_MISMATCH",
-                groupId: id,
-                message: `Parallel group "${id}" has different double lessons per week.`
-            });
-        }
+        const streamIds = [
+            ...new Set(
+                reqs
+                    .map(
+                        requirement =>
+                            requirement.streamId
+                    )
+                    .filter(Boolean)
+                    .map(
+                        streamId =>
+                            normalizeTimetableId(
+                                streamId
+                            )
+                    )
+            )
+        ];
 
-        // Same teacher may repeat only for the SAME subject
-const teacherSubjects = new Map();
-reqs.forEach(r => {
-    if (!r.teacherId) return;
-    if (!teacherSubjects.has(r.teacherId)) teacherSubjects.set(r.teacherId, new Set());
-    teacherSubjects.get(r.teacherId).add(r.subjectId);
-});
 
-teacherSubjects.forEach((subjects, teacherId) => {
-    if (subjects.size > 1) {
-        const t = data.lookup.teachers.get(teacherId);
-        errors.push({
-            type: "PARALLEL_TEACHER_CONFLICT",
-            groupId: id,
-            teacherId,
-            message: `${getTimetableTeacherName(t)} teaches ${subjects.size} different subjects in parallel group "${id}" and cannot teach them at the same time.`
-        });
-    }
-});
+        // ====================================================
+        // DUPLICATE STREAM DETECTION
+        //
+        // A stream should normally appear only once in a
+        // particular parallel group.
+        //
+        // Example of INVALID configuration:
+        //
+        //   10A -> RE
+        //   10A -> GE
+        //
+        // because one stream cannot participate twice in the
+        // same synchronized parallel block.
+        // ====================================================
 
-        // Enough rooms of each type for simultaneous lessons
-        const roomDemand = new Map();
-        reqs.filter(r => r.requiresRoom).forEach(r => {
-            const key = r.roomTypeId
-                ? `id:${normalizeTimetableId(r.roomTypeId)}`
-                : r.roomType
-                    ? `type:${r.roomType}`
-                    : "any";
-            roomDemand.set(key, (roomDemand.get(key) || 0) + 1);
-        });
+        const streamRequirementCounts =
+            new Map();
 
-        roomDemand.forEach((needed, key) => {
-            const available = data.rooms.filter(room => {
-                if (room.available === false) return false;
-                if (key === "any") return true;
-                if (key.startsWith("id:")) {
-                    return normalizeTimetableId(room.roomTypeId) === key.slice(3);
-                }
-                return getTimetableRoomType(room) === key.slice(5);
-            }).length;
 
-            if (needed > available) {
-                errors.push({
-                    type: "PARALLEL_ROOM_SHORTAGE",
-                    groupId: id,
-                    message: `Parallel group "${id}" needs ${needed} rooms at once (${key}) but only ${available} exist.`
-                });
+        reqs.forEach(requirement => {
+
+            if (!requirement.streamId) {
+                return;
             }
-        });
-    });
 
-    return { valid: errors.length === 0, errors, warnings };
-}
+            const streamId =
+                normalizeTimetableId(
+                    requirement.streamId
+                );
+
+
+            streamRequirementCounts.set(
+
+                streamId,
+
+                (
+                    streamRequirementCounts.get(
+                        streamId
+                    ) || 0
+                ) + 1
+
+            );
+
+        });
+
+
+        streamRequirementCounts.forEach(
+            (count, streamId) => {
+
+                if (count <= 1) {
+                    return;
+                }
+
+
+                const stream =
+                    data.lookup?.streams?.get(
+                        streamId
+                    ) ||
+                    data.lookup?.streams?.get(
+                        streamId
+                    );
+
+
+                errors.push({
+
+                    type:
+                        "PARALLEL_DUPLICATE_STREAM",
+
+                    groupId:
+                        id,
+
+                    streamId,
+
+                    message:
+                        `Stream "${getTimetableStreamName(stream)}" appears ${count} times in parallel group "${id}". A stream should participate only once in the same parallel block.`
+
+                });
+
+            }
+        );
+
+
+        // ====================================================
+        // DECLARED GROUP SIZE
+        //
+        // Compare against UNIQUE PARTICIPATING STREAMS.
+        // ====================================================
+
+        if (
+            block.declaredSize !== null &&
+            block.declaredSize !== undefined
+        ) {
+
+            const declaredSize =
+                Number(
+                    block.declaredSize
+                );
+
+
+            i
+
+
+
+
 
 
 // ============================================================
 // VALIDATE GENERATOR RELATIONSHIPS
 // ============================================================
+//
+// Validates relationships between:
+//
+//   School
+//   Streams
+//   Subjects
+//   Teachers
+//   Requirements
+//   Rooms
+//   Parallel Blocks
+//
+// IMPORTANT PARALLEL RULE:
+//
+// A parallel group synchronizes ONLY the streams that actually
+// have requirements in that group.
+//
+// It does NOT automatically include every stream in the form.
+//
+// ============================================================
 
 function validateGeneratorRelationships(data) {
 
     const errors = [];
-
     const warnings = [];
 
+
+    // ========================================================
+    // BASIC DATA CHECK
+    // ========================================================
 
     if (
         !data ||
@@ -1541,6 +1970,33 @@ function validateGeneratorRelationships(data) {
         };
 
     }
+
+
+    // ========================================================
+    // REQUIRED COLLECTIONS
+    // ========================================================
+
+    const requirements =
+        Array.isArray(data.requirements)
+            ? data.requirements
+            : [];
+
+    const streams =
+        data.lookup?.streams ||
+        new Map();
+
+    const subjects =
+        data.lookup?.subjects ||
+        new Map();
+
+    const teachers =
+        data.lookup?.teachers ||
+        new Map();
+
+    const rooms =
+        Array.isArray(data.rooms)
+            ? data.rooms
+            : [];
 
 
     // ========================================================
@@ -1572,12 +2028,16 @@ function validateGeneratorRelationships(data) {
     // REQUIREMENTS
     // ========================================================
 
-    data.requirements.forEach(
+    requirements.forEach(
         requirement => {
 
             const requirementId =
                 requirement.requirementId;
 
+
+            // ==================================================
+            // REQUIREMENT ID
+            // ==================================================
 
             if (!requirementId) {
 
@@ -1596,14 +2056,19 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // SCHOOL
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 requirement.schoolId &&
                 schoolId &&
-                requirement.schoolId !== schoolId
+                normalizeTimetableId(
+                    requirement.schoolId
+                ) !==
+                normalizeTimetableId(
+                    schoolId
+                )
             ) {
 
                 errors.push({
@@ -1621,9 +2086,9 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // STREAM
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 !requirement.streamId
@@ -1644,7 +2109,7 @@ function validateGeneratorRelationships(data) {
             }
 
             else if (
-                !data.lookup.streams.has(
+                !streams.has(
                     requirement.streamId
                 )
             ) {
@@ -1667,9 +2132,9 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // SUBJECT
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 !requirement.subjectId
@@ -1690,7 +2155,7 @@ function validateGeneratorRelationships(data) {
             }
 
             else if (
-                !data.lookup.subjects.has(
+                !subjects.has(
                     requirement.subjectId
                 )
             ) {
@@ -1713,9 +2178,9 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // TEACHER
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 !requirement.teacherId
@@ -1736,7 +2201,7 @@ function validateGeneratorRelationships(data) {
             }
 
             else if (
-                !data.lookup.teachers.has(
+                !teachers.has(
                     requirement.teacherId
                 )
             ) {
@@ -1759,9 +2224,9 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // LESSON COUNT
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 !Number.isFinite(
@@ -1785,11 +2250,14 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // DOUBLE LESSON COUNT
-            // ------------------------------------------------
+            // ==================================================
 
             if (
+                !Number.isFinite(
+                    requirement.doubleLessonsPerWeek
+                ) ||
                 requirement.doubleLessonsPerWeek < 0
             ) {
 
@@ -1809,6 +2277,12 @@ function validateGeneratorRelationships(data) {
 
 
             if (
+                Number.isFinite(
+                    requirement.lessonsPerWeek
+                ) &&
+                Number.isFinite(
+                    requirement.doubleLessonsPerWeek
+                ) &&
                 requirement.doubleLessonsPerWeek >
                 Math.floor(
                     requirement.lessonsPerWeek / 2
@@ -1830,11 +2304,14 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // MAX LESSONS PER DAY
-            // ------------------------------------------------
+            // ==================================================
 
             if (
+                !Number.isFinite(
+                    requirement.maxLessonsPerDay
+                ) ||
                 requirement.maxLessonsPerDay <= 0
             ) {
 
@@ -1853,9 +2330,9 @@ function validateGeneratorRelationships(data) {
             }
 
 
-            // =================================================
+            // ==================================================
             // ROOM VALIDATION
-            // =================================================
+            // ==================================================
 
             if (
                 requirement.requiresRoom
@@ -1876,7 +2353,7 @@ function validateGeneratorRelationships(data) {
 
 
                 const matchingRooms =
-                    data.rooms.filter(
+                    rooms.filter(
                         room => {
 
                             if (
@@ -1889,9 +2366,9 @@ function validateGeneratorRelationships(data) {
                             }
 
 
-                            // ------------------------------------------------
+                            // ----------------------------------
                             // AUTHORITATIVE ROOM TYPE ID
-                            // ------------------------------------------------
+                            // ----------------------------------
 
                             if (
                                 expectedRoomTypeId
@@ -1913,17 +2390,19 @@ function validateGeneratorRelationships(data) {
                             }
 
 
-                            // ------------------------------------------------
-                            // LEGACY TEXT FALLBACK
-                            // ------------------------------------------------
+                            // ----------------------------------
+                            // TEXT FALLBACK
+                            // ----------------------------------
 
                             if (
                                 expectedRoomType
                             ) {
 
                                 return (
-                                    getTimetableRoomType(
-                                        room
+                                    normalizeRoomType(
+                                        getTimetableRoomType(
+                                            room
+                                        )
                                     ) ===
                                     expectedRoomType
                                 );
@@ -1931,9 +2410,9 @@ function validateGeneratorRelationships(data) {
                             }
 
 
-                            // ------------------------------------------------
-                            // ROOM REQUIRED BUT NO TYPE
-                            // ------------------------------------------------
+                            // ----------------------------------
+                            // ROOM REQUIRED WITHOUT TYPE
+                            // ----------------------------------
 
                             return true;
 
@@ -1975,10 +2454,24 @@ function validateGeneratorRelationships(data) {
     );
 
 
-const parallelCheck = validateParallelBlocks(data);
-errors.push(...parallelCheck.errors);
-warnings.push(...parallelCheck.warnings);
-  
+    // ========================================================
+    // PARALLEL BLOCK VALIDATION
+    // ========================================================
+
+    const parallelCheck =
+        validateParallelBlocks(
+            data
+        );
+
+
+    errors.push(
+        ...parallelCheck.errors
+    );
+
+    warnings.push(
+        ...parallelCheck.warnings
+    );
+
 
     // ========================================================
     // RESULT
@@ -1996,9 +2489,14 @@ warnings.push(...parallelCheck.warnings);
     };
 
 
+    // ========================================================
+    // DEBUG
+    // ========================================================
+
     console.log(
         "Generator relationship validation:",
         {
+
             valid:
                 result.valid,
 
@@ -2007,11 +2505,14 @@ warnings.push(...parallelCheck.warnings);
 
             warnings:
                 warnings.length
+
         }
     );
 
 
-    if (errors.length > 0) {
+    if (
+        errors.length > 0
+    ) {
 
         console.error(
             "Generator relationship errors:",
@@ -2021,7 +2522,9 @@ warnings.push(...parallelCheck.warnings);
     }
 
 
-    if (warnings.length > 0) {
+    if (
+        warnings.length > 0
+    ) {
 
         console.warn(
             "Generator relationship warnings:",
@@ -2034,250 +2537,8 @@ warnings.push(...parallelCheck.warnings);
     return result;
 
 }
-// ============================================================
-// VALIDATE NORMALIZED PERIODS
-// ============================================================
 
-function validateTimetablePeriods(data) {
-
-    const errors = [];
-
-    const warnings = [];
-
-
-    if (
-        !data ||
-        !Array.isArray(data.periods)
-    ) {
-
-        return {
-
-            valid: false,
-
-            errors: [
-                "No timetable periods are available."
-            ],
-
-            warnings
-
-        };
-
-    }
-
-
-    const periodIds =
-        new Set();
-
-
-    const duplicateIds =
-        new Set();
-
-
-    // ========================================================
-    // VALIDATE EACH PERIOD
-    // ========================================================
-
-    data.periods.forEach(
-        period => {
-
-            const periodId =
-                period.id ||
-                null;
-
-
-            // ------------------------------------------------
-            // ID
-            // ------------------------------------------------
-
-            if (!periodId) {
-
-                errors.push(
-                    "A timetable period has no ID."
-                );
-
-            }
-            else {
-
-                if (
-                    periodIds.has(
-                        periodId
-                    )
-                ) {
-
-                    duplicateIds.add(
-                        periodId
-                    );
-
-                }
-
-                periodIds.add(
-                    periodId
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // DAY
-            // ------------------------------------------------
-
-            if (
-                !period.dayName &&
-                (!period.dayNumber ||
-                    period.dayNumber <= 0)
-            ) {
-
-                errors.push(
-                    `Period ${periodId || "[unknown]"} has no valid day information.`
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // PERIOD ORDER
-            // ------------------------------------------------
-
-            if (
-                !Number.isFinite(
-                    period.periodOrder
-                ) ||
-                period.periodOrder <= 0
-            ) {
-
-                errors.push(
-                    `Period ${periodId || "[unknown]"} has an invalid period order.`
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // PERIOD NUMBER
-            // ------------------------------------------------
-
-            if (
-                !Number.isFinite(
-                    period.periodNumber
-                ) ||
-                period.periodNumber <= 0
-            ) {
-
-                warnings.push(
-                    `Period ${periodId || "[unknown]"} has no valid period number.`
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // PERIOD TYPE
-            // ------------------------------------------------
-
-            if (
-                !period.periodType
-            ) {
-
-                warnings.push(
-                    `Period ${periodId || "[unknown]"} has no period type.`
-                );
-
-            }
-
-
-            // ------------------------------------------------
-            // TIME RANGE
-            // ------------------------------------------------
-
-            if (
-                !period.startTime ||
-                !period.endTime
-            ) {
-
-                warnings.push(
-                    `Period ${periodId || "[unknown]"} has incomplete time information.`
-                );
-
-            }
-
-        }
-    );
-
-
-    // ========================================================
-    // DUPLICATE IDS
-    // ========================================================
-
-    duplicateIds.forEach(
-        id => {
-
-            errors.push(
-                `Duplicate timetable period ID detected: ${id}`
-            );
-
-        }
-    );
-
-
-    // ========================================================
-    // RESULT
-    // ========================================================
-
-    const result = {
-
-        valid:
-            errors.length === 0,
-
-        errors,
-
-        warnings
-
-    };
-
-
-    console.log(
-        "Timetable period validation:",
-        {
-            valid:
-                result.valid,
-
-            errors:
-                result.errors.length,
-
-            warnings:
-                result.warnings.length
-        }
-    );
-
-
-    if (
-        result.errors.length
-    ) {
-
-        console.error(
-            "Timetable period validation errors:",
-            result.errors
-        );
-
-    }
-
-
-    if (
-        result.warnings.length
-    ) {
-
-        console.warn(
-            "Timetable period validation warnings:",
-            result.warnings
-        );
-
-    }
-
-
-    return result;
-
-}
-
+            
 
 // ============================================================
 // GET TEACHING PERIODS
@@ -3283,9 +3544,9 @@ function createLessonTasks(
                 // PARALLEL GROUP
                 // =================================================
 
-                parallelGroup:
-                    requirement.parallelGroup ||
-                    null,
+parallelGroup: normalizeParallelGroup( requirement.parallelGroup ) || null,
+
+                
 
                 parallelGroupSize:
                     Number(
@@ -3334,11 +3595,8 @@ function createLessonTasks(
                     sequence:
                         index + 1,
 
-                   
-    parallelKey: requirement.parallelGroup
-        ? `${requirement.parallelGroup}::D${index + 1}`
-        : null,
-
+           parallelKey: commonTaskData.parallelGroup ? `${commonTaskData.parallelGroup}::D${index + 1}` : null,        
+   
                     placed:
                         false,
 
@@ -3379,10 +3637,7 @@ function createLessonTasks(
                     sequence:
                         index + 1,
 
-
-                    parallelKey: requirement.parallelGroup
-    ? `${requirement.parallelGroup}::S${index + 1}`
-    : null,
+parallelKey: commonTaskData.parallelGroup ? `${commonTaskData.parallelGroup}::S${index + 1}` : null,
 
                     placed:
                         false,
@@ -3917,102 +4172,829 @@ const warnings = [];
 
 function buildScheduleUnits(tasks) {
 
+    // ============================================================
+    // BUILD SCHEDULE UNITS
+    // ============================================================
+    //
+    // ARCHITECTURE:
+    //
+    // A schedule unit represents one scheduling decision.
+    //
+    // Parallel tasks with the same parallelKey are placed
+    // together and MUST receive the same day + period.
+    //
+    // Tasks without a parallelKey remain completely independent.
+    //
+    // IMPORTANT:
+    //
+    // A parallel group contains ONLY the requirements that
+    // actually belong to that group.
+    //
+    // Example:
+    //
+    //   10A -> RE -> RE/GE/BS::D1
+    //   10B -> GE -> RE/GE/BS::D1
+    //   10C -> BS -> RE/GE/BS::D1
+    //   10E -> RE -> RE/GE/BS::D1
+    //
+    //   10D -> Mathematics -> null
+    //
+    // Therefore 10D is NOT included in the parallel unit.
+    //
+    // ============================================================
+
+    if (!Array.isArray(tasks)) {
+        return [];
+    }
+
+
     const unitMap = new Map();
+
+
+    // ============================================================
+    // GROUP TASKS INTO UNITS
+    // ============================================================
 
     tasks.forEach(task => {
 
-        const key = task.parallelKey || `solo::${task.taskId}`;
-
-        if (!unitMap.has(key)) {
-            unitMap.set(key, {
-                unitId: key,
-                parallelGroup: task.parallelGroup || null,
-                taskType: task.taskType,
-                duration: task.duration,
-                tasks: [],
-                placed: false,
-                periodIds: []
-            });
+        if (!task || typeof task !== "object") {
+            return;
         }
 
-        unitMap.get(key).tasks.push(task);
+
+        // --------------------------------------------------------
+        // PARALLEL TASK
+        // --------------------------------------------------------
+        //
+        // The parallelKey must already have been created by
+        // createLessonTasks().
+        //
+        // Example:
+        //
+        // RE/GE/BS::D1
+        //
+        // --------------------------------------------------------
+
+        const parallelKey =
+            task.parallelKey
+                ? String(task.parallelKey).trim()
+                : null;
+
+
+        // --------------------------------------------------------
+        // SOLO TASK
+        // --------------------------------------------------------
+        //
+        // Every task without a parallelKey gets its own unit.
+        //
+        // This is what keeps unrelated streams independent.
+        //
+        const key =
+            parallelKey ||
+            `solo::${task.taskId}`;
+
+
+        // --------------------------------------------------------
+        // CREATE UNIT
+        // --------------------------------------------------------
+
+        if (!unitMap.has(key)) {
+
+            unitMap.set(
+                key,
+                {
+                    unitId: key,
+
+                    parallelKey:
+                        parallelKey,
+
+                    parallelGroup:
+                        task.parallelGroup
+                            ? normalizeParallelGroup(
+                                task.parallelGroup
+                            )
+                            : null,
+
+                    taskType:
+                        task.taskType,
+
+                    duration:
+                        Number(task.duration) || 1,
+
+                    tasks: [],
+
+                    placed: false,
+
+                    periodIds: []
+                }
+            );
+
+        }
+
+
+        // --------------------------------------------------------
+        // ADD TASK
+        // --------------------------------------------------------
+
+        unitMap
+            .get(key)
+            .tasks
+            .push(task);
+
     });
 
-    const units = [...unitMap.values()];
+
+    // ============================================================
+    // FINALIZE UNITS
+    // ============================================================
+
+    const units = [
+        ...unitMap.values()
+    ];
+
 
     units.forEach(unit => {
-        unit.isParallel = unit.tasks.length > 1;
-        unit.streamIds = [...new Set(unit.tasks.map(t => t.streamId))];
-        unit.teacherIds = [...new Set(unit.tasks.map(t => t.teacherId).filter(Boolean))];
-        unit.roomTasks = unit.tasks.filter(t => t.requiresRoom);
+
+        // --------------------------------------------------------
+        // PARALLEL STATUS
+        // --------------------------------------------------------
+
+        unit.isParallel =
+            Boolean(
+                unit.parallelKey &&
+                unit.tasks.length > 1
+            );
+
+
+        // --------------------------------------------------------
+        // PARTICIPATING STREAMS
+        // --------------------------------------------------------
+
+        unit.streamIds = [
+            ...new Set(
+                unit.tasks
+                    .map(task => task.streamId)
+                    .filter(Boolean)
+            )
+        ];
+
+
+        // --------------------------------------------------------
+        // PARTICIPATING REQUIREMENTS
+        // --------------------------------------------------------
+
+        unit.requirementIds = [
+            ...new Set(
+                unit.tasks
+                    .map(task => task.requirementId)
+                    .filter(Boolean)
+            )
+        ];
+
+
+        // --------------------------------------------------------
+        // PARTICIPATING TEACHERS
+        // --------------------------------------------------------
+
+        unit.teacherIds = [
+            ...new Set(
+                unit.tasks
+                    .map(task => task.teacherId)
+                    .filter(Boolean)
+            )
+        ];
+
+
+        // --------------------------------------------------------
+        // ROOM TASKS
+        // --------------------------------------------------------
+
+        unit.roomTasks =
+            unit.tasks.filter(
+                task =>
+                    task.requiresRoom === true
+            );
+
+
+        // --------------------------------------------------------
+        // ROOM REQUIREMENT COUNT
+        // --------------------------------------------------------
+
+        unit.roomRequirementCount =
+            unit.roomTasks.length;
+
+
+        // --------------------------------------------------------
+        // PARALLEL GROUP SIZE
+        // --------------------------------------------------------
+
+        unit.parallelSize =
+            unit.isParallel
+                ? unit.tasks.length
+                : 1;
+
     });
 
-    // Most constrained first:
-    // 1. parallel units (bigger first)  2. doubles  3. room-needing  4. rest
-    units.sort((a, b) => {
-
-        if (a.isParallel !== b.isParallel) return a.isParallel ? -1 : 1;
-        if (a.tasks.length !== b.tasks.length) return b.tasks.length - a.tasks.length;
-        if (a.duration !== b.duration) return b.duration - a.duration;
-        if (a.roomTasks.length !== b.roomTasks.length) return b.roomTasks.length - a.roomTasks.length;
-
-        return 0;
-    });
-
-    console.log("Schedule units:", {
-        total: units.length,
-        parallel: units.filter(u => u.isParallel).length,
-        solo: units.filter(u => !u.isParallel).length
-    });
-
-    return units;
-}
 
 
+
+
+
+            
 // ============================================================
 // VALIDATE SCHEDULE UNITS
 // ============================================================
 
+
 function validateScheduleUnits(data, units) {
 
     const errors = [];
+    const warnings = [];
+
+
+    // ============================================================
+    // BASIC VALIDATION
+    // ============================================================
+
+    if (!Array.isArray(units)) {
+
+        return {
+            valid: false,
+            errors: [
+                "Schedule units must be an array."
+            ],
+            warnings
+        };
+
+    }
+
+
+    const parallelBlocks =
+        data?.lookup?.parallelBlocks ||
+        new Map();
+
+
+    // ============================================================
+    // VALIDATE EACH UNIT
+    // ============================================================
 
     units.forEach(unit => {
 
-        if (!unit.isParallel) return;
+        if (!unit) {
+            return;
+        }
 
-        const block = data.lookup.parallelBlocks.get(unit.parallelGroup);
 
-        // every member subject must be present in every unit
-        if (block && unit.tasks.length !== block.requirements.length) {
+        // ========================================================
+        // SOLO UNIT
+        // ========================================================
+        //
+        // Solo units do not need parallel validation.
+        //
+        // ========================================================
+
+        if (!unit.isParallel) {
+
+            if (
+                unit.tasks &&
+                unit.tasks.length !== 1
+            ) {
+
+                errors.push(
+                    `Solo unit ${unit.unitId} contains ` +
+                    `${unit.tasks.length} tasks.`
+                );
+
+            }
+
+            return;
+
+        }
+
+
+        // ========================================================
+        // PARALLEL UNIT MUST HAVE A PARALLEL KEY
+        // ========================================================
+
+        if (!unit.parallelKey) {
+
             errors.push(
-                `Parallel unit ${unit.unitId} has ${unit.tasks.length} lessons ` +
-                `but group "${unit.parallelGroup}" has ${block.requirements.length} members.`
+                `Parallel unit ${unit.unitId} has no parallelKey.`
             );
+
         }
 
-       const teacherSubject = new Map();
-unit.tasks.forEach(t => {
-    if (!t.teacherId) return;
-    const prev = teacherSubject.get(t.teacherId);
-    if (prev && prev !== t.subjectId) {
-        errors.push(`Parallel unit ${unit.unitId} gives one teacher two different subjects.`);
-    }
-    teacherSubject.set(t.teacherId, t.subjectId);
-});
 
-        // all tasks in a unit must share a duration
-        if (new Set(unit.tasks.map(t => t.duration)).size > 1) {
-            errors.push(`Parallel unit ${unit.unitId} mixes single and double lessons.`);
+        // ========================================================
+        // PARALLEL GROUP
+        // ========================================================
+
+        const normalizedGroup =
+            normalizeParallelGroup(
+                unit.parallelGroup
+            );
+
+
+        if (!normalizedGroup) {
+
+            errors.push(
+                `Parallel unit ${unit.unitId} has no parallel group.`
+            );
+
         }
+
+
+        // ========================================================
+        // LOOK UP PARALLEL BLOCK
+        // ========================================================
+
+        const block =
+            parallelBlocks.get(
+                normalizedGroup
+            );
+
+
+        if (!block) {
+
+            errors.push(
+                `Parallel unit ${unit.unitId} references ` +
+                `parallel group "${normalizedGroup}" ` +
+                `but no matching parallel block exists.`
+            );
+
+        }
+
+
+        // ========================================================
+        // TASK COUNT
+        // ========================================================
+
+        if (block) {
+
+            const expectedCount =
+                Array.isArray(
+                    block.requirements
+                )
+                    ? block.requirements.length
+                    : 0;
+
+
+            if (
+                unit.tasks.length !==
+                expectedCount
+            ) {
+
+                errors.push(
+                    `Parallel unit ${unit.unitId} has ` +
+                    `${unit.tasks.length} tasks, but parallel group ` +
+                    `"${normalizedGroup}" has ` +
+                    `${expectedCount} participating requirements.`
+                );
+
+            }
+
+        }
+
+
+        // ========================================================
+        // VERIFY ALL TASKS REALLY BELONG TO THE SAME GROUP
+        // ========================================================
+
+        unit.tasks.forEach(task => {
+
+            const taskGroup =
+                normalizeParallelGroup(
+                    task.parallelGroup
+                );
+
+
+            if (
+                taskGroup !==
+                normalizedGroup
+            ) {
+
+                errors.push(
+                    `Parallel unit ${unit.unitId} contains task ` +
+                    `${task.taskId} from parallel group ` +
+                    `"${taskGroup || "NONE"}" instead of ` +
+                    `"${normalizedGroup}".`
+                );
+
+            }
+
+
+            // ----------------------------------------------------
+            // VERIFY PARALLEL KEY
+            // ----------------------------------------------------
+
+            if (
+                task.parallelKey !==
+                unit.parallelKey
+            ) {
+
+                errors.push(
+                    `Parallel unit ${unit.unitId} contains task ` +
+                    `${task.taskId} with parallelKey ` +
+                    `"${task.parallelKey}" instead of ` +
+                    `"${unit.parallelKey}".`
+                );
+
+            }
+
+        });
+
+
+        // ========================================================
+        // VERIFY UNIQUE STREAM PARTICIPATION
+        // ========================================================
+        //
+        // One stream must not appear twice in the same parallel
+        // unit.
+        //
+        // ========================================================
+
+        const streamIds = [
+            ...unit.tasks
+                .map(
+                    task =>
+                        normalizeTimetableId(
+                            task.streamId
+                        )
+                )
+                .filter(Boolean)
+        ];
+
+
+        const uniqueStreamIds =
+            new Set(streamIds);
+
+
+        if (
+            uniqueStreamIds.size !==
+            streamIds.length
+        ) {
+
+            errors.push(
+                `Parallel unit ${unit.unitId} contains the same ` +
+                `stream more than once.`
+            );
+
+        }
+
+
+        // ========================================================
+        // VERIFY UNIQUE REQUIREMENTS
+        // ========================================================
+
+        const requirementIds = [
+            ...unit.tasks
+                .map(
+                    task =>
+                        normalizeTimetableId(
+                            task.requirementId
+                        )
+                )
+                .filter(Boolean)
+        ];
+
+
+        const uniqueRequirementIds =
+            new Set(
+                requirementIds
+            );
+
+
+        if (
+            uniqueRequirementIds.size !==
+            requirementIds.length
+        ) {
+
+            errors.push(
+                `Parallel unit ${unit.unitId} contains the same ` +
+                `requirement more than once.`
+            );
+
+        }
+
+
+        // ========================================================
+        // ALL TASKS MUST HAVE SAME DURATION
+        // ========================================================
+
+        const durations =
+            new Set(
+                unit.tasks.map(
+                    task =>
+                        Number(
+                            task.duration
+                        )
+                )
+            );
+
+
+        if (
+            durations.size > 1
+        ) {
+
+            errors.push(
+                `Parallel unit ${unit.unitId} mixes single and ` +
+                `double lessons.`
+            );
+
+        }
+
+
+        // ========================================================
+        // ALL TASKS MUST HAVE SAME TASK TYPE
+        // ========================================================
+
+        const taskTypes =
+            new Set(
+                unit.tasks.map(
+                    task =>
+                        task.taskType
+                )
+            );
+
+
+        if (
+            taskTypes.size > 1
+        ) {
+
+            errors.push(
+                `Parallel unit ${unit.unitId} mixes different task types.`
+            );
+
+        }
+
+
+        // ========================================================
+        // TEACHER / SUBJECT CONFLICT
+        // ========================================================
+        //
+        // One teacher cannot teach two different subjects at the
+        // same synchronized period.
+        //
+        // ========================================================
+
+        const teacherSubject =
+            new Map();
+
+
+        unit.tasks.forEach(task => {
+
+            if (!task.teacherId) {
+                return;
+            }
+
+
+            const teacherId =
+                normalizeTimetableId(
+                    task.teacherId
+                );
+
+
+            const subjectId =
+                normalizeTimetableId(
+                    task.subjectId
+                );
+
+
+            if (!teacherId) {
+                return;
+            }
+
+
+            const previousSubject =
+                teacherSubject.get(
+                    teacherId
+                );
+
+
+            if (
+                previousSubject &&
+                previousSubject !== subjectId
+            ) {
+
+                errors.push(
+                    `Parallel unit ${unit.unitId} gives teacher ` +
+                    `${teacherId} two different subjects.`
+                );
+
+            }
+
+
+            teacherSubject.set(
+                teacherId,
+                subjectId
+            );
+
+        });
+
+
+        // ========================================================
+        // ROOM REQUIREMENTS
+        // ========================================================
+        //
+        // This does NOT mean all tasks need the same room.
+        //
+        // It only records whether the unit contains multiple
+        // room-requiring tasks. The actual room allocation must
+        // happen later.
+        //
+        // ========================================================
+
+        const roomTasks =
+            unit.tasks.filter(
+                task =>
+                    task.requiresRoom === true
+            );
+
+
+        if (
+            roomTasks.length > 0
+        ) {
+
+            const roomTypeIds = [
+                ...new Set(
+                    roomTasks
+                        .map(
+                            task =>
+                                normalizeTimetableId(
+                                    task.roomTypeId
+                                )
+                        )
+                        .filter(Boolean)
+                )
+            ];
+
+
+            console.log(
+                "Parallel unit room requirements:",
+                {
+                    unitId:
+                        unit.unitId,
+
+                    roomTasks:
+                        roomTasks.length,
+
+                    roomTypeIds
+                }
+            );
+
+        }
+
     });
 
-    if (errors.length) {
-        throw new Error("Schedule unit validation failed:\n\n" + errors.join("\n"));
+
+    // ============================================================
+    // CHECK THAT EVERY PARALLEL BLOCK HAS BEEN REPRESENTED
+    // ============================================================
+    //
+    // This is particularly useful for detecting a missing task.
+    //
+    // Example:
+    //
+    // RE/GE/BS::D1 should contain:
+    //
+    //   10A RE
+    //   10B GE
+    //   10C BS
+    //   10E RE
+    //
+    // If one task was accidentally given a different key, this
+    // validation catches it.
+    //
+    // ============================================================
+
+    const parallelUnitKeys =
+        new Set(
+            units
+                .filter(
+                    unit =>
+                        unit.isParallel &&
+                        unit.parallelKey
+                )
+                .map(
+                    unit =>
+                        unit.parallelKey
+                )
+        );
+
+
+    // ------------------------------------------------------------
+    // Check tasks that have a parallelKey
+    // ------------------------------------------------------------
+
+    const parallelTasks =
+        Array.isArray(
+            data?.lessonTasks
+        )
+            ? data.lessonTasks.filter(
+                task =>
+                    task &&
+                    task.parallelKey
+            )
+            : [];
+
+
+    const taskParallelKeys =
+        new Set(
+            parallelTasks.map(
+                task =>
+                    task.parallelKey
+            )
+        );
+
+
+    taskParallelKeys.forEach(
+        key => {
+
+            if (
+                !parallelUnitKeys.has(key)
+            ) {
+
+                errors.push(
+                    `Parallel task group "${key}" does not have ` +
+                    `a corresponding parallel schedule unit.`
+                );
+
+            }
+
+        }
+    );
+
+
+    // ============================================================
+    // RESULT
+    // ============================================================
+
+    const result = {
+        valid:
+            errors.length === 0,
+
+        errors,
+        warnings
+    };
+
+
+    // ============================================================
+    // LOGGING
+    // ============================================================
+
+    if (
+        errors.length > 0
+    ) {
+
+        console.error(
+            "Schedule unit validation errors:",
+            errors
+        );
+
     }
 
-    console.log("Schedule unit validation: PASSED");
+
+    if (
+        warnings.length > 0
+    ) {
+
+        console.warn(
+            "Schedule unit validation warnings:",
+            warnings
+        );
+
+    }
+
+
+    console.log(
+        "Schedule unit validation:",
+        {
+            valid:
+                result.valid,
+
+            errors:
+                errors.length,
+
+            warnings:
+                warnings.length
+        }
+    );
+
+
+    if (
+        !result.valid
+    ) {
+
+        throw new Error(
+            "Schedule unit validation failed:\n\n" +
+            errors.join("\n")
+        );
+
+    }
+
+
     return true;
+
 }
 
 
@@ -5176,11 +6158,15 @@ function createOccupancyIndexes(
                         streamId:
                             streamId || null,
 
-                        parallelGroup:
-                            entry.parallelGroup ??
-                            entry.parallel_group ??
-                            null,
 
+parallelGroup:
+    normalizeParallelGroup(
+        entry.parallelGroup ??
+        entry.parallel_group
+    ) || null,
+
+
+                        
                         studentGroupIds:
                             studentGroups
 
@@ -5374,12 +6360,12 @@ function createOccupancyIndexes(
                                 teacherId ||
                                 null,
 
-                            parallelGroup:
-                                normalizeKey(
-                                    entry.parallelGroup ??
-                                    entry.parallel_group
-                                ) ||
-                                null
+parallelGroup:
+    normalizeParallelGroup(
+        entry.parallelGroup ??
+        entry.parallel_group
+    ) || null
+
 
                         });
 
@@ -6430,20 +7416,15 @@ function getTeacherLessonsAtPeriod(
 //
 // ============================================================
 
-function getTaskParallelGroup(
-    task
-) {
 
-    if (
-        !task
-    ) {
 
+function getTaskParallelGroup(task) {
+
+    if (!task) {
         return "";
-
     }
 
-
-    return normalizeTimetableId(
+    return normalizeParallelGroup(
         task.parallelGroup ??
         task.parallel_group
     );
@@ -6451,9 +7432,11 @@ function getTaskParallelGroup(
 }
 
 
+    
 // ============================================================
 // CHECK WHETHER TWO LESSONS MAY RUN CONCURRENTLY
 // ============================================================
+
 
 function areConcurrentTeacherLessonsAllowed(
     task,
@@ -6469,6 +7452,10 @@ function areConcurrentTeacherLessonsAllowed(
 
     }
 
+
+    // ========================================================
+    // SUBJECT
+    // ========================================================
 
     const taskSubjectId =
         normalizeTimetableId(
@@ -6500,15 +7487,14 @@ function areConcurrentTeacherLessonsAllowed(
 
 
     // ========================================================
-    // PARALLEL GROUP MUST EXIST
+    // PARALLEL GROUP
     // ========================================================
     //
-    // A teacher may teach the same subject concurrently in
-    // multiple classes ONLY when both lessons belong to the
-    // SAME explicit parallel group.
+    // Same subject alone is NOT enough.
     //
-    // Same subject + same teacher without a parallel group
-    // is NOT allowed.
+    // A teacher may teach the same subject to multiple streams
+    // simultaneously ONLY when both lessons belong to the SAME
+    // explicit parallel group.
     //
     // ========================================================
 
@@ -6519,11 +7505,15 @@ function areConcurrentTeacherLessonsAllowed(
 
 
     const existingParallelGroup =
-        normalizeTimetableId(
+        normalizeParallelGroup(
             existingLesson.parallelGroup ??
             existingLesson.parallel_group
         );
 
+
+    // ========================================================
+    // BOTH MUST HAVE A PARALLEL GROUP
+    // ========================================================
 
     if (
         !taskParallelGroup ||
@@ -6536,7 +7526,7 @@ function areConcurrentTeacherLessonsAllowed(
 
 
     // ========================================================
-    // BOTH MUST BELONG TO THE SAME PARALLEL GROUP
+    // GROUP MUST MATCH
     // ========================================================
 
     return (
@@ -7358,10 +8348,12 @@ function reserveSlot(
                         task.teacher_id ??
                         null,
 
-                    parallelGroup:
-                        task.parallelGroup ??
-                        task.parallel_group ??
-                        null
+parallelGroup:
+    normalizeParallelGroup(
+        task.parallelGroup ??
+        task.parallel_group
+    ) || null,
+                    
 
                 });
 
@@ -7887,10 +8879,14 @@ function createGeneratedEntry(
         // Without this field, valid parallel teaching
         // cannot be distinguished from a true stream conflict.
         //
-        parallel_group:
-            task.parallelGroup ??
-            task.parallel_group ??
-            null,
+    
+parallel_group:
+    normalizeParallelGroup(
+        task.parallelGroup ??
+        task.parallel_group
+    ) || null,
+
+
 
         student_group_ids:
             [
@@ -11163,11 +12159,14 @@ function calculateCandidateSlotScore(
     // PARALLEL GROUP SYNCHRONIZATION
     // ========================================================
 
-    const taskParallelGroup =
-        normalizeTimetableId(
-            task.parallelGroup ??
-            task.parallel_group
-        );
+   
+const taskParallelGroup =
+    normalizeParallelGroup(
+        task.parallelGroup ??
+        task.parallel_group
+    );
+
+
 
 
     if (
@@ -11224,11 +12223,14 @@ function calculateCandidateSlotScore(
                 }
 
 
-                const existingParallelGroup =
-                    normalizeTimetableId(
-                        existingLesson.parallelGroup ??
-                        existingLesson.parallel_group
-                    );
+               
+const existingParallelGroup =
+    normalizeParallelGroup(
+        existingLesson.parallelGroup ??
+        existingLesson.parallel_group
+    );
+
+
 
 
                 if (
@@ -11843,11 +12845,14 @@ function getScoredSingleLessonCandidates(
     //
     // ========================================================
 
-    const taskParallelGroup =
-        normalizeTimetableId(
-            task.parallelGroup ??
-            task.parallel_group
-        );
+   
+const taskParallelGroup =
+    normalizeParallelGroup(
+        task.parallelGroup ??
+        task.parallel_group
+    );
+
+
 
 
     const synchronizedPeriodIds =
@@ -11931,11 +12936,13 @@ function getScoredSingleLessonCandidates(
                             }
 
 
-                            const existingParallelGroup =
-                                normalizeTimetableId(
-                                    existingLesson.parallelGroup ??
-                                    existingLesson.parallel_group
-                                );
+const existingParallelGroup =
+    normalizeParallelGroup(
+        existingLesson.parallelGroup ??
+        existingLesson.parallel_group
+    );
+
+
 
 
                             return (
@@ -16403,11 +17410,14 @@ function selectNextSmartTask(
             // PARALLEL GROUP STATUS
             // ==================================================
 
-            const taskParallelGroup =
-                normalizeTimetableId(
-                    task.parallelGroup ??
-                    task.parallel_group
-                );
+           
+const taskParallelGroup =
+    normalizeParallelGroup(
+        task.parallelGroup ??
+        task.parallel_group
+    );
+
+
 
 
             let parallelGroupEstablished =
@@ -16526,11 +17536,14 @@ function selectNextSmartTask(
                                         }
 
 
-                                        const existingParallelGroup =
-                                            normalizeTimetableId(
-                                                existingLesson.parallelGroup ??
-                                                existingLesson.parallel_group
-                                            );
+                                   
+const existingParallelGroup =
+    normalizeParallelGroup(
+        existingLesson.parallelGroup ??
+        existingLesson.parallel_group
+    );
+
+
 
 
                                         return (
