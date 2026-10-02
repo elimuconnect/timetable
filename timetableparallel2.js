@@ -4271,7 +4271,24 @@ function createLessonTasks(
 
 parallelGroup: normalizeParallelGroup( requirement.parallelGroup ) || null,
 
-                
+                              // =================================================
+                // PARALLEL DOUBLE
+                // =================================================
+                // TRUE only when this requirement belongs to a
+                // parallel group and has at least one double lesson.
+                //
+                // This flag is ONLY for the new parallel-double
+                // scheduling engine. It does not affect parallel
+                // single lessons.
+                // =================================================
+
+                parallelDouble:
+                    !!(
+                        requirement.parallelGroup &&
+                        Number(
+                            requirement.doubleLessonsPerWeek
+                        ) > 0
+                    ),  
 
                 parallelGroupSize:
                     Number(
@@ -4557,11 +4574,19 @@ parallelKey: commonTaskData.parallelGroup ? `${commonTaskData.parallelGroup}::S$
                 roomType:
                     task.roomType,
 
-                parallelGroup:
-                    task.parallelGroup,
+              parallelGroup:
+    task.parallelGroup,
 
-                parallelGroupSize:
-                    task.parallelGroupSize,
+parallelDouble:
+    task.parallelDouble,
+
+parallelKey:
+    task.parallelKey,
+
+parallelGroupSize:
+    task.parallelGroupSize,
+                
+                    
 
                 maxPerDay:
                     task.maxLessonsPerDay
@@ -15859,18 +15884,45 @@ function getSmartCandidatesForTask(
     // ========================================================
     // DOUBLE LESSON
     // ========================================================
+if (
+    task.taskType === "double"
+) {
+
+    const parallelGroup =
+        normalizeParallelGroup(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    // ====================================================
+    // PARALLEL DOUBLE
+    // ====================================================
 
     if (
-        task.taskType === "double"
+        parallelGroup
     ) {
 
-        return getScoredDoubleLessonCandidates(
+        return getScoredParallelDoubleLessonCandidates(
             task,
             data,
             indexes
         );
 
     }
+
+
+    // ====================================================
+    // NORMAL DOUBLE
+    // ====================================================
+
+    return getScoredDoubleLessonCandidates(
+        task,
+        data,
+        indexes
+    );
+
+}
 
 
     // ========================================================
@@ -17259,6 +17311,997 @@ function placeSelectedDoubleTask(
 
 }
 
+
+// ============================================================
+// PLACE PARALLEL DOUBLE UNIT
+// ============================================================
+//
+// A parallel double is one synchronized scheduling unit.
+//
+// Example:
+//
+// BIO/PHY::D1
+// ├── Biology D1
+// └── Physics D1
+//
+// ALL members must:
+//
+// 1. Be double lessons.
+// 2. Belong to the same parallelKey.
+// 3. Use the same two consecutive periods.
+// 4. Pass their own conflict checks.
+// 5. Receive compatible rooms.
+// 6. Be reserved atomically.
+//
+// Nothing is committed until the COMPLETE unit is valid.
+//
+// ============================================================
+
+function placeSelectedParallelDoubleUnit(
+    candidate,
+    indexes
+) {
+
+    if (
+        !candidate ||
+        !Array.isArray(
+            candidate.parallelUnitTasks
+        ) ||
+        candidate.parallelUnitTasks.length === 0 ||
+        !candidate.firstPeriod ||
+        !candidate.secondPeriod ||
+        !indexes
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            placedTasks:
+                [],
+
+            reason:
+                "Invalid parallel double unit candidate."
+
+        };
+
+    }
+
+
+    const tasks =
+        candidate.parallelUnitTasks
+            .map(
+                item =>
+                    item?.task ||
+                    item
+            )
+            .filter(
+                Boolean
+            );
+
+
+    if (
+        tasks.length === 0
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            placedTasks:
+                [],
+
+            reason:
+                "Parallel double unit contains no valid tasks."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // VALIDATE UNIT MEMBERS
+    // ========================================================
+
+    const firstPeriod =
+        candidate.firstPeriod;
+
+
+    const secondPeriod =
+        candidate.secondPeriod;
+
+
+    if (
+        !arePeriodsConsecutive(
+            firstPeriod,
+            secondPeriod
+        )
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            placedTasks:
+                [],
+
+            reason:
+                "Parallel double unit periods are not consecutive."
+
+        };
+
+    }
+
+
+    const parallelKeys =
+        new Set(
+            tasks
+                .map(
+                    task =>
+                        task.parallelKey
+                )
+                .filter(
+                    Boolean
+                )
+        );
+
+
+    if (
+        parallelKeys.size !== 1
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            placedTasks:
+                [],
+
+            reason:
+                "Parallel double unit members do not share one parallel key."
+
+        };
+
+    }
+
+
+    const taskTypesValid =
+        tasks.every(
+            task =>
+                task &&
+                task.taskType === "double" &&
+                Number(task.duration) === 2
+        );
+
+
+    if (
+        !taskTypesValid
+    ) {
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            placedTasks:
+                [],
+
+            reason:
+                "Parallel double unit contains a non-double task."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // SELECT ROOMS FOR ALL MEMBERS
+    // ========================================================
+    //
+    // We deliberately do this BEFORE reserving anything.
+    //
+    // Each task gets its own room.
+    //
+    // Rooms already selected for another member of this same
+    // unit cannot be reused if they would conflict.
+    //
+    // ========================================================
+
+    const selectedMembers =
+        [];
+
+
+    const usedRoomIds =
+        new Set();
+
+
+    for (
+        const task of tasks
+    ) {
+
+        let selectedRoom =
+            null;
+
+
+        const compatibleRooms =
+            getCompatibleRoomsForTask(
+                task,
+                firstPeriod,
+                indexes
+            ) || [];
+
+
+        // ----------------------------------------------------
+        // Room is required
+        // ----------------------------------------------------
+
+        if (
+            task.requiresRoom === true
+        ) {
+
+            for (
+                const room of compatibleRooms
+            ) {
+
+                const roomId =
+                    normalizeTimetableId(
+                        room?.id
+                    );
+
+
+                if (
+                    !roomId
+                ) {
+
+                    continue;
+
+                }
+
+
+                if (
+                    usedRoomIds.has(
+                        roomId
+                    )
+                ) {
+
+                    continue;
+
+                }
+
+
+                // --------------------------------------------
+                // Check both periods against current occupancy
+                // --------------------------------------------
+
+                const firstRoomConflict =
+                    indexes.roomPeriod
+                        ?.get(
+                            normalizeTimetableId(
+                                firstPeriod.id
+                            )
+                        )
+                        ?.has(
+                            roomId
+                        );
+
+
+                const secondRoomConflict =
+                    indexes.roomPeriod
+                        ?.get(
+                            normalizeTimetableId(
+                                secondPeriod.id
+                            )
+                        )
+                        ?.has(
+                            roomId
+                        );
+
+
+                if (
+                    firstRoomConflict ||
+                    secondRoomConflict
+                ) {
+
+                    continue;
+
+                }
+
+
+                selectedRoom =
+                    room;
+
+                usedRoomIds.add(
+                    roomId
+                );
+
+                break;
+
+            }
+
+
+            if (
+                !selectedRoom
+            ) {
+
+                return {
+
+                    placed:
+                        false,
+
+                    entries:
+                        [],
+
+                    placedTasks:
+                        [],
+
+                    reason:
+                        `No compatible room available for parallel double task ${task.taskId}.`
+
+                };
+
+            }
+
+        }
+
+
+        selectedMembers.push({
+
+            task,
+
+            room:
+                selectedRoom
+
+        });
+
+    }
+
+
+    // ========================================================
+    // FINAL VALIDATION — ALL MEMBERS
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Do NOT call placeSelectedDoubleTask().
+    //
+    // Do NOT reserve anything yet.
+    //
+    // Every member is checked independently against the
+    // CURRENT occupancy state.
+    //
+    // The other members of this proposed unit are not yet
+    // reserved, so legitimate BIO/PHY concurrency is preserved.
+    //
+    // ========================================================
+
+    for (
+        const member of selectedMembers
+    ) {
+
+        const task =
+            member.task;
+
+
+        const room =
+            member.room;
+
+
+        const firstCheck =
+            checkSingleSlotConflict(
+                task,
+                firstPeriod,
+                room,
+                indexes
+            );
+
+
+        if (
+            !firstCheck ||
+            !firstCheck.valid
+        ) {
+
+            return {
+
+                placed:
+                    false,
+
+                entries:
+                    [],
+
+                placedTasks:
+                    [],
+
+                reason:
+                    firstCheck?.reason ||
+                    `First period conflict for parallel double task ${task.taskId}.`
+
+            };
+
+        }
+
+
+        // ----------------------------------------------------
+        // We need the second period checked independently.
+        //
+        // checkDoubleLessonConflict() cannot be used here
+        // because its second-period student-group logic can
+        // reject legitimate members of the SAME parallel unit.
+        // ----------------------------------------------------
+
+        const secondCheck =
+            checkSingleSlotConflict(
+                task,
+                secondPeriod,
+                room,
+                indexes
+            );
+
+
+        if (
+            !secondCheck ||
+            !secondCheck.valid
+        ) {
+
+            return {
+
+                placed:
+                    false,
+
+                entries:
+                    [],
+
+                placedTasks:
+                    [],
+
+                reason:
+                    secondCheck?.reason ||
+                    `Second period conflict for parallel double task ${task.taskId}.`
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // TEACHER DAILY / WEEKLY DOUBLE CHECK
+    // ========================================================
+    //
+    // A double consumes TWO teaching periods for the teacher.
+    //
+    // ========================================================
+
+    for (
+        const member of selectedMembers
+    ) {
+
+        const task =
+            member.task;
+
+
+        const teacherId =
+            normalizeTimetableId(
+                task.teacherId
+            );
+
+
+        if (
+            teacherId
+        ) {
+
+            const currentWeekly =
+                getTeacherWeeklyLessonCount(
+                    teacherId,
+                    indexes
+                );
+
+
+            const maxWeekly =
+                indexes.teacherLimits
+                    ?.get(
+                        teacherId
+                    )
+                    ?.maxLessonsPerWeek;
+
+
+            if (
+                Number.isFinite(maxWeekly) &&
+                currentWeekly + 2 >
+                    maxWeekly
+            ) {
+
+                return {
+
+                    placed:
+                        false,
+
+                    entries:
+                        [],
+
+                    placedTasks:
+                        [],
+
+                    reason:
+                        `Teacher weekly limit exceeded for parallel double task ${task.taskId}.`
+
+                };
+
+            }
+
+
+            const currentDaily =
+                getTeacherDailyLessonCountFromPeriods(
+                    teacherId,
+                    firstPeriod,
+                    indexes
+                );
+
+
+            const maxDaily =
+                indexes.teacherLimits
+                    ?.get(
+                        teacherId
+                    )
+                    ?.maxLessonsPerDay;
+
+
+            if (
+                Number.isFinite(maxDaily) &&
+                currentDaily + 2 >
+                    maxDaily
+            ) {
+
+                return {
+
+                    placed:
+                        false,
+
+                    entries:
+                        [],
+
+                    placedTasks:
+                        [],
+
+                    reason:
+                        `Teacher daily limit exceeded for parallel double task ${task.taskId}.`
+
+                };
+
+            }
+
+        }
+
+    }
+
+
+    // ========================================================
+    // ATOMIC RESERVATION
+    // ========================================================
+    //
+    // At this point the COMPLETE unit has passed validation.
+    //
+    // Now reserve all members.
+    //
+    // ========================================================
+
+    const reservations =
+        [];
+
+
+    const entries =
+        [];
+
+
+    const reservedMembers =
+        [];
+
+
+    try {
+
+        for (
+            const member of selectedMembers
+        ) {
+
+            const task =
+                member.task;
+
+
+            const room =
+                member.room;
+
+
+            const firstReserved =
+                reserveSlot(
+                    task,
+                    firstPeriod,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                !firstReserved
+            ) {
+
+                throw new Error(
+                    `Failed to reserve first period for ${task.taskId}.`
+                );
+
+            }
+
+
+            reservations.push({
+
+                task,
+
+                period:
+                    firstPeriod,
+
+                room
+
+            });
+
+
+            const secondReserved =
+                reserveSlot(
+                    task,
+                    secondPeriod,
+                    room,
+                    indexes
+                );
+
+
+            if (
+                !secondReserved
+            ) {
+
+                throw new Error(
+                    `Failed to reserve second period for ${task.taskId}.`
+                );
+
+            }
+
+
+            reservations.push({
+
+                task,
+
+                period:
+                    secondPeriod,
+
+                room
+
+            });
+
+
+            reservedMembers.push(
+                member
+            );
+
+        }
+
+
+        // ====================================================
+        // CREATE ALL ENTRIES
+        // ====================================================
+
+        for (
+            const member of selectedMembers
+        ) {
+
+            const task =
+                member.task;
+
+
+            const room =
+                member.room;
+
+
+            const firstEntry =
+                createGeneratedEntry(
+                    task,
+                    firstPeriod,
+                    room
+                );
+
+
+            const secondEntry =
+                createGeneratedEntry(
+                    task,
+                    secondPeriod,
+                    room
+                );
+
+
+            if (
+                !firstEntry ||
+                !secondEntry
+            ) {
+
+                throw new Error(
+                    `Failed to create entries for ${task.taskId}.`
+                );
+
+            }
+
+
+            entries.push(
+                firstEntry,
+                secondEntry
+            );
+
+        }
+
+
+        // ====================================================
+        // UPDATE ALL TASKS
+        // ====================================================
+
+        for (
+            const member of selectedMembers
+        ) {
+
+            const task =
+                member.task;
+
+
+            const room =
+                member.room;
+
+
+            task.placed =
+                true;
+
+
+            task.periodIds =
+                [
+                    firstPeriod.id,
+                    secondPeriod.id
+                ];
+
+
+            task.roomId =
+                room?.id ||
+                null;
+
+
+            // ------------------------------------------------
+            // Subject period index
+            // ------------------------------------------------
+
+            const subjectId =
+                normalizeTimetableId(
+                    task.subjectId
+                );
+
+
+            if (
+                subjectId
+            ) {
+
+                if (
+                    !indexes.subjectPeriod
+                ) {
+
+                    indexes.subjectPeriod =
+                        new Map();
+
+                }
+
+
+                if (
+                    !indexes.subjectPeriod.has(
+                        subjectId
+                    )
+                ) {
+
+                    indexes.subjectPeriod.set(
+                        subjectId,
+                        new Set()
+                    );
+
+                }
+
+
+                indexes.subjectPeriod
+                    .get(subjectId)
+                    .add(
+                        normalizeTimetableId(
+                            firstPeriod.id
+                        )
+                    );
+
+
+                indexes.subjectPeriod
+                    .get(subjectId)
+                    .add(
+                        normalizeTimetableId(
+                            secondPeriod.id
+                        )
+                    );
+
+            }
+
+
+            // ------------------------------------------------
+            // Requirement period index
+            // ------------------------------------------------
+
+            const requirementId =
+                normalizeTimetableId(
+                    task.requirementId
+                );
+
+
+            if (
+                requirementId
+            ) {
+
+                if (
+                    !indexes.requirementPeriod
+                ) {
+
+                    indexes.requirementPeriod =
+                        new Map();
+
+                }
+
+
+                if (
+                    !indexes.requirementPeriod.has(
+                        requirementId
+                    )
+                ) {
+
+                    indexes.requirementPeriod.set(
+                        requirementId,
+                        new Set()
+                    );
+
+                }
+
+
+                indexes.requirementPeriod
+                    .get(requirementId)
+                    .add(
+                        normalizeTimetableId(
+                            firstPeriod.id
+                        )
+                    );
+
+
+                indexes.requirementPeriod
+                    .get(requirementId)
+                    .add(
+                        normalizeTimetableId(
+                            secondPeriod.id
+                        )
+                    );
+
+            }
+
+        }
+
+
+        // ====================================================
+        // SUCCESS
+        // ====================================================
+
+        return {
+
+            placed:
+                true,
+
+            entries,
+
+            placedTasks:
+                selectedMembers.map(
+                    member =>
+                        member.task
+                ),
+
+            reason:
+                ""
+
+        };
+
+    }
+    catch (
+        error
+    ) {
+
+        // ====================================================
+        // ATOMIC ROLLBACK
+        // ====================================================
+        //
+        // If ANY member fails, release EVERYTHING that was
+        // reserved by this parallel unit.
+        //
+        // ====================================================
+
+        for (
+            let i =
+                reservations.length - 1;
+            i >= 0;
+            i--
+        ) {
+
+            const reservation =
+                reservations[i];
+
+
+            releaseReservedSlot(
+                reservation.task,
+                reservation.period,
+                reservation.room,
+                indexes
+            );
+
+        }
+
+
+        // ----------------------------------------------------
+        // Restore task state in case any task was marked.
+        // ----------------------------------------------------
+
+        for (
+            const member of selectedMembers
+        ) {
+
+            member.task.placed =
+                false;
+
+
+            member.task.periodIds =
+                [];
+
+
+            member.task.roomId =
+                null;
+
+        }
+
+
+        return {
+
+            placed:
+                false,
+
+            entries:
+                [],
+
+            placedTasks:
+                [],
+
+            reason:
+                error?.message ||
+                "Parallel double unit failed and was rolled back."
+
+        };
+
+    }
+
+}
 
 // ============================================================
 // RELEASE RESERVED SLOT
@@ -20465,7 +21508,607 @@ function getScoredParallelUnitCandidates(
 
 }
 
+function getScoredParallelDoubleLessonCandidates(
+    task,
+    data,
+    indexes
+) {
 
+    if (
+        !task ||
+        task.taskType !== "double" ||
+        !data ||
+        !indexes
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // IDENTIFY PARALLEL GROUP / KEY
+    // ========================================================
+
+    const parallelGroup =
+        normalizeParallelGroup(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    const parallelKey =
+        String(
+            task.parallelKey ??
+            ""
+        ).trim();
+
+
+    if (
+        !parallelGroup ||
+        !parallelKey
+    ) {
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // FIND ALL DOUBLE TASKS IN THIS PARALLEL UNIT
+    // ========================================================
+
+    const allTasks =
+        Array.isArray(
+            data.lessonTasks
+        )
+            ? data.lessonTasks
+            : Array.isArray(
+                generatorData.lessonTasks
+            )
+                ? generatorData.lessonTasks
+                : [];
+
+
+    const unitTasks =
+        allTasks.filter(
+            candidateTask => {
+
+                if (
+                    !candidateTask ||
+                    candidateTask.taskType !== "double" ||
+                    candidateTask.placed
+                ) {
+
+                    return false;
+
+                }
+
+
+                const candidateGroup =
+                    normalizeParallelGroup(
+                        candidateTask.parallelGroup ??
+                        candidateTask.parallel_group
+                    );
+
+
+                const candidateKey =
+                    String(
+                        candidateTask.parallelKey ??
+                        ""
+                    ).trim();
+
+
+                return (
+                    candidateGroup ===
+                    parallelGroup &&
+                    candidateKey ===
+                    parallelKey
+                );
+
+            }
+        );
+
+
+    // ========================================================
+    // CURRENT TASK MUST BELONG TO THE UNIT
+    // ========================================================
+
+    const currentTaskId =
+        normalizeTimetableId(
+            task.taskId ??
+            task.task_id ??
+            task.id
+        );
+
+
+    const containsCurrentTask =
+        unitTasks.some(
+            candidateTask =>
+                normalizeTimetableId(
+                    candidateTask.taskId ??
+                    candidateTask.task_id ??
+                    candidateTask.id
+                ) ===
+                currentTaskId
+        );
+
+
+    if (
+        !containsCurrentTask
+    ) {
+
+        unitTasks.push(
+            task
+        );
+
+    }
+
+
+    // ========================================================
+    // REMOVE DUPLICATE TASKS
+    // ========================================================
+
+    const uniqueTasks =
+        Array.from(
+            new Map(
+                unitTasks.map(
+                    candidateTask => [
+
+                        normalizeTimetableId(
+                            candidateTask.taskId ??
+                            candidateTask.task_id ??
+                            candidateTask.id
+                        ),
+
+                        candidateTask
+
+                    ]
+                )
+            ).values()
+        );
+
+
+    if (
+        uniqueTasks.length < 2
+    ) {
+
+        return [];
+
+    }
+
+
+    console.log(
+        "PARALLEL DOUBLE ENGINE: UNIT:",
+        {
+            parallelGroup,
+            parallelKey,
+            taskCount:
+                uniqueTasks.length,
+
+            tasks:
+                uniqueTasks.map(
+                    candidateTask => ({
+                        taskId:
+                            candidateTask.taskId,
+
+                        requirementId:
+                            candidateTask.requirementId,
+
+                        subject:
+                            candidateTask.subjectName ??
+                            candidateTask.subject_name ??
+                            null,
+
+                        teacherId:
+                            candidateTask.teacherId ??
+                            candidateTask.teacher_id ??
+                            null,
+
+                        streamId:
+                            candidateTask.streamId ??
+                            candidateTask.stream_id ??
+                            null
+                    })
+                )
+        }
+    );
+
+
+    // ========================================================
+    // FIND CONSECUTIVE TEACHING PAIRS
+    // ========================================================
+
+    const periodPairs =
+        getConsecutiveTeachingPeriodPairs(
+            data.periods ??
+            generatorData.periods
+        );
+
+
+    if (
+        periodPairs.length === 0
+    ) {
+
+        return [];
+
+    }
+
+
+    const candidates =
+        [];
+
+
+    // ========================================================
+    // TEST EVERY COMMON DOUBLE PERIOD
+    // ========================================================
+
+    for (
+        const pair of periodPairs
+    ) {
+
+        if (
+            !pair ||
+            !pair.first ||
+            !pair.second
+        ) {
+
+            continue;
+
+        }
+
+
+        const selectedTasks =
+            [];
+
+
+        let totalScore =
+            0;
+
+
+        let valid =
+            true;
+
+
+        const usedRooms =
+            new Set();
+
+
+        // ====================================================
+        // VALIDATE EVERY PARALLEL MEMBER
+        // BEFORE RESERVING ANYTHING
+        // ====================================================
+
+        for (
+            const memberTask of uniqueTasks
+        ) {
+
+            const compatibleRooms =
+                getCompatibleRooms(
+                    memberTask,
+                    data.rooms ??
+                    generatorData.rooms
+                );
+
+
+            if (
+                !Array.isArray(
+                    compatibleRooms
+                ) ||
+                compatibleRooms.length === 0
+            ) {
+
+                valid = false;
+
+                break;
+
+            }
+
+
+            let bestMemberCandidate =
+                null;
+
+
+            for (
+                const room of compatibleRooms
+            ) {
+
+                // --------------------------------------------
+                // ROOM MUST NOT BE SHARED BY TWO MEMBERS
+                // --------------------------------------------
+
+                const roomId =
+                    room?.id
+                        ? normalizeTimetableId(
+                            room.id
+                        )
+                        : null;
+
+
+                if (
+                    roomId &&
+                    usedRooms.has(
+                        roomId
+                    )
+                ) {
+
+                    continue;
+
+                }
+
+
+                // --------------------------------------------
+                // FIRST PERIOD
+                // --------------------------------------------
+
+                const firstCheck =
+                    checkSingleSlotConflict(
+                        memberTask,
+                        pair.first,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    !firstCheck.valid
+                ) {
+
+                    continue;
+
+                }
+
+
+                // --------------------------------------------
+                // SECOND PERIOD
+                // --------------------------------------------
+
+                const secondCheck =
+                    checkSingleSlotConflict(
+                        memberTask,
+                        pair.second,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    !secondCheck.valid
+                ) {
+
+                    continue;
+
+                }
+
+
+                // --------------------------------------------
+                // SCORE BOTH PERIODS
+                // --------------------------------------------
+
+                const firstScore =
+                    calculateDoubleLessonCandidateScore(
+                        memberTask,
+                        pair.first,
+                        pair.second,
+                        room,
+                        indexes
+                    );
+
+
+                if (
+                    !firstScore
+                ) {
+
+                    continue;
+
+                }
+
+
+                const candidate =
+                    {
+
+                        firstPeriod:
+                            pair.first,
+
+                        secondPeriod:
+                            pair.second,
+
+                        periodIds: [
+
+                            pair.first.id,
+
+                            pair.second.id
+
+                        ],
+
+                        periodKey:
+                            [
+                                normalizeTimetableId(
+                                    pair.first.id
+                                ),
+
+                                normalizeTimetableId(
+                                    pair.second.id
+                                )
+
+                            ].join("|"),
+
+                        room,
+
+                        roomId,
+
+                        score:
+                            Number(
+                                firstScore.score
+                            ) || 0,
+
+                        reasons:
+                            Array.isArray(
+                                firstScore.reasons
+                            )
+                                ? [
+                                    ...firstScore.reasons
+                                ]
+                                : [],
+
+                        parallelUnit:
+                            true,
+
+                        parallelDouble:
+                            true
+
+                    };
+
+
+                bestMemberCandidate =
+                    candidate;
+
+
+                break;
+
+            }
+
+
+            if (
+                !bestMemberCandidate
+            ) {
+
+                valid = false;
+
+                break;
+
+            }
+
+
+            selectedTasks.push({
+
+                task:
+                    memberTask,
+
+                candidate:
+                    bestMemberCandidate
+
+            });
+
+
+            totalScore +=
+                Number(
+                    bestMemberCandidate.score
+                ) || 0;
+
+
+            if (
+                bestMemberCandidate.roomId
+            ) {
+
+                usedRooms.add(
+                    bestMemberCandidate.roomId
+                );
+
+            }
+
+        }
+
+
+        if (
+            !valid
+        ) {
+
+            continue;
+
+        }
+
+
+        // ====================================================
+        // SYNCHRONIZED PARALLEL DOUBLE CANDIDATE
+        // ====================================================
+
+        candidates.push({
+
+            periodKey:
+                [
+                    normalizeTimetableId(
+                        pair.first.id
+                    ),
+
+                    normalizeTimetableId(
+                        pair.second.id
+                    )
+
+                ].join("|"),
+
+            tasks:
+                selectedTasks,
+
+            score:
+                totalScore,
+
+            parallelUnit:
+                true,
+
+            parallelDouble:
+                true,
+
+            reasons: [
+
+                `All ${selectedTasks.length} parallel double tasks can use ${pair.first.id} + ${pair.second.id}.`
+
+            ]
+
+        });
+
+    }
+
+
+    // ========================================================
+    // SORT BEST FIRST
+    // ========================================================
+
+    candidates.sort(
+        (
+            a,
+            b
+        ) => {
+
+            return (
+                (Number(b.score) || 0) -
+                (Number(a.score) || 0)
+            );
+
+        }
+    );
+
+
+    console.log(
+        "PARALLEL DOUBLE ENGINE: CANDIDATES:",
+        {
+            parallelGroup,
+
+            parallelKey,
+
+            count:
+                candidates.length,
+
+            candidates:
+                candidates.map(
+                    candidate => ({
+                        periodKey:
+                            candidate.periodKey,
+
+                        score:
+                            candidate.score,
+
+                        taskCount:
+                            candidate.tasks.length
+                    })
+                )
+        }
+    );
+
+
+    return candidates;
+
+}
 
 
 // ============================================================
@@ -20586,6 +22229,31 @@ function placeSelectedParallelUnit(
 
     }
 
+
+// ====================================================
+// PARALLEL DOUBLE ROUTING
+// ====================================================
+
+const isParallelDoubleUnit =
+    parallelCandidate.parallelDouble === true &&
+    Array.isArray(unit.tasks) &&
+    unit.tasks.length > 0 &&
+    unit.tasks.every(
+        task => task?.taskType === "double"
+    );
+
+if (isParallelDoubleUnit) {
+
+    return placeSelectedParallelDoubleUnit(
+        unit,
+        parallelCandidate,
+        indexes
+    );
+
+}
+
+
+    
 
     const placedResults =
         [];
@@ -20821,6 +22489,876 @@ function placeSelectedParallelUnit(
 
 }
 
+
+
+function placeSelectedParallelDoubleUnit(
+    unit,
+    parallelCandidate,
+    indexes
+) {
+
+    if (
+        !unit ||
+        !parallelCandidate ||
+        !Array.isArray(
+            parallelCandidate.tasks
+        ) ||
+        parallelCandidate.tasks.length === 0 ||
+        !indexes
+    ) {
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                "Invalid parallel double unit or candidate."
+
+        };
+
+    }
+
+
+    const items =
+        parallelCandidate.tasks;
+
+
+    // ========================================================
+    // VERIFY EVERY TASK IS A DOUBLE
+    // ========================================================
+
+    const allDoubles =
+        items.every(
+            item =>
+                item &&
+                item.task &&
+                item.task.taskType === "double" &&
+                item.candidate
+        );
+
+
+    if (
+        !allDoubles
+    ) {
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                "Parallel double candidate contains a non-double task."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // VERIFY COMMON PERIOD PAIR
+    // ========================================================
+
+    const firstPeriod =
+        items[0].candidate.firstPeriod;
+
+
+    const secondPeriod =
+        items[0].candidate.secondPeriod;
+
+
+    if (
+        !firstPeriod ||
+        !secondPeriod
+    ) {
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                "Parallel double candidate has no valid period pair."
+
+        };
+
+    }
+
+
+    const firstPeriodId =
+        normalizeTimetableId(
+            firstPeriod.id
+        );
+
+
+    const secondPeriodId =
+        normalizeTimetableId(
+            secondPeriod.id
+        );
+
+
+    if (
+        !firstPeriodId ||
+        !secondPeriodId
+    ) {
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                "Parallel double candidate contains invalid period IDs."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // VERIFY ALL MEMBERS USE THE SAME PERIOD PAIR
+    // ========================================================
+
+    for (
+        const item of items
+    ) {
+
+        const candidate =
+            item.candidate;
+
+
+        const candidateFirstId =
+            normalizeTimetableId(
+                candidate.firstPeriod?.id
+            );
+
+
+        const candidateSecondId =
+            normalizeTimetableId(
+                candidate.secondPeriod?.id
+            );
+
+
+        if (
+            candidateFirstId !==
+                firstPeriodId ||
+            candidateSecondId !==
+                secondPeriodId
+        ) {
+
+            return {
+
+                placed: false,
+
+                entries: [],
+
+                reason:
+                    "Parallel double members do not share the same period pair."
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // SNAPSHOT TASK STATE
+    // ========================================================
+
+    const taskSnapshots =
+        items.map(
+            item => ({
+
+                task:
+                    item.task,
+
+                placed:
+                    item.task?.placed,
+
+                periodIds:
+                    Array.isArray(
+                        item.task?.periodIds
+                    )
+                        ? [
+                            ...item.task.periodIds
+                        ]
+                        : [],
+
+                periodId:
+                    item.task?.periodId ??
+                    null,
+
+                roomId:
+                    item.task?.roomId ??
+                    null,
+
+                lessonId:
+                    item.task?.lessonId ??
+                    null
+
+            })
+        );
+
+
+    // ========================================================
+    // VALIDATE EVERYTHING BEFORE RESERVING ANYTHING
+    // ========================================================
+
+    const validatedItems =
+        [];
+
+
+    const roomsUsed =
+        new Set();
+
+
+    for (
+        const item of items
+    ) {
+
+        const task =
+            item.task;
+
+
+        const candidate =
+            item.candidate;
+
+
+        const room =
+            candidate.room ??
+            null;
+
+
+        const roomId =
+            room?.id
+                ? normalizeTimetableId(
+                    room.id
+                )
+                : null;
+
+
+        // ----------------------------------------------------
+        // ROOM UNIQUENESS
+        // ----------------------------------------------------
+
+        if (
+            roomId &&
+            roomsUsed.has(
+                roomId
+            )
+        ) {
+
+            return {
+
+                placed: false,
+
+                entries: [],
+
+                reason:
+                    `Parallel double members selected the same room: ${roomId}.`
+
+            };
+
+        }
+
+
+        // ----------------------------------------------------
+        // FIRST PERIOD
+        // ----------------------------------------------------
+
+        const firstCheck =
+            checkSingleSlotConflict(
+                task,
+                firstPeriod,
+                room,
+                indexes
+            );
+
+
+        if (
+            !firstCheck.valid
+        ) {
+
+            return {
+
+                placed: false,
+
+                entries: [],
+
+                reason:
+                    firstCheck.reason ||
+                    `Parallel double first-period conflict for task ${task.taskId}.`
+
+            };
+
+        }
+
+
+        // ----------------------------------------------------
+        // SECOND PERIOD
+        // ----------------------------------------------------
+
+        const secondCheck =
+            checkSingleSlotConflict(
+                task,
+                secondPeriod,
+                room,
+                indexes
+            );
+
+
+        if (
+            !secondCheck.valid
+        ) {
+
+            return {
+
+                placed: false,
+
+                entries: [],
+
+                reason:
+                    secondCheck.reason ||
+                    `Parallel double second-period conflict for task ${task.taskId}.`
+
+            };
+
+        }
+
+
+        // ----------------------------------------------------
+        // TEACHER DOUBLE-SESSION LIMITS
+        //
+        // A double counts as TWO teaching periods.
+        // ----------------------------------------------------
+
+        const teacherId =
+            normalizeTimetableId(
+                task.teacherId ??
+                task.teacher_id
+            );
+
+
+        if (
+            teacherId
+        ) {
+
+            const teacherLimits =
+                indexes.teacherLimits instanceof Map
+                    ? indexes.teacherLimits.get(
+                        teacherId
+                    )
+                    : null;
+
+
+            const maximumDailyLessons =
+                Number(
+                    teacherLimits?.maxLessonsPerDay
+                ) || 0;
+
+
+            const maximumWeeklyLessons =
+                Number(
+                    teacherLimits?.maxLessonsPerWeek
+                ) || 0;
+
+
+            // ------------------------------------------------
+            // DAILY
+            // ------------------------------------------------
+
+            const dayNumber =
+                Number(
+                    firstPeriod.dayNumber ??
+                    firstPeriod.day_number
+                );
+
+
+            if (
+                maximumDailyLessons > 0 &&
+                Number.isFinite(
+                    dayNumber
+                )
+            ) {
+
+                const currentDailyLessons =
+                    getTeacherDailyLessonCountFromPeriods(
+                        indexes,
+                        teacherId,
+                        dayNumber,
+                        indexes.periods
+                    );
+
+
+                if (
+                    currentDailyLessons + 2 >
+                    maximumDailyLessons
+                ) {
+
+                    return {
+
+                        placed: false,
+
+                        entries: [],
+
+                        reason:
+                            `Teacher would exceed the maximum of ${maximumDailyLessons} lessons per day for parallel double task ${task.taskId}.`
+
+                    };
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
+            // WEEKLY
+            // ------------------------------------------------
+
+            if (
+                maximumWeeklyLessons > 0
+            ) {
+
+                const currentWeeklyLessons =
+                    getTeacherWeeklyLessonCount(
+                        indexes,
+                        teacherId
+                    );
+
+
+                if (
+                    currentWeeklyLessons + 2 >
+                    maximumWeeklyLessons
+                ) {
+
+                    return {
+
+                        placed: false,
+
+                        entries: [],
+
+                        reason:
+                            `Teacher would exceed the maximum of ${maximumWeeklyLessons} lessons per week for parallel double task ${task.taskId}.`
+
+                    };
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
+            // CONSECUTIVE
+            // ------------------------------------------------
+
+            if (
+                wouldExceedTeacherConsecutiveLimit(
+                    task,
+                    [
+                        firstPeriod,
+                        secondPeriod
+                    ],
+                    indexes
+                )
+            ) {
+
+                return {
+
+                    placed: false,
+
+                    entries: [],
+
+                    reason:
+                        getTeacherConsecutiveConflictReason(
+                            task,
+                            indexes
+                        )
+
+                };
+
+            }
+
+        }
+
+
+        if (
+            roomId
+        ) {
+
+            roomsUsed.add(
+                roomId
+            );
+
+        }
+
+
+        validatedItems.push({
+
+            task,
+
+            candidate,
+
+            room,
+
+            roomId
+
+        });
+
+    }
+
+
+    // ========================================================
+    // RESERVE EVERYTHING
+    // ========================================================
+
+    const placedItems =
+        [];
+
+
+    const placedEntries =
+        [];
+
+
+    try {
+
+        for (
+            const item of validatedItems
+        ) {
+
+            const task =
+                item.task;
+
+
+            const room =
+                item.room;
+
+
+            // ------------------------------------------------
+            // FIRST PERIOD
+            // ------------------------------------------------
+
+            if (
+                !reserveSlot(
+                    task,
+                    firstPeriod,
+                    room,
+                    indexes
+                )
+            ) {
+
+                throw new Error(
+                    `Could not reserve first period for task ${task.taskId}.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // SECOND PERIOD
+            // ------------------------------------------------
+
+            if (
+                !reserveSlot(
+                    task,
+                    secondPeriod,
+                    room,
+                    indexes
+                )
+            ) {
+
+                throw new Error(
+                    `Could not reserve second period for task ${task.taskId}.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // CREATE ENTRIES
+            // ------------------------------------------------
+
+            const firstEntry =
+                createGeneratedEntry(
+                    task,
+                    firstPeriod,
+                    room
+                );
+
+
+            const secondEntry =
+                createGeneratedEntry(
+                    task,
+                    secondPeriod,
+                    room
+                );
+
+
+            if (
+                !firstEntry ||
+                !secondEntry
+            ) {
+
+                throw new Error(
+                    `Could not create generated entries for task ${task.taskId}.`
+                );
+
+            }
+
+
+            // ------------------------------------------------
+            // UPDATE TASK STATE
+            // ------------------------------------------------
+
+            task.placed =
+                true;
+
+
+            task.periodIds =
+                [
+                    firstPeriodId,
+                    secondPeriodId
+                ];
+
+
+            task.roomId =
+                item.roomId;
+
+
+            placedItems.push({
+
+                task,
+
+                candidate:
+                    item.candidate,
+
+                entries:
+                    [
+                        firstEntry,
+                        secondEntry
+                    ]
+
+            });
+
+
+            placedEntries.push(
+                firstEntry,
+                secondEntry
+            );
+
+        }
+
+
+        // ====================================================
+        // UPDATE SUBJECT / REQUIREMENT PERIOD INDEXES
+        // ====================================================
+
+        for (
+            const item of validatedItems
+        ) {
+
+            const task =
+                item.task;
+
+
+            const subjectId =
+                normalizeTimetableId(
+                    task.subjectId ??
+                    task.subject_id
+                );
+
+
+            const requirementId =
+                normalizeTimetableId(
+                    task.requirementId ??
+                    task.requirement_id
+                );
+
+
+            if (
+                subjectId &&
+                indexes.subjectPeriod instanceof Map
+            ) {
+
+                if (
+                    !indexes.subjectPeriod.has(
+                        subjectId
+                    )
+                ) {
+
+                    indexes.subjectPeriod.set(
+                        subjectId,
+                        new Set()
+                    );
+
+                }
+
+
+                indexes.subjectPeriod
+                    .get(
+                        subjectId
+                    )
+                    .add(
+                        firstPeriodId
+                    );
+
+
+                indexes.subjectPeriod
+                    .get(
+                        subjectId
+                    )
+                    .add(
+                        secondPeriodId
+                    );
+
+            }
+
+
+            if (
+                requirementId &&
+                indexes.requirementPeriod instanceof Map
+            ) {
+
+                if (
+                    !indexes.requirementPeriod.has(
+                        requirementId
+                    )
+                ) {
+
+                    indexes.requirementPeriod.set(
+                        requirementId,
+                        new Set()
+                    );
+
+                }
+
+
+                indexes.requirementPeriod
+                    .get(
+                        requirementId
+                    )
+                    .add(
+                        firstPeriodId
+                    );
+
+
+                indexes.requirementPeriod
+                    .get(
+                        requirementId
+                    )
+                    .add(
+                        secondPeriodId
+                    );
+
+            }
+
+        }
+
+
+    } catch (
+        error
+    ) {
+
+        // ====================================================
+        // ROLLBACK
+        // ====================================================
+
+        rollbackParallelUnitPlacements(
+            placedItems.map(
+                item => ({
+
+                    task:
+                        item.task,
+
+                    candidate:
+                        item.candidate,
+
+                    result: {
+
+                        placed:
+                            true,
+
+                        entries:
+                            item.entries
+
+                    }
+
+                })
+            ),
+            indexes
+        );
+
+
+        restoreParallelTaskSnapshots(
+            taskSnapshots
+        );
+
+
+        return {
+
+            placed: false,
+
+            entries: [],
+
+            reason:
+                error?.message ||
+                "Parallel double placement failed and was rolled back."
+
+        };
+
+    }
+
+
+    // ========================================================
+    // SUCCESS
+    // ========================================================
+
+    return {
+
+        placed: true,
+
+        entries:
+            placedEntries,
+
+        tasks:
+            placedItems.map(
+                item =>
+                    item.task
+            ),
+
+        results:
+            placedItems.map(
+                item => ({
+
+                    task:
+                        item.task,
+
+                    candidate:
+                        item.candidate,
+
+                    result: {
+
+                        placed:
+                            true,
+
+                        entries:
+                            item.entries
+
+                    }
+
+                })
+            ),
+
+        periodKey:
+            parallelCandidate.periodKey
+
+    };
+
+}
 
 
 // ============================================================
