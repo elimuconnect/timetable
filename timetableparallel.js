@@ -18962,27 +18962,7 @@ function getSmartCandidatePeriodKey(candidate) {
 
 
 
-// ============================================================
-// GET SCORED PARALLEL UNIT CANDIDATES
-// ============================================================
-//
-// A parallel unit contains ONLY tasks that share the same
-// parallelKey.
-//
-// Example:
-//
-// RE/GE/BS::S1
-//
-//     10A → RE
-//     10B → GE
-//     10C → BS
-//     10E → RE
-//
-// 10D is NOT in this unit.
-//
-// Therefore 10D remains completely independent.
-//
-// ============================================================
+
 
 function getScoredParallelUnitCandidates(
     unit,
@@ -19024,6 +19004,59 @@ function getScoredParallelUnitCandidates(
     }
 
 
+    console.log(
+        "STAGE 7 DEBUG: PARALLEL UNIT TASKS:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            taskCount:
+                tasks.length,
+
+            tasks:
+                tasks.map(
+                    task => ({
+                        taskId:
+                            task?.taskId ||
+                            task?.id,
+
+                        requirementId:
+                            task?.requirementId ||
+                            task?.requirement_id,
+
+                        subject:
+                            task?.subjectName ||
+                            task?.subject_name ||
+                            task?.subject?.subject_name ||
+                            null,
+
+                        subjectCode:
+                            task?.subjectCode ||
+                            task?.subject_code ||
+                            null,
+
+                        stream:
+                            task?.streamName ||
+                            task?.stream_name ||
+                            task?.stream?.stream_name ||
+                            null,
+
+                        placed:
+                            task?.placed,
+
+                        duration:
+                            task?.duration ??
+                            null,
+
+                        periodIds:
+                            task?.periodIds ||
+                            []
+                    })
+                )
+        }
+    );
+
+
     // ========================================================
     // GET SMART CANDIDATES FOR EVERY TASK
     // ========================================================
@@ -19044,10 +19077,88 @@ function getScoredParallelUnitCandidates(
             );
 
 
+        console.log(
+            "STAGE 7 DEBUG: SMART CANDIDATES FOR PARALLEL TASK:",
+            {
+                taskId:
+                    task?.taskId ||
+                    task?.id,
+
+                requirementId:
+                    task?.requirementId ||
+                    task?.requirement_id,
+
+                subject:
+                    task?.subjectName ||
+                    task?.subject_name ||
+                    null,
+
+                candidateCount:
+                    Array.isArray(
+                        candidates
+                    )
+                        ? candidates.length
+                        : 0,
+
+                candidatePeriods:
+                    Array.isArray(
+                        candidates
+                    )
+                        ? candidates
+                            .slice(
+                                0,
+                                30
+                            )
+                            .map(
+                                candidate => ({
+                                    periodKey:
+                                        getSmartCandidatePeriodKey(
+                                            candidate
+                                        ),
+
+                                    periodIds:
+                                        getSmartCandidatePeriodIds(
+                                            candidate
+                                        ),
+
+                                    score:
+                                        candidate?.score ??
+                                        null,
+
+                                    room:
+                                        candidate?.room?.id ||
+                                        candidate?.roomId ||
+                                        null
+                                })
+                            )
+                        : []
+            }
+        );
+
+
         if (
             !Array.isArray(candidates) ||
             candidates.length === 0
         ) {
+
+            console.error(
+                "STAGE 7 DEBUG: TASK HAS ZERO SMART CANDIDATES:",
+                {
+                    taskId:
+                        task?.taskId ||
+                        task?.id,
+
+                    requirementId:
+                        task?.requirementId ||
+                        task?.requirement_id,
+
+                    subject:
+                        task?.subjectName ||
+                        task?.subject_name ||
+                        null
+                }
+            );
+
 
             return [];
 
@@ -19066,17 +19177,13 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // BUILD MAP:
-    //
-    // period key
-    //      ↓
-    // candidates for that task
-    //
+    // BUILD PERIOD MAPS
     // ========================================================
 
     const periodMaps =
         taskCandidateSets.map(
             ({
+                task,
                 candidates
             }) => {
 
@@ -19126,6 +19233,24 @@ function getScoredParallelUnitCandidates(
                 );
 
 
+                console.log(
+                    "STAGE 7 DEBUG: PERIOD MAP:",
+                    {
+                        taskId:
+                            task?.taskId ||
+                            task?.id,
+
+                        periodCount:
+                            map.size,
+
+                        periods:
+                            Array.from(
+                                map.keys()
+                            )
+                    }
+                );
+
+
                 return map;
 
             }
@@ -19142,7 +19267,7 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // FIND PERIODS COMMON TO EVERY TASK
+    // FIND COMMON PERIODS
     // ========================================================
 
     const firstMap =
@@ -19181,7 +19306,60 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // BUILD FINAL SYNCHRONIZED CANDIDATES
+    // CRITICAL DIAGNOSTIC
+    // ========================================================
+
+    console.log(
+        "STAGE 7 DEBUG: PARALLEL COMMON PERIOD ANALYSIS:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            taskCount:
+                tasks.length,
+
+            taskPeriodCounts:
+                periodMaps.map(
+                    map =>
+                        map.size
+                ),
+
+            commonPeriodCount:
+                commonPeriodKeys.length,
+
+            commonPeriodKeys
+        }
+    );
+
+
+    if (
+        commonPeriodKeys.length === 0
+    ) {
+
+        console.error(
+            "STAGE 7 DEBUG: NO COMMON PERIOD EXISTS:",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                taskPeriods:
+                    periodMaps.map(
+                        map =>
+                            Array.from(
+                                map.keys()
+                            )
+                    )
+            }
+        );
+
+
+        return [];
+
+    }
+
+
+    // ========================================================
+    // BUILD SYNCHRONIZED CANDIDATES
     // ========================================================
 
     const synchronizedCandidates =
@@ -19230,11 +19408,6 @@ function getScoredParallelUnitCandidates(
 
                 }
 
-
-                // --------------------------------------------
-                // Best room/candidate for THIS task at the
-                // common synchronized period.
-                // --------------------------------------------
 
                 matchingCandidates.sort(
                     (
@@ -19304,10 +19477,6 @@ function getScoredParallelUnitCandidates(
     );
 
 
-    // ========================================================
-    // BEST COMMON PERIOD FIRST
-    // ========================================================
-
     synchronizedCandidates.sort(
         (
             a,
@@ -19337,9 +19506,28 @@ function getScoredParallelUnitCandidates(
     );
 
 
+    console.log(
+        "STAGE 7 DEBUG: FINAL SYNCHRONIZED CANDIDATES:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            count:
+                synchronizedCandidates.length,
+
+            periods:
+                synchronizedCandidates.map(
+                    candidate =>
+                        candidate.periodKey
+                )
+        }
+    );
+
+
     return synchronizedCandidates;
 
 }
+
 
 
 
