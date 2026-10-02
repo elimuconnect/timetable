@@ -14701,10 +14701,28 @@ function getScoredDoubleLessonCandidates(
         !data ||
         !indexes
     ) {
-
         return [];
-
     }
+
+    // ========================================================
+    // IDENTIFY PARALLEL GROUP
+    // ========================================================
+
+    const parallelGroup =
+        normalizeParallelGroup(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+    const parallelKey =
+        task.parallelKey ??
+        task.parallel_key ??
+        null;
+
+    const normalizedParallelKey =
+        parallelKey
+            ? String(parallelKey).trim().toLowerCase()
+            : null;
 
 
     // ========================================================
@@ -14719,18 +14737,243 @@ function getScoredDoubleLessonCandidates(
         );
 
 
-    // ========================================================
-    // CONSECUTIVE PAIRS
-    // ========================================================
-
     const pairs =
         getConsecutiveTeachingPeriodPairs(
             teachingPeriods
         );
 
 
+    if (
+        pairs.length === 0
+    ) {
+        return [];
+    }
+
+
+    // ========================================================
+    // NORMAL DOUBLE LESSON
+    // ========================================================
+    //
+    // If this task is NOT parallel, preserve the existing
+    // single-task double-lesson behaviour.
+    //
+    // ========================================================
+
+    if (!parallelGroup) {
+
+        console.log(
+            "STAGE 7 DEBUG: NORMAL DOUBLE CANDIDATE SEARCH:",
+            {
+                taskId:
+                    task.taskId,
+
+                requirementId:
+                    task.requirementId,
+
+                subject:
+                    task.subjectName ??
+                    task.subject_name ??
+                    null,
+
+                pairCount:
+                    pairs.length
+            }
+        );
+
+
+        const compatibleRooms =
+            getCompatibleRooms(
+                task,
+                Array.isArray(data.rooms)
+                    ? data.rooms
+                    : []
+            );
+
+
+        if (
+            task.requiresRoom &&
+            compatibleRooms.length === 0
+        ) {
+
+            console.error(
+                "STAGE 7 DEBUG: DOUBLE TASK HAS NO COMPATIBLE ROOMS:",
+                {
+                    taskId:
+                        task.taskId,
+
+                    requirementId:
+                        task.requirementId,
+
+                    roomType:
+                        task.roomType,
+
+                    roomTypeId:
+                        task.roomTypeId
+                }
+            );
+
+            return [];
+        }
+
+
+        const candidateRooms =
+            task.requiresRoom
+                ? compatibleRooms
+                : [null];
+
+
+        const candidates = [];
+
+
+        pairs.forEach(
+            (
+                pair,
+                pairIndex
+            ) => {
+
+                if (
+                    !pair ||
+                    !pair.first ||
+                    !pair.second
+                ) {
+                    return;
+                }
+
+
+                candidateRooms.forEach(
+                    room => {
+
+                        const firstCheck =
+                            checkSingleSlotConflict(
+                                task,
+                                pair.first,
+                                room,
+                                indexes
+                            );
+
+
+                        if (
+                            !firstCheck ||
+                            !firstCheck.valid
+                        ) {
+                            return;
+                        }
+
+
+                        const conflict =
+                            checkDoubleLessonConflict(
+                                task,
+                                pair.first,
+                                pair.second,
+                                room,
+                                indexes
+                            );
+
+
+                        if (
+                            !conflict ||
+                            !conflict.valid
+                        ) {
+                            return;
+                        }
+
+
+                        const scoring =
+                            calculateDoubleLessonCandidateScore(
+                                task,
+                                pair.first,
+                                pair.second,
+                                room,
+                                data,
+                                indexes
+                            );
+
+
+                        candidates.push({
+
+                            task,
+
+                            firstPeriod:
+                                pair.first,
+
+                            secondPeriod:
+                                pair.second,
+
+                            periodIds:
+                                [
+                                    pair.first.id,
+                                    pair.second.id
+                                ],
+
+                            periodKey:
+                                `${pair.first.id}__${pair.second.id}`,
+
+                            room,
+
+                            roomId:
+                                room?.id ??
+                                null,
+
+                            score:
+                                Number(
+                                    scoring?.score
+                                ) || 0,
+
+                            reasons:
+                                Array.isArray(
+                                    scoring?.reasons
+                                )
+                                    ? scoring.reasons
+                                    : [],
+
+                            conflict:
+                                {
+                                    valid:
+                                        true,
+
+                                    reason:
+                                        ""
+                                },
+
+                            parallelUnit:
+                                false
+
+                        });
+
+                    }
+                );
+
+            }
+        );
+
+
+        candidates.sort(
+            (a, b) =>
+                (Number(b.score) || 0) -
+                (Number(a.score) || 0)
+        );
+
+
+        return candidates;
+    }
+
+
+    // ========================================================
+    // PARALLEL DOUBLE LESSON
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // A parallel double is NOT allowed to select its two
+    // periods independently for each task.
+    //
+    // Every member of the parallel unit must use the SAME
+    // consecutive pair.
+    //
+    // ========================================================
+
     console.log(
-        "STAGE 7 DEBUG: DOUBLE TASK CANDIDATE ANALYSIS:",
+        "STAGE 7 DEBUG: PARALLEL DOUBLE UNIT SEARCH:",
         {
             taskId:
                 task.taskId,
@@ -14739,24 +14982,13 @@ function getScoredDoubleLessonCandidates(
                 task.requirementId,
 
             subject:
-                task.subjectName ||
-                task.subject_name ||
+                task.subjectName ??
+                task.subject_name ??
                 null,
 
-            streamId:
-                task.streamId,
+            parallelGroup,
 
-            teacherId:
-                task.teacherId,
-
-            parallelGroup:
-                task.parallelGroup,
-
-            parallelKey:
-                task.parallelKey,
-
-            taskType:
-                task.taskType,
+            parallelKey,
 
             pairCount:
                 pairs.length
@@ -14764,35 +14996,108 @@ function getScoredDoubleLessonCandidates(
     );
 
 
-    if (
-        pairs.length === 0
-    ) {
-
-        return [];
-
-    }
-
-
     // ========================================================
-    // COMPATIBLE ROOMS
+    // FIND AUTHORITATIVE PARALLEL TASKS
     // ========================================================
 
-    const compatibleRooms =
-        getCompatibleRooms(
-            task,
-            Array.isArray(data.rooms)
-                ? data.rooms
-                : []
+    const allTasks =
+        Array.isArray(
+            generatorData?.lessonTasks
+        )
+            ? generatorData.lessonTasks
+            : [];
+
+
+    const normalizedTaskParallelGroup =
+        normalizeParallelGroup(
+            task.parallelGroup ??
+            task.parallel_group
         );
 
 
+    const unitTasks =
+        allTasks.filter(
+            candidateTask => {
+
+                if (
+                    !candidateTask
+                ) {
+                    return false;
+                }
+
+
+                const candidateGroup =
+                    normalizeParallelGroup(
+                        candidateTask.parallelGroup ??
+                        candidateTask.parallel_group
+                    );
+
+
+                if (
+                    !candidateGroup ||
+                    candidateGroup !==
+                        normalizedTaskParallelGroup
+                ) {
+                    return false;
+                }
+
+
+                if (
+                    normalizedParallelKey
+                ) {
+
+                    const candidateKey =
+                        candidateTask.parallelKey ??
+                        candidateTask.parallel_key ??
+                        null;
+
+
+                    if (
+                        !candidateKey ||
+                        String(candidateKey)
+                            .trim()
+                            .toLowerCase() !==
+                            normalizedParallelKey
+                    ) {
+                        return false;
+                    }
+                }
+
+
+                // Only double tasks belong in the double unit.
+                const candidateType =
+                    String(
+                        candidateTask.taskType ??
+                        candidateTask.task_type ??
+                        ""
+                    ).toLowerCase();
+
+
+                return (
+                    candidateType === "double" ||
+                    candidateTask.isDouble === true ||
+                    candidateTask.is_double === true
+                );
+
+            }
+        );
+
+
+    // ========================================================
+    // FALLBACK
+    // ========================================================
+    //
+    // If authoritative lessonTasks did not contain the unit,
+    // do NOT accidentally synchronize unrelated tasks.
+    //
+    // ========================================================
+
     if (
-        task.requiresRoom &&
-        compatibleRooms.length === 0
+        unitTasks.length < 2
     ) {
 
-        console.error(
-            "STAGE 7 DEBUG: DOUBLE TASK HAS NO COMPATIBLE ROOMS:",
+        console.warn(
+            "STAGE 7 DEBUG: PARALLEL DOUBLE UNIT NOT FOUND:",
             {
                 taskId:
                     task.taskId,
@@ -14800,35 +15105,133 @@ function getScoredDoubleLessonCandidates(
                 requirementId:
                     task.requirementId,
 
-                requiresRoom:
-                    task.requiresRoom,
+                parallelGroup,
 
-                roomType:
-                    task.roomType,
+                parallelKey,
 
-                roomTypeId:
-                    task.roomTypeId
+                unitTaskCount:
+                    unitTasks.length
             }
         );
 
-        return [];
 
+        return [];
     }
 
 
-    const candidateRooms =
-        task.requiresRoom
-            ? compatibleRooms
-            : [null];
+    // ========================================================
+    // ENSURE CURRENT TASK IS IN UNIT
+    // ========================================================
+
+    const currentTaskId =
+        task.taskId ??
+        task.id ??
+        null;
+
+
+    const currentTaskExists =
+        unitTasks.some(
+            unitTask =>
+                String(
+                    unitTask.taskId ??
+                    unitTask.id ??
+                    ""
+                ) ===
+                String(
+                    currentTaskId ??
+                    ""
+                )
+        );
+
+
+    if (
+        !currentTaskExists
+    ) {
+        unitTasks.push(task);
+    }
+
+
+    // Remove duplicate task IDs.
+    const uniqueUnitTasks = [];
+
+
+    const seenTaskIds =
+        new Set();
+
+
+    unitTasks.forEach(
+        unitTask => {
+
+            const unitTaskId =
+                unitTask.taskId ??
+                unitTask.id ??
+                null;
+
+
+            const key =
+                unitTaskId
+                    ? String(unitTaskId)
+                    : `${unitTask.requirementId}__${unitTask.streamId}`;
+
+
+            if (
+                seenTaskIds.has(key)
+            ) {
+                return;
+            }
+
+
+            seenTaskIds.add(key);
+
+            uniqueUnitTasks.push(
+                unitTask
+            );
+
+        }
+    );
+
+
+    console.log(
+        "STAGE 7 DEBUG: PARALLEL DOUBLE UNIT TASKS:",
+        uniqueUnitTasks.map(
+            unitTask => ({
+                taskId:
+                    unitTask.taskId,
+
+                requirementId:
+                    unitTask.requirementId,
+
+                streamId:
+                    unitTask.streamId,
+
+                subject:
+                    unitTask.subjectName ??
+                    unitTask.subject_name ??
+                    null,
+
+                teacherId:
+                    unitTask.teacherId ??
+                    unitTask.teacher_id ??
+                    null,
+
+                parallelGroup:
+                    unitTask.parallelGroup ??
+                    unitTask.parallel_group,
+
+                parallelKey:
+                    unitTask.parallelKey ??
+                    unitTask.parallel_key
+            })
+        )
+    );
 
 
     // ========================================================
-    // TEST EACH PAIR
+    // TEST EVERY COMMON PAIR
     // ========================================================
 
-    const candidates = [];
+    const synchronizedCandidates = [];
 
-    let pairRejected = 0;
 
     const rejectionReasons =
         new Map();
@@ -14845,38 +15248,73 @@ function getScoredDoubleLessonCandidates(
                 !pair.first ||
                 !pair.second
             ) {
-
                 return;
-
             }
 
 
-            let pairAccepted =
-                false;
+            const memberCandidates = [];
 
 
-            let firstCheckReason =
-                null;
+            let pairValid = true;
 
 
-            let finalCheckReasons =
-                [];
+            let pairFailureReason =
+                "";
 
 
             // =================================================
-            // TEST EACH ROOM
+            // EVERY MEMBER MUST ACCEPT THE SAME PAIR
             // =================================================
 
-            candidateRooms.forEach(
-                room => {
+            for (
+                const unitTask
+                of uniqueUnitTasks
+            ) {
 
-                    // =========================================
-                    // CHECK FIRST PERIOD DIRECTLY
-                    // =========================================
+                const compatibleRooms =
+                    getCompatibleRooms(
+                        unitTask,
+                        Array.isArray(data.rooms)
+                            ? data.rooms
+                            : []
+                    );
+
+
+                if (
+                    unitTask.requiresRoom &&
+                    compatibleRooms.length === 0
+                ) {
+
+                    pairValid = false;
+
+                    pairFailureReason =
+                        `No compatible room for task ${unitTask.taskId}.`;
+
+                    break;
+                }
+
+
+                const candidateRooms =
+                    unitTask.requiresRoom
+                        ? compatibleRooms
+                        : [null];
+
+
+                const taskCandidates = [];
+
+
+                for (
+                    const room
+                    of candidateRooms
+                ) {
+
+                    // -----------------------------------------
+                    // FIRST PERIOD
+                    // -----------------------------------------
 
                     const firstCheck =
                         checkSingleSlotConflict(
-                            task,
+                            unitTask,
                             pair.first,
                             room,
                             indexes
@@ -14887,24 +15325,17 @@ function getScoredDoubleLessonCandidates(
                         !firstCheck ||
                         !firstCheck.valid
                     ) {
-
-                        firstCheckReason =
-                            firstCheck?.reason ||
-                            "First period rejected by checkSingleSlotConflict().";
-
-
-                        return;
-
+                        continue;
                     }
 
 
-                    // =========================================
-                    // CHECK COMPLETE DOUBLE
-                    // =========================================
+                    // -----------------------------------------
+                    // COMPLETE DOUBLE
+                    // -----------------------------------------
 
-                    const conflict =
+                    const doubleCheck =
                         checkDoubleLessonConflict(
-                            task,
+                            unitTask,
                             pair.first,
                             pair.second,
                             room,
@@ -14913,28 +15344,16 @@ function getScoredDoubleLessonCandidates(
 
 
                     if (
-                        !conflict ||
-                        !conflict.valid
+                        !doubleCheck ||
+                        !doubleCheck.valid
                     ) {
-
-                        finalCheckReasons.push(
-                            conflict?.reason ||
-                            "checkDoubleLessonConflict() rejected the pair."
-                        );
-
-
-                        return;
-
+                        continue;
                     }
 
 
-                    // =========================================
-                    // SCORE
-                    // =========================================
-
                     const scoring =
                         calculateDoubleLessonCandidateScore(
-                            task,
+                            unitTask,
                             pair.first,
                             pair.second,
                             room,
@@ -14943,9 +15362,10 @@ function getScoredDoubleLessonCandidates(
                         );
 
 
-                    candidates.push({
+                    taskCandidates.push({
 
-                        task,
+                        task:
+                            unitTask,
 
                         firstPeriod:
                             pair.first,
@@ -14965,7 +15385,7 @@ function getScoredDoubleLessonCandidates(
                         room,
 
                         roomId:
-                            room?.id ||
+                            room?.id ??
                             null,
 
                         score:
@@ -14978,25 +15398,45 @@ function getScoredDoubleLessonCandidates(
                                 scoring?.reasons
                             )
                                 ? scoring.reasons
-                                : [],
-
-                        conflict:
-                            {
-                                valid:
-                                    true,
-
-                                reason:
-                                    ""
-                            }
+                                : []
 
                     });
 
-
-                    pairAccepted =
-                        true;
-
                 }
-            );
+
+
+                // ---------------------------------------------
+                // THIS MEMBER CANNOT USE THE PAIR
+                // ---------------------------------------------
+
+                if (
+                    taskCandidates.length === 0
+                ) {
+
+                    pairValid = false;
+
+
+                    pairFailureReason =
+                        `Task ${unitTask.taskId} cannot use ${pair.first.id} + ${pair.second.id}.`;
+
+
+                    break;
+                }
+
+
+                // Keep the best room for this member.
+                taskCandidates.sort(
+                    (a, b) =>
+                        (Number(b.score) || 0) -
+                        (Number(a.score) || 0)
+                );
+
+
+                memberCandidates.push(
+                    taskCandidates[0]
+                );
+
+            }
 
 
             // =================================================
@@ -15004,119 +15444,155 @@ function getScoredDoubleLessonCandidates(
             // =================================================
 
             if (
-                !pairAccepted
+                !pairValid
             ) {
 
-                pairRejected++;
-
-
-                let reason =
-                    finalCheckReasons.length > 0
-                        ? finalCheckReasons[0]
-                        : firstCheckReason ||
-                          "Unknown rejection reason.";
-
-
                 rejectionReasons.set(
-                    reason,
+                    pairFailureReason,
                     (
                         rejectionReasons.get(
-                            reason
+                            pairFailureReason
                         ) || 0
                     ) + 1
                 );
 
 
                 console.warn(
-                    "STAGE 7 DEBUG: DOUBLE PAIR REJECTED:",
+                    "STAGE 7 DEBUG: PARALLEL DOUBLE PAIR REJECTED:",
                     {
-
-                        taskId:
-                            task.taskId,
-
-                        requirementId:
-                            task.requirementId,
-
                         pairIndex,
 
                         firstPeriod:
-                            {
-                                id:
-                                    pair.first.id,
-
-                                day:
-                                    pair.first.dayName ??
-                                    pair.first.day_name ??
-                                    pair.first.dayNumber ??
-                                    pair.first.day_number,
-
-                                period:
-                                    pair.first.periodNumber ??
-                                    pair.first.period_number ??
-                                    pair.first.periodOrder ??
-                                    pair.first.period_order,
-
-                                name:
-                                    pair.first.periodName ??
-                                    pair.first.period_name ??
-                                    null
-                            },
+                            pair.first.id,
 
                         secondPeriod:
-                            {
-                                id:
-                                    pair.second.id,
+                            pair.second.id,
 
-                                day:
-                                    pair.second.dayName ??
-                                    pair.second.day_name ??
-                                    pair.second.dayNumber ??
-                                    pair.second.day_number,
-
-                                period:
-                                    pair.second.periodNumber ??
-                                    pair.second.period_number ??
-                                    pair.second.periodOrder ??
-                                    pair.second.period_order,
-
-                                name:
-                                    pair.second.periodName ??
-                                    pair.second.period_name ??
-                                    null
-                            },
-
-                        firstCheckReason,
-
-                        finalCheckReasons,
-
-                        selectedReason:
-                            reason
-
+                        reason:
+                            pairFailureReason
                     }
                 );
 
+
+                return;
             }
+
+
+            // =================================================
+            // COMPLETE SYNCHRONIZED UNIT FOUND
+            // =================================================
+
+            const totalScore =
+                memberCandidates.reduce(
+                    (
+                        total,
+                        candidate
+                    ) =>
+                        total +
+                        (
+                            Number(
+                                candidate.score
+                            ) || 0
+                        ),
+                    0
+                );
+
+
+            synchronizedCandidates.push({
+
+                // Current task remains available to the caller.
+                task,
+
+                firstPeriod:
+                    pair.first,
+
+                secondPeriod:
+                    pair.second,
+
+                periodIds:
+                    [
+                        pair.first.id,
+                        pair.second.id
+                    ],
+
+                periodKey:
+                    `${pair.first.id}__${pair.second.id}`,
+
+                room:
+                    memberCandidates.find(
+                        candidate =>
+                            String(
+                                candidate.task?.taskId ??
+                                ""
+                            ) ===
+                            String(
+                                task.taskId ??
+                                ""
+                            )
+                    )?.room ??
+                    null,
+
+                roomId:
+                    memberCandidates.find(
+                        candidate =>
+                            String(
+                                candidate.task?.taskId ??
+                                ""
+                            ) ===
+                            String(
+                                task.taskId ??
+                                ""
+                            )
+                    )?.roomId ??
+                    null,
+
+                score:
+                    totalScore,
+
+                reasons:
+                    [
+                        "Synchronized parallel double candidate.",
+
+                        `Parallel group: ${parallelGroup}`,
+
+                        `Unit members: ${uniqueUnitTasks.length}`,
+
+                        `Common pair: ${pair.first.id} + ${pair.second.id}`
+                    ],
+
+                conflict:
+                    {
+                        valid:
+                            true,
+
+                        reason:
+                            ""
+                    },
+
+                parallelUnit:
+                    true,
+
+                parallelGroup,
+
+                parallelKey,
+
+                parallelUnitTasks:
+                    memberCandidates
+
+            });
 
         }
     );
 
 
     // ========================================================
-    // SORT
+    // SORT COMMON PAIRS
     // ========================================================
 
-    candidates.sort(
-        (
-            a,
-            b
-        ) => {
-
-            return (
-                (Number(b.score) || 0) -
-                (Number(a.score) || 0)
-            );
-
-        }
+    synchronizedCandidates.sort(
+        (a, b) =>
+            (Number(b.score) || 0) -
+            (Number(a.score) || 0)
     );
 
 
@@ -15125,7 +15601,7 @@ function getScoredDoubleLessonCandidates(
     // ========================================================
 
     console.log(
-        "STAGE 7 DEBUG: DOUBLE CANDIDATE SUMMARY:",
+        "STAGE 7 DEBUG: PARALLEL DOUBLE CANDIDATE SUMMARY:",
         {
 
             taskId:
@@ -15134,20 +15610,18 @@ function getScoredDoubleLessonCandidates(
             requirementId:
                 task.requirementId,
 
-            parallelGroup:
-                task.parallelGroup,
+            parallelGroup,
 
-            parallelKey:
-                task.parallelKey,
+            parallelKey,
+
+            unitTaskCount:
+                uniqueUnitTasks.length,
 
             totalPairs:
                 pairs.length,
 
-            rejectedPairs:
-                pairRejected,
-
-            acceptedCandidates:
-                candidates.length,
+            synchronizedPairs:
+                synchronizedCandidates.length,
 
             rejectionReasons:
                 Array.from(
@@ -15164,156 +15638,59 @@ function getScoredDoubleLessonCandidates(
                     })
                 ),
 
-            candidatePeriods:
-                candidates
-                    .slice(
-                        0,
-                        30
-                    )
+            candidates:
+                synchronizedCandidates
+                    .slice(0, 30)
                     .map(
                         candidate => ({
+                            periodKey:
+                                candidate.periodKey,
+
                             firstPeriod:
                                 candidate.firstPeriod?.id,
 
                             secondPeriod:
                                 candidate.secondPeriod?.id,
 
-                            periodKey:
-                                candidate.periodKey,
-
                             score:
                                 candidate.score,
 
-                            roomId:
-                                candidate.roomId
+                            unitMembers:
+                                candidate.parallelUnitTasks?.map(
+                                    member => ({
+                                        taskId:
+                                            member.task?.taskId,
+
+                                        roomId:
+                                            member.roomId
+                                    })
+                                )
                         })
                     )
-
         }
     );
 
-console.table(
-    Array.from(
-        rejectionReasons.entries()
-    ).map(
-        (
-            [
-                reason,
-                count
-            ]
-        ) => ({
-            reason,
-            count
-        })
-    )
-);
-
-console.log(
-    "STAGE 7 DEBUG: ALL DOUBLE REJECTION DETAILS:",
-    {
-        taskId:
-            task.taskId,
-
-        requirementId:
-            task.requirementId,
-
-        parallelGroup:
-            task.parallelGroup,
-
-        parallelKey:
-            task.parallelKey,
-
-        totalPairs:
-            pairs.length,
-
-        acceptedCandidates:
-            candidates.length,
-
-        rejectionReasons:
-            Array.from(
-                rejectionReasons.entries()
-            ).map(
-                (
-                    [
-                        reason,
-                        count
-                    ]
-                ) => ({
-                    reason,
-                    count
-                })
-            )
-    }
-);
 
     console.table(
-    Array.from(
-        rejectionReasons.entries()
-    ).map(
-        (
-            [
-                reason,
-                count
-            ]
-        ) => ({
-            reason,
-            count
-        })
-    )
-);
-
-console.log(
-    "STAGE 7 DEBUG: ALL DOUBLE REJECTION DETAILS:",
-    {
-        taskId:
-            task.taskId,
-
-        requirementId:
-            task.requirementId,
-
-        parallelGroup:
-            task.parallelGroup,
-
-        parallelKey:
-            task.parallelKey,
-
-        totalPairs:
-            pairs.length,
-
-        acceptedCandidates:
-            candidates.length,
-
-        rejectionReasons:
-            Array.from(
-                rejectionReasons.entries()
-            ).map(
-                (
-                    [
-                        reason,
-                        count
-                    ]
-                ) => ({
+        Array.from(
+            rejectionReasons.entries()
+        ).map(
+            (
+                [
                     reason,
                     count
-                })
-            )
-    }
-);
-    
-    // ========================================================
-    // IMPORTANT
-    // ========================================================
-    //
-    // This diagnostic version does NOT weaken any constraint.
-    //
-    // It only tells us WHY each pair was rejected.
-    //
-    // ========================================================
+                ]
+            ) => ({
+                reason,
+                count
+            })
+        )
+    );
 
-    return candidates;
+
+    return synchronizedCandidates;
 
 }
-
 // ============================================================
 // GET BEST DOUBLE LESSON CANDIDATE
 // ============================================================
