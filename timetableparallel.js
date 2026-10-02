@@ -29200,8 +29200,30 @@ function getStage7ParallelUnitCandidates(
 }
 
 
+
+
 // ================================================================
-// STAGE 7 — MOVE COMPLETE PARALLEL UNIT
+// STAGE 7 — ATTEMPT PARALLEL UNIT RELOCATION / PLACEMENT
+// ================================================================
+//
+// Handles TWO cases:
+//
+// 1. COMPLETE/PARTIAL UNIT IS CURRENTLY PLACED
+//    → release the unit
+//    → find a new synchronized location
+//    → place the whole unit
+//
+// 2. COMPLETE UNIT IS CURRENTLY UNPLACED
+//    → DO NOT attempt release
+//    → find a synchronized location directly
+//    → place the whole unit
+//
+// This is important for failed parallel units such as:
+//
+//     BIO/PHY::D1
+//
+// where Biology and Physics both failed during the original
+// generation and therefore have nothing to release.
 // ================================================================
 
 function attemptStage7ParallelUnitRelocation(
@@ -29215,29 +29237,49 @@ function attemptStage7ParallelUnitRelocation(
     ) {
 
         return {
+
             repaired: false,
+
             entries: [],
-            moved: []
-        };
 
-    }
+            moved: false,
 
+            reason:
+                "Invalid task or generator data."
 
-    if (
-        !isStage7ParallelTask(task)
-    ) {
-
-        return {
-            repaired: false,
-            entries: [],
-            moved: []
         };
 
     }
 
 
     // ============================================================
-    // FIND THE COMPLETE UNIT
+    // VERIFY THIS IS A PARALLEL TASK
+    // ============================================================
+
+    if (
+        !isStage7ParallelTask(
+            task
+        )
+    ) {
+
+        return {
+
+            repaired: false,
+
+            entries: [],
+
+            moved: false,
+
+            reason:
+                "Task is not a parallel task."
+
+        };
+
+    }
+
+
+    // ============================================================
+    // GET THE COMPLETE PARALLEL UNIT
     // ============================================================
 
     const unit =
@@ -29249,19 +29291,40 @@ function attemptStage7ParallelUnitRelocation(
 
     if (
         !unit ||
+        !Array.isArray(
+            unit.tasks
+        ) ||
         unit.tasks.length < 2
     ) {
 
-        console.warn(
-            "STAGE 7: Could not build complete parallel unit:",
-            task?.taskId
+        console.error(
+            "STAGE 7: Could not resolve complete parallel unit:",
+            {
+                taskId:
+                    task.taskId ||
+                    task.id,
+
+                parallelKey:
+                    task.parallelKey ??
+                    task.parallel_key ??
+                    null,
+
+                unit
+            }
         );
 
 
         return {
+
             repaired: false,
+
             entries: [],
-            moved: []
+
+            moved: false,
+
+            reason:
+                "Complete parallel unit could not be resolved."
+
         };
 
     }
@@ -29272,20 +29335,505 @@ function attemptStage7ParallelUnitRelocation(
         {
             parallelKey:
                 unit.parallelKey,
+
             parallelGroup:
                 unit.parallelGroup,
+
             taskIds:
                 unit.tasks.map(
                     item =>
-                        item.taskId
+                        item?.taskId ||
+                        item?.id
                 )
         }
     );
 
 
     // ============================================================
-    // SAVE ORIGINAL STATE
+    // DETERMINE CURRENT PLACEMENT STATE
     // ============================================================
+
+    const placedItems =
+        getStage7PlacedParallelUnitTasks(
+            unit,
+            generatorData
+        );
+
+
+    console.log(
+        "STAGE 7: Parallel unit current placement:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            totalUnitTasks:
+                unit.tasks.length,
+
+            placedItems:
+                placedItems.length,
+
+            placedTaskIds:
+                placedItems.map(
+                    item =>
+                        item?.task?.taskId ||
+                        item?.task?.id
+                ),
+
+            unitTaskIds:
+                unit.tasks.map(
+                    item =>
+                        item?.taskId ||
+                        item?.id
+                )
+        }
+    );
+
+
+    // ============================================================
+    // CASE A:
+    //
+    // NO MEMBERS ARE CURRENTLY PLACED.
+    //
+    // This is the BIO/PHY::D1 situation.
+    //
+    // There is NOTHING to release.
+    //
+    // We must directly search for a common synchronized period.
+    // ============================================================
+
+    if (
+        placedItems.length === 0
+    ) {
+
+        console.log(
+            "STAGE 7: Parallel unit is completely unplaced.",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                action:
+                    "Direct synchronized placement"
+            }
+        );
+
+
+        // --------------------------------------------------------
+        // Make sure every task in the unit is actually unplaced.
+        // --------------------------------------------------------
+
+        const alreadyPlacedTasks =
+            unit.tasks.filter(
+                unitTask =>
+                    unitTask &&
+                    unitTask.placed
+            );
+
+
+        if (
+            alreadyPlacedTasks.length > 0
+        ) {
+
+            console.error(
+                "STAGE 7: Unit reports zero placedItems but contains tasks marked placed:",
+                {
+                    parallelKey:
+                        unit.parallelKey,
+
+                    taskIds:
+                        alreadyPlacedTasks.map(
+                            unitTask =>
+                                unitTask.taskId ||
+                                unitTask.id
+                        )
+                }
+            );
+
+
+            return {
+
+                repaired: false,
+
+                entries: [],
+
+                moved: false,
+
+                reason:
+                    "Parallel unit placement state is inconsistent."
+
+            };
+
+        }
+
+
+        // --------------------------------------------------------
+        // Find synchronized candidates.
+        //
+        // This uses the existing candidate engine, which requires
+        // ALL tasks in the unit to be able to use the same period
+        // pattern.
+        // --------------------------------------------------------
+
+        const candidates =
+            getStage7ParallelUnitCandidates(
+                unit,
+                generatorData,
+                generatorData.indexes
+            );
+
+
+        console.log(
+            "STAGE 7: Unplaced parallel unit candidates:",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                candidateCount:
+                    Array.isArray(
+                        candidates
+                    )
+                        ? candidates.length
+                        : 0,
+
+                candidatePeriods:
+                    Array.isArray(
+                        candidates
+                    )
+                        ? candidates
+                            .slice(
+                                0,
+                                10
+                            )
+                            .map(
+                                candidate =>
+                                    candidate?.periodKey
+                            )
+                        : []
+            }
+        );
+
+
+        if (
+            !Array.isArray(
+                candidates
+            ) ||
+            candidates.length === 0
+        ) {
+
+            console.warn(
+                "STAGE 7: No synchronized placement candidates found for unplaced parallel unit:",
+                {
+                    parallelKey:
+                        unit.parallelKey,
+
+                    taskIds:
+                        unit.tasks.map(
+                            item =>
+                                item?.taskId ||
+                                item?.id
+                        )
+                }
+            );
+
+
+            return {
+
+                repaired: false,
+
+                entries: [],
+
+                moved: false,
+
+                reason:
+                    "No synchronized placement candidates were available."
+
+            };
+
+        }
+
+
+        // --------------------------------------------------------
+        // Try synchronized candidates.
+        // --------------------------------------------------------
+
+        for (
+            const parallelCandidate of
+            candidates
+        ) {
+
+            if (
+                !parallelCandidate
+            ) {
+                continue;
+            }
+
+
+            console.log(
+                "STAGE 7: Trying synchronized placement for unplaced unit:",
+                {
+                    parallelKey:
+                        unit.parallelKey,
+
+                    periodKey:
+                        parallelCandidate.periodKey,
+
+                    score:
+                        parallelCandidate.score
+                }
+            );
+
+
+            const result =
+                placeSelectedParallelUnit(
+                    unit,
+                    parallelCandidate,
+                    generatorData.indexes
+                );
+
+
+            if (
+                !result ||
+                !result.placed
+            ) {
+
+                console.warn(
+                    "STAGE 7: Synchronized placement candidate failed:",
+                    {
+                        parallelKey:
+                            unit.parallelKey,
+
+                        periodKey:
+                            parallelCandidate.periodKey,
+
+                        reason:
+                            result?.reason ||
+                            "Unknown placement failure."
+                    }
+                );
+
+
+                continue;
+
+            }
+
+
+            // ----------------------------------------------------
+            // SUCCESS
+            //
+            // Add every successfully placed task to
+            // generatorData.placedTasks.
+            // ----------------------------------------------------
+
+            const successfulTasks =
+                Array.isArray(
+                    result.tasks
+                )
+                    ? result.tasks
+                    : unit.tasks;
+
+
+            successfulTasks.forEach(
+                placedTask => {
+
+                    if (
+                        !placedTask
+                    ) {
+                        return;
+                    }
+
+
+                    const placedTaskId =
+                        normalizeTimetableId(
+                            placedTask?.taskId ??
+                            placedTask?.task_id ??
+                            placedTask?.id
+                        );
+
+
+                    if (
+                        !placedTaskId
+                    ) {
+                        return;
+                    }
+
+
+                    const alreadyTracked =
+                        generatorData.placedTasks.some(
+                            item => {
+
+                                const itemTask =
+                                    item?.task ||
+                                    item;
+
+                                const itemTaskId =
+                                    normalizeTimetableId(
+                                        itemTask?.taskId ??
+                                        itemTask?.task_id ??
+                                        itemTask?.id
+                                    );
+
+
+                                return (
+                                    itemTaskId &&
+                                    itemTaskId ===
+                                    placedTaskId
+                                );
+
+                            }
+                        );
+
+
+                    if (
+                        alreadyTracked
+                    ) {
+                        return;
+                    }
+
+
+                    const taskResult =
+                        Array.isArray(
+                            result.results
+                        )
+                            ? result.results.find(
+                                item =>
+                                    normalizeTimetableId(
+                                        item?.task?.taskId ??
+                                        item?.task?.task_id ??
+                                        item?.task?.id
+                                    ) ===
+                                    placedTaskId
+                            )
+                            : null;
+
+
+                    generatorData.placedTasks.push({
+
+                        task:
+                            placedTask,
+
+                        entries:
+                            Array.isArray(
+                                taskResult?.result?.entries
+                            )
+                                ? [
+                                    ...taskResult.result.entries
+                                ]
+                                : [],
+
+                        candidate:
+                            taskResult?.candidate ||
+                            null
+
+                    });
+
+                }
+            );
+
+
+            console.log(
+                "STAGE 7: COMPLETE UNPLACED PARALLEL UNIT PLACED:",
+                {
+                    parallelKey:
+                        unit.parallelKey,
+
+                    periodKey:
+                        result.periodKey ||
+                        parallelCandidate.periodKey,
+
+                    taskIds:
+                        successfulTasks.map(
+                            placedTask =>
+                                placedTask?.taskId ||
+                                placedTask?.id
+                        )
+                }
+            );
+
+
+            return {
+
+                repaired: true,
+
+                entries:
+                    Array.isArray(
+                        result.entries
+                    )
+                        ? result.entries
+                        : [],
+
+                moved: false,
+
+                unitPlaced: true,
+
+                parallelKey:
+                    unit.parallelKey,
+
+                periodKey:
+                    result.periodKey ||
+                    parallelCandidate.periodKey,
+
+                affectedTasks:
+                    successfulTasks.map(
+                        placedTask =>
+                            placedTask?.taskId ||
+                            placedTask?.id
+                    )
+
+            };
+
+        }
+
+
+        // --------------------------------------------------------
+        // All synchronized candidates failed.
+        // --------------------------------------------------------
+
+        console.warn(
+            "STAGE 7: All synchronized candidates failed for unplaced parallel unit:",
+            {
+                parallelKey:
+                    unit.parallelKey
+            }
+        );
+
+
+        return {
+
+            repaired: false,
+
+            entries: [],
+
+            moved: false,
+
+            reason:
+                "All synchronized placement candidates failed."
+
+        };
+
+    }
+
+
+    // ============================================================
+    // CASE B:
+    //
+    // SOME/ALL MEMBERS ARE CURRENTLY PLACED.
+    //
+    // Release the complete unit first.
+    // ============================================================
+
+    console.log(
+        "STAGE 7: Parallel unit has existing placement. Preparing transactional release:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            placedItems:
+                placedItems.length,
+
+            totalUnitTasks:
+                unit.tasks.length
+        }
+    );
+
 
     const releaseState =
         releaseStage7ParallelUnit(
@@ -29295,208 +29843,397 @@ function attemptStage7ParallelUnitRelocation(
 
 
     if (
+        !releaseState ||
         !releaseState.released
     ) {
 
-        console.log(
-            "STAGE 7: Parallel unit could not be released."
+        console.warn(
+            "STAGE 7: Parallel unit could not be released.",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                reason:
+                    releaseState?.error?.message ||
+                    "Unknown release failure."
+            }
         );
 
 
         return {
+
             repaired: false,
+
             entries: [],
-            moved: []
+
+            moved: false,
+
+            reason:
+                releaseState?.error?.message ||
+                "Parallel unit could not be released."
+
         };
 
     }
 
 
-    try {
+    // ============================================================
+    // UNIT IS NOW FREE.
+    // FIND NEW SYNCHRONIZED CANDIDATES.
+    // ============================================================
 
-        // ========================================================
-        // NOW SEARCH FOR A NEW COMMON LOCATION.
-        // ========================================================
+    const candidates =
+        getStage7ParallelUnitCandidates(
+            unit,
+            generatorData,
+            generatorData.indexes
+        );
 
-        const candidates =
-            getStage7ParallelUnitCandidates(
-                unit,
-                generatorData
-            );
+
+    console.log(
+        "STAGE 7: Relocation candidates after release:",
+        {
+            parallelKey:
+                unit.parallelKey,
+
+            candidateCount:
+                Array.isArray(
+                    candidates
+                )
+                    ? candidates.length
+                    : 0
+        }
+    );
+
+
+    if (
+        !Array.isArray(
+            candidates
+        ) ||
+        candidates.length === 0
+    ) {
+
+        console.warn(
+            "STAGE 7: No synchronized relocation candidates found. Restoring original unit.",
+            {
+                parallelKey:
+                    unit.parallelKey
+            }
+        );
+
+
+        restoreStage7ParallelUnit(
+            releaseState,
+            generatorData
+        );
+
+
+        return {
+
+            repaired: false,
+
+            entries: [],
+
+            moved: false,
+
+            reason:
+                "No synchronized relocation candidates found."
+
+        };
+
+    }
+
+
+    // ============================================================
+    // TRY EVERY SYNCHRONIZED CANDIDATE
+    // ============================================================
+
+    for (
+        const parallelCandidate of
+        candidates
+    ) {
+
+        if (
+            !parallelCandidate
+        ) {
+            continue;
+        }
 
 
         console.log(
-            "STAGE 7: Parallel unit synchronized candidates:",
-            candidates.length
+            "STAGE 7: Trying parallel relocation candidate:",
+            {
+                parallelKey:
+                    unit.parallelKey,
+
+                periodKey:
+                    parallelCandidate.periodKey,
+
+                score:
+                    parallelCandidate.score
+            }
         );
+
+
+        const result =
+            placeSelectedParallelUnit(
+                unit,
+                parallelCandidate,
+                generatorData.indexes
+            );
 
 
         if (
-            candidates.length === 0
+            !result ||
+            !result.placed
         ) {
 
-            console.log(
-                "STAGE 7: No synchronized location found."
+            console.warn(
+                "STAGE 7: Parallel relocation candidate failed:",
+                {
+                    parallelKey:
+                        unit.parallelKey,
+
+                    periodKey:
+                        parallelCandidate.periodKey,
+
+                    reason:
+                        result?.reason ||
+                        "Unknown placement failure."
+                }
             );
 
 
-            restoreStage7ParallelUnit(
-                releaseState,
-                generatorData
-            );
-
-
-            return {
-                repaired: false,
-                entries: [],
-                moved: []
-            };
+            continue;
 
         }
 
 
-        // ========================================================
-        // TRY CANDIDATES IN SCORE ORDER.
-        // ========================================================
+        // --------------------------------------------------------
+        // Remove any stale wrappers for this unit first.
+        // --------------------------------------------------------
 
-        for (
-            const candidate of candidates
-        ) {
-
-            // ====================================================
-            // Every task in the unit is placed transactionally.
-            // ====================================================
-
-            const placement =
-                placeSelectedParallelUnit(
-                    unit,
-                    candidate,
-                    generatorData.indexes
-                );
-
-
-            if (
-                placement?.placed
-            ) {
-
-                // ================================================
-                // Update Stage 7 placed-task wrappers.
-                // ================================================
-
-                unit.tasks.forEach(
-                    unitTask => {
-
-                        const taskResult =
-                            placement.results?.find(
-                                item =>
-                                    item?.task ===
-                                    unitTask
-                            );
-
-
-                        generatorData.placedTasks.push({
-                            task:
-                                unitTask,
-                            entries:
-                                taskResult?.result?.entries ||
-                                [],
-                            candidate:
-                                taskResult?.candidate ||
-                                candidate
-                        });
-
-                    }
-                );
-
-
-                console.log(
-                    "STAGE 7: PARALLEL UNIT REPAIRED:",
-                    {
-                        parallelKey:
-                            unit.parallelKey,
-                        periodKey:
-                            placement.periodKey,
-                        taskIds:
-                            unit.tasks.map(
-                                item =>
-                                    item.taskId
+        const unitTaskIds =
+            new Set(
+                unit.tasks
+                    .map(
+                        unitTask =>
+                            normalizeTimetableId(
+                                unitTask?.taskId ??
+                                unitTask?.task_id ??
+                                unitTask?.id
                             )
-                    }
-                );
+                    )
+                    .filter(Boolean)
+            );
 
 
-                return {
-                    repaired: true,
-                    entries:
-                        placement.entries || [],
-                    moved:
-                        unit.tasks.map(
-                            unitTask => ({
-                                task:
-                                    unitTask,
-                                parallelKey:
-                                    unit.parallelKey,
-                                periodKey:
-                                    placement.periodKey
-                            })
+        generatorData.placedTasks =
+            generatorData.placedTasks.filter(
+                item => {
+
+                    const itemTask =
+                        item?.task ||
+                        item;
+
+                    const itemTaskId =
+                        normalizeTimetableId(
+                            itemTask?.taskId ??
+                            itemTask?.task_id ??
+                            itemTask?.id
+                        );
+
+
+                    return !unitTaskIds.has(
+                        itemTaskId
+                    );
+
+                }
+            );
+
+
+        // --------------------------------------------------------
+        // Add newly placed unit members.
+        // --------------------------------------------------------
+
+        const successfulTasks =
+            Array.isArray(
+                result.tasks
+            )
+                ? result.tasks
+                : unit.tasks;
+
+
+        successfulTasks.forEach(
+            placedTask => {
+
+                if (
+                    !placedTask
+                ) {
+                    return;
+                }
+
+
+                const placedTaskId =
+                    normalizeTimetableId(
+                        placedTask?.taskId ??
+                        placedTask?.task_id ??
+                        placedTask?.id
+                    );
+
+
+                if (
+                    !placedTaskId
+                ) {
+                    return;
+                }
+
+
+                const taskResult =
+                    Array.isArray(
+                        result.results
+                    )
+                        ? result.results.find(
+                            item =>
+                                normalizeTimetableId(
+                                    item?.task?.taskId ??
+                                    item?.task?.task_id ??
+                                    item?.task?.id
+                                ) ===
+                                placedTaskId
                         )
-                };
+                        : null;
+
+
+                generatorData.placedTasks.push({
+
+                    task:
+                        placedTask,
+
+                    entries:
+                        Array.isArray(
+                            taskResult?.result?.entries
+                        )
+                            ? [
+                                ...taskResult.result.entries
+                            ]
+                            : [],
+
+                    candidate:
+                        taskResult?.candidate ||
+                        null
+
+                });
 
             }
+        );
 
-        }
-
-
-        // ========================================================
-        // No candidate worked.
-        // Restore the COMPLETE original unit.
-        // ========================================================
 
         console.log(
-            "STAGE 7: All synchronized candidates failed. Restoring original unit."
-        );
+            "STAGE 7: PARALLEL UNIT RELOCATED SUCCESSFULLY:",
+            {
+                parallelKey:
+                    unit.parallelKey,
 
+                periodKey:
+                    result.periodKey ||
+                    parallelCandidate.periodKey,
 
-        restoreStage7ParallelUnit(
-            releaseState,
-            generatorData
-        );
-
-
-        return {
-            repaired: false,
-            entries: [],
-            moved: []
-        };
-
-    } catch (error) {
-
-        console.error(
-            "STAGE 7: Parallel unit relocation failed:",
-            error
-        );
-
-
-        // ========================================================
-        // ALWAYS restore the original synchronized unit.
-        // ========================================================
-
-        restoreStage7ParallelUnit(
-            releaseState,
-            generatorData
+                affectedTasks:
+                    successfulTasks.map(
+                        placedTask =>
+                            placedTask?.taskId ||
+                            placedTask?.id
+                    )
+            }
         );
 
 
         return {
-            repaired: false,
-            entries: [],
-            moved: []
+
+            repaired: true,
+
+            entries:
+                Array.isArray(
+                    result.entries
+                )
+                    ? result.entries
+                    : [],
+
+            moved: true,
+
+            unitPlaced: true,
+
+            parallelKey:
+                unit.parallelKey,
+
+            periodKey:
+                result.periodKey ||
+                parallelCandidate.periodKey,
+
+            affectedTasks:
+                successfulTasks.map(
+                    placedTask =>
+                        placedTask?.taskId ||
+                        placedTask?.id
+                )
+
         };
 
     }
 
-}
 
+    // ============================================================
+    // ALL RELOCATION CANDIDATES FAILED
+    //
+    // Restore original placement.
+    // ============================================================
+
+    console.warn(
+        "STAGE 7: All parallel relocation candidates failed. Restoring original unit:",
+        {
+            parallelKey:
+                unit.parallelKey
+        }
+    );
+
+
+    const restored =
+        restoreStage7ParallelUnit(
+            releaseState,
+            generatorData
+        );
+
+
+    if (
+        !restored
+    ) {
+
+        console.error(
+            "STAGE 7: CRITICAL — failed to restore original parallel unit:",
+            {
+                parallelKey:
+                    unit.parallelKey
+            }
+        );
+
+    }
+
+
+    return {
+
+        repaired: false,
+
+        entries: [],
+
+        moved: false,
+
+        reason:
+            "All parallel relocation candidates failed."
+
+    };
+
+}
 
 
 function repairSingleFailedTask(
