@@ -26599,7 +26599,6 @@ function auditGeneratedTimetable(
 
 
 
-
 // ============================================================
 // STAGE 7 CONFIGURATION
 // ============================================================
@@ -26622,10 +26621,6 @@ const STAGE7_CONFIG = {
 // ============================================================
 // STAGE 7 — MAIN ENTRY POINT
 // ============================================================
-
-
-
-
 
 function runStage7Repair(
     failedTasks,
@@ -26754,30 +26749,21 @@ function runStage7Repair(
 
     // ========================================================
     // IMPORTANT:
-    // STAGE 7 RELOCATION NEEDS THE ACTUAL STAGE 6
-    // PLACED-TASK LIST.
+    // STAGE 7 NEEDS THE ACTUAL STAGE 6 PLACED-TASK LIST.
     //
-    // runStage7Repair() already receives placedTasks as an
-    // argument, so make that list available through
-    // generatorData.
+    // This is used by both:
     //
-    // Previously attemptStage7Relocation() looked for:
-    //
-    //     generatorData.placedTasks
-    //
-    // but runStage7Repair() never populated it.
-    //
-    // This caused relocation to silently stop whenever a
-    // direct empty-slot repair was not possible.
+    //   1. normal single-task relocation
+    //   2. parallel-unit relocation
     //
     // ========================================================
 
-   generatorData.placedTasks =
-    Array.isArray(
-        placedTasks
-    )
-        ? [...placedTasks]
-        : [];
+    generatorData.placedTasks =
+        Array.isArray(
+            placedTasks
+        )
+            ? [...placedTasks]
+            : [];
 
 
     console.log(
@@ -26846,6 +26832,51 @@ function runStage7Repair(
             );
 
 
+            // ==================================================
+            // A task may already have been repaired indirectly
+            // because another failed parallel task triggered
+            // relocation of the complete parallel unit.
+            //
+            // Do not attempt to repair it again.
+            // ==================================================
+
+            if (
+                task?.placed === true
+            ) {
+
+                console.log(
+                    "STAGE 7: Task already placed — skipping:",
+                    task?.taskId ||
+                    task?.id
+                );
+
+                if (
+                    !repaired.some(
+                        repairedTask =>
+                            normalizeTimetableId(
+                                repairedTask?.taskId ??
+                                repairedTask?.task_id ??
+                                repairedTask?.id
+                            ) ===
+                            normalizeTimetableId(
+                                task?.taskId ??
+                                task?.task_id ??
+                                task?.id
+                            )
+                    )
+                ) {
+
+                    repaired.push(
+                        task
+                    );
+
+                }
+
+                continue;
+
+            }
+
+
             const result =
                 repairSingleFailedTask(
                     task,
@@ -26858,24 +26889,209 @@ function runStage7Repair(
                 result.repaired
             ) {
 
+                // ==================================================
+                // IMPORTANT:
+                //
+                // For a normal single repair, this is just `task`.
+                //
+                // For a parallel-unit repair, `result.moved`
+                // contains ALL members of the synchronized unit.
+                //
+                // Therefore identify every successfully repaired
+                // task rather than recording only the triggering task.
+                // ==================================================
 
-repaired.push(
-    task
-);
+                const repairedTasks = [];
 
-if (
-    !generatorData.placedTasks.includes(
-        task
-    )
-) {
 
-    generatorData.placedTasks.push(
-        task
-    );
+                // --------------------------------------------------
+                // The triggering task is always considered repaired
+                // when the repair contract succeeds.
+                // --------------------------------------------------
 
-}
+                repairedTasks.push(
+                    task
+                );
 
-                
+
+                // --------------------------------------------------
+                // Parallel-unit relocation returns moved records
+                // containing the actual task objects.
+                // --------------------------------------------------
+
+                if (
+                    Array.isArray(
+                        result.moved
+                    )
+                ) {
+
+                    result.moved.forEach(
+                        moveRecord => {
+
+                            const movedTask =
+                                moveRecord?.task;
+
+
+                            if (
+                                !movedTask
+                            ) {
+
+                                return;
+
+                            }
+
+
+                            const movedTaskId =
+                                normalizeTimetableId(
+                                    movedTask.taskId ??
+                                    movedTask.task_id ??
+                                    movedTask.id
+                                );
+
+
+                            const alreadyAdded =
+                                repairedTasks.some(
+                                    existingTask => {
+
+                                        const existingId =
+                                            normalizeTimetableId(
+                                                existingTask?.taskId ??
+                                                existingTask?.task_id ??
+                                                existingTask?.id
+                                            );
+
+
+                                        return (
+                                            movedTaskId &&
+                                            existingId &&
+                                            movedTaskId ===
+                                            existingId
+                                        );
+
+                                    }
+                                );
+
+
+                            if (
+                                !alreadyAdded
+                            ) {
+
+                                repairedTasks.push(
+                                    movedTask
+                                );
+
+                            }
+
+                        }
+                    );
+
+                }
+
+
+                // ==================================================
+                // RECORD EVERY REPAIRED TASK ONCE
+                // ==================================================
+
+                repairedTasks.forEach(
+                    repairedTask => {
+
+                        const repairedTaskId =
+                            normalizeTimetableId(
+                                repairedTask?.taskId ??
+                                repairedTask?.task_id ??
+                                repairedTask?.id
+                            );
+
+
+                        const alreadyRecorded =
+                            repaired.some(
+                                existingTask => {
+
+                                    const existingId =
+                                        normalizeTimetableId(
+                                            existingTask?.taskId ??
+                                            existingTask?.task_id ??
+                                            existingTask?.id
+                                        );
+
+
+                                    return (
+                                        repairedTaskId &&
+                                        existingId &&
+                                        repairedTaskId ===
+                                        existingId
+                                    );
+
+                                }
+                            );
+
+
+                        if (
+                            !alreadyRecorded
+                        ) {
+
+                            repaired.push(
+                                repairedTask
+                            );
+
+                        }
+
+
+                        // ==================================================
+                        // Make sure the task is represented in the current
+                        // Stage 7 placed-task collection.
+                        // ==================================================
+
+                        const alreadyPlaced =
+                            generatorData.placedTasks.some(
+                                item => {
+
+                                    const itemTask =
+                                        item?.task ||
+                                        item;
+
+
+                                    const itemId =
+                                        normalizeTimetableId(
+                                            itemTask?.taskId ??
+                                            itemTask?.task_id ??
+                                            itemTask?.id
+                                        );
+
+
+                                    return (
+                                        repairedTaskId &&
+                                        itemId &&
+                                        repairedTaskId ===
+                                        itemId
+                                    );
+
+                                }
+                            );
+
+
+                        if (
+                            !alreadyPlaced
+                        ) {
+
+                            generatorData.placedTasks.push({
+                                task:
+                                    repairedTask,
+
+                                entries:
+                                    [],
+
+                                candidate:
+                                    null
+
+                            });
+
+                        }
+
+                    }
+                );
+
+
                 // ------------------------------------------------
                 // PRESERVE GENERATED ENTRIES
                 // ------------------------------------------------
@@ -26893,6 +27109,10 @@ if (
                 }
 
 
+                // ------------------------------------------------
+                // PRESERVE MOVEMENT RECORDS
+                // ------------------------------------------------
+
                 if (
                     Array.isArray(
                         result.moved
@@ -26909,7 +27129,13 @@ if (
                 console.log(
                     "✅ STAGE 7 REPAIRED:",
                     task?.taskId ||
-                    task?.id
+                    task?.id,
+                    "Affected tasks:",
+                    repairedTasks.map(
+                        repairedTask =>
+                            repairedTask?.taskId ||
+                            repairedTask?.id
+                    )
                 );
 
             }
@@ -26926,6 +27152,26 @@ if (
 
         remainingTasks =
             nextFailed;
+
+
+        // ========================================================
+        // IMPORTANT:
+        //
+        // A parallel-unit relocation can repair another task that
+        // is also present in `remainingTasks`.
+        //
+        // Remove tasks that are now actually placed.
+        // ========================================================
+
+        const unresolvedTasks =
+            remainingTasks.filter(
+                failedTask =>
+                    failedTask?.placed !== true
+            );
+
+
+        remainingTasks =
+            unresolvedTasks;
 
 
         console.log(
@@ -26956,6 +27202,10 @@ if (
 
     }
 
+
+    // ========================================================
+    // FINAL FAILED TASK LIST
+    // ========================================================
 
     stillFailed.push(
         ...remainingTasks
@@ -27016,6 +27266,1001 @@ if (
 
 }
 
+// ============================================================
+// STAGE 7 — PARALLEL TASK DETECTION
+// ============================================================
+//
+// Stage 7 currently repairs lessons individually.
+//
+// Therefore a task belonging to a parallel group MUST NOT be
+// independently placed or moved by Stage 7.
+//
+// Parallel lessons were placed as Schedule Units in Stage 6F
+// and must remain synchronized.
+//
+// ============================================================
+
+function isStage7ParallelTask(task) {
+
+    if (
+        !task
+    ) {
+
+        return false;
+
+    }
+
+
+    const parallelGroup =
+        normalizeParallelGroup(
+            task.parallelGroup ??
+            task.parallel_group
+        );
+
+
+    return Boolean(
+        parallelGroup
+    );
+
+}
+
+
+
+            
+// ================================================================
+// STAGE 7 — FIND COMPLETE PARALLEL UNIT FOR A TASK
+// ================================================================
+
+function getStage7ParallelUnitForTask(
+    task,
+    generatorData
+) {
+
+    if (
+        !task ||
+        !generatorData
+    ) {
+
+        return null;
+
+    }
+
+
+    const taskParallelKey =
+        String(
+            task.parallelKey ??
+            task.parallel_key ??
+            ""
+        )
+            .trim()
+            .toUpperCase();
+
+
+    if (!taskParallelKey) {
+
+        return null;
+
+    }
+
+
+    // ============================================================
+    // Prefer the authoritative lesson-task list.
+    // This contains BOTH placed and failed tasks.
+    // ============================================================
+
+    const allTasks =
+        Array.isArray(generatorData.lessonTasks)
+            ? generatorData.lessonTasks
+            : [];
+
+
+    const unitTasks =
+        allTasks.filter(
+            candidateTask => {
+
+                if (!candidateTask) {
+                    return false;
+                }
+
+
+                const candidateParallelKey =
+                    String(
+                        candidateTask.parallelKey ??
+                        candidateTask.parallel_key ??
+                        ""
+                    )
+                        .trim()
+                        .toUpperCase();
+
+
+                return (
+                    candidateParallelKey ===
+                    taskParallelKey
+                );
+
+            }
+        );
+
+
+    if (
+        unitTasks.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    // ============================================================
+    // The unit must actually be parallel.
+    // A parallel group with only one task is not a unit.
+    // ============================================================
+
+    if (
+        unitTasks.length < 2
+    ) {
+
+        return null;
+
+    }
+
+
+    return {
+        parallelKey: taskParallelKey,
+        parallelGroup:
+            normalizeParallelGroup(
+                task.parallelGroup ??
+                task.parallel_group
+            ) || null,
+        tasks: unitTasks,
+        isParallel: true
+    };
+
+}
+
+
+// ================================================================
+// STAGE 7 — GET CURRENTLY PLACED TASKS IN PARALLEL UNIT
+// ================================================================
+
+function getStage7PlacedParallelUnitTasks(
+    unit,
+    generatorData
+) {
+
+    if (
+        !unit ||
+        !Array.isArray(unit.tasks) ||
+        !generatorData
+    ) {
+
+        return [];
+
+    }
+
+
+    const placedTasks =
+        Array.isArray(
+            generatorData.placedTasks
+        )
+            ? generatorData.placedTasks
+            : [];
+
+
+    const taskIds =
+        new Set(
+            unit.tasks
+                .map(
+                    task =>
+                        normalizeTimetableId(
+                            task?.taskId ??
+                            task?.task_id ??
+                            task?.id
+                        )
+                )
+                .filter(Boolean)
+        );
+
+
+    return placedTasks.filter(
+        item => {
+
+            const itemTask =
+                item?.task ||
+                item;
+
+
+            const taskId =
+                normalizeTimetableId(
+                    itemTask?.taskId ??
+                    itemTask?.task_id ??
+                    itemTask?.id
+                );
+
+
+            return (
+                taskId &&
+                taskIds.has(taskId)
+            );
+
+        }
+    );
+
+}
+
+
+// ================================================================
+// STAGE 7 — RELEASE A COMPLETE PARALLEL UNIT
+// ================================================================
+//
+// This is deliberately transactional.
+// Every already-placed member is released before we search for
+// a new synchronized location.
+//
+// If anything goes wrong, the caller restores the original state.
+// ================================================================
+
+function releaseStage7ParallelUnit(
+    unit,
+    generatorData
+) {
+
+    if (
+        !unit ||
+        !generatorData?.indexes
+    ) {
+
+        return {
+            released: false,
+            snapshots: [],
+            placedItems: []
+        };
+
+    }
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    const placedItems =
+        getStage7PlacedParallelUnitTasks(
+            unit,
+            generatorData
+        );
+
+
+    if (
+        placedItems.length === 0
+    ) {
+
+        return {
+            released: false,
+            snapshots: [],
+            placedItems: []
+        };
+
+    }
+
+
+    const snapshots = [];
+
+
+    try {
+
+        placedItems.forEach(
+            item => {
+
+                const task =
+                    item?.task ||
+                    item;
+
+
+                const candidate =
+                    item?.candidate;
+
+
+                if (
+                    !task ||
+                    !candidate
+                ) {
+
+                    throw new Error(
+                        "Parallel unit member is missing task or candidate."
+                    );
+
+                }
+
+
+                const periodIds =
+                    getSmartCandidatePeriodIds(
+                        candidate
+                    );
+
+
+                snapshots.push({
+                    task,
+                    candidate,
+                    placed: task.placed,
+                    periodIds:
+                        Array.isArray(task.periodIds)
+                            ? [...task.periodIds]
+                            : [],
+                    periodId:
+                        task.periodId ??
+                        null,
+                    roomId:
+                        task.roomId ??
+                        null,
+                    lessonId:
+                        task.lessonId ??
+                        null,
+                    entries:
+                        Array.isArray(item.entries)
+                            ? [...item.entries]
+                            : []
+                });
+
+
+                // ==================================================
+                // Release every occupied period belonging to this
+                // task.
+                // ==================================================
+
+                periodIds.forEach(
+                    periodId => {
+
+                        const period =
+                            getParallelUnitPeriod(
+                                indexes,
+                                periodId
+                            );
+
+
+                        if (!period) {
+
+                            throw new Error(
+                                `Could not resolve period ${periodId} while releasing parallel unit.`
+                            );
+
+                        }
+
+
+                        releaseReservedSlot(
+                            task,
+                            period,
+                            candidate.room,
+                            indexes
+                        );
+
+                    }
+                );
+
+
+                // ==================================================
+                // Mark task as temporarily unplaced.
+                // ==================================================
+
+                task.placed = false;
+
+                task.periodIds = [];
+
+                task.periodId = null;
+
+                task.roomId = null;
+
+                task.lessonId = null;
+
+            }
+        );
+
+
+        // Remove these tasks from the Stage 7 placed-task list.
+        generatorData.placedTasks =
+            generatorData.placedTasks.filter(
+                item => {
+
+                    const itemTask =
+                        item?.task ||
+                        item;
+
+
+                    const itemTaskId =
+                        normalizeTimetableId(
+                            itemTask?.taskId ??
+                            itemTask?.task_id ??
+                            itemTask?.id
+                        );
+
+
+                    return !unit.tasks.some(
+                        unitTask => {
+
+                            const unitTaskId =
+                                normalizeTimetableId(
+                                    unitTask?.taskId ??
+                                    unitTask?.task_id ??
+                                    unitTask?.id
+                                );
+
+
+                            return (
+                                itemTaskId &&
+                                unitTaskId &&
+                                itemTaskId ===
+                                unitTaskId
+                            );
+
+                        }
+                    );
+
+                }
+            );
+
+
+        return {
+            released: true,
+            snapshots,
+            placedItems
+        };
+
+    } catch (error) {
+
+        console.error(
+            "STAGE 7: Failed to release parallel unit:",
+            error
+        );
+
+
+        return {
+            released: false,
+            snapshots,
+            placedItems,
+            error
+        };
+
+    }
+
+}
+
+
+// ================================================================
+// STAGE 7 — RESTORE COMPLETE PARALLEL UNIT
+// ================================================================
+
+function restoreStage7ParallelUnit(
+    releaseState,
+    generatorData
+) {
+
+    if (
+        !releaseState ||
+        !Array.isArray(
+            releaseState.snapshots
+        ) ||
+        !generatorData?.indexes
+    ) {
+
+        return false;
+
+    }
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    try {
+
+        releaseState.snapshots.forEach(
+            snapshot => {
+
+                const task =
+                    snapshot.task;
+
+
+                const candidate =
+                    snapshot.candidate;
+
+
+                if (
+                    !task ||
+                    !candidate
+                ) {
+
+                    return;
+
+                }
+
+
+                const periodIds =
+                    getSmartCandidatePeriodIds(
+                        candidate
+                    );
+
+
+                periodIds.forEach(
+                    periodId => {
+
+                        const period =
+                            getParallelUnitPeriod(
+                                indexes,
+                                periodId
+                            );
+
+
+                        if (!period) {
+
+                            throw new Error(
+                                `Could not resolve period ${periodId} while restoring parallel unit.`
+                            );
+
+                        }
+
+
+                        reserveSlot(
+                            task,
+                            period,
+                            candidate.room,
+                            indexes
+                        );
+
+                    }
+                );
+
+
+                task.placed =
+                    snapshot.placed;
+
+
+                task.periodIds =
+                    Array.isArray(
+                        snapshot.periodIds
+                    )
+                        ? [...snapshot.periodIds]
+                        : [];
+
+
+                task.periodId =
+                    snapshot.periodId;
+
+
+                task.roomId =
+                    snapshot.roomId;
+
+
+                task.lessonId =
+                    snapshot.lessonId;
+
+            }
+        );
+
+
+        // ============================================================
+        // Restore the Stage 7 placed-task wrappers.
+        // ============================================================
+
+        releaseState.snapshots.forEach(
+            snapshot => {
+
+                const alreadyExists =
+                    generatorData.placedTasks.some(
+                        item => {
+
+                            const itemTask =
+                                item?.task ||
+                                item;
+
+
+                            return (
+                                normalizeTimetableId(
+                                    itemTask?.taskId ??
+                                    itemTask?.task_id ??
+                                    itemTask?.id
+                                ) ===
+                                normalizeTimetableId(
+                                    snapshot.task?.taskId ??
+                                    snapshot.task?.task_id ??
+                                    snapshot.task?.id
+                                )
+                            );
+
+                        }
+                    );
+
+
+                if (!alreadyExists) {
+
+                    generatorData.placedTasks.push({
+                        task:
+                            snapshot.task,
+                        entries:
+                            snapshot.entries || [],
+                        candidate:
+                            snapshot.candidate
+                    });
+
+                }
+
+            }
+        );
+
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "STAGE 7: Failed to restore parallel unit:",
+            error
+        );
+
+
+        return false;
+
+    }
+
+}
+
+
+// ================================================================
+// STAGE 7 — FIND SYNCHRONIZED CANDIDATES FOR PARALLEL UNIT
+// ================================================================
+//
+// IMPORTANT:
+// The unit must be temporarily released before this function is
+// called. Otherwise the current location of the unit can appear
+// occupied by itself.
+// ================================================================
+
+function getStage7ParallelUnitCandidates(
+    unit,
+    generatorData
+) {
+
+    if (
+        !unit ||
+        !Array.isArray(unit.tasks) ||
+        unit.tasks.length < 2 ||
+        !generatorData
+    ) {
+
+        return [];
+
+    }
+
+
+    const data =
+        generatorData;
+
+
+    const indexes =
+        generatorData.indexes;
+
+
+    if (!indexes) {
+
+        return [];
+
+    }
+
+
+    // ============================================================
+    // Reuse the SAME synchronization engine used by the main
+    // generator.
+    // ============================================================
+
+    const candidates =
+        getScoredParallelUnitCandidates(
+            unit,
+            data,
+            indexes
+        );
+
+
+    return Array.isArray(candidates)
+        ? candidates
+        : [];
+
+}
+
+
+// ================================================================
+// STAGE 7 — MOVE COMPLETE PARALLEL UNIT
+// ================================================================
+
+function attemptStage7ParallelUnitRelocation(
+    task,
+    generatorData
+) {
+
+    if (
+        !task ||
+        !generatorData
+    ) {
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: []
+        };
+
+    }
+
+
+    if (
+        !isStage7ParallelTask(task)
+    ) {
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: []
+        };
+
+    }
+
+
+    // ============================================================
+    // FIND THE COMPLETE UNIT
+    // ============================================================
+
+    const unit =
+        getStage7ParallelUnitForTask(
+            task,
+            generatorData
+        );
+
+
+    if (
+        !unit ||
+        unit.tasks.length < 2
+    ) {
+
+        console.warn(
+            "STAGE 7: Could not build complete parallel unit:",
+            task?.taskId
+        );
+
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: []
+        };
+
+    }
+
+
+    console.log(
+        "STAGE 7: Attempting PARALLEL UNIT relocation:",
+        {
+            parallelKey:
+                unit.parallelKey,
+            parallelGroup:
+                unit.parallelGroup,
+            taskIds:
+                unit.tasks.map(
+                    item =>
+                        item.taskId
+                )
+        }
+    );
+
+
+    // ============================================================
+    // SAVE ORIGINAL STATE
+    // ============================================================
+
+    const releaseState =
+        releaseStage7ParallelUnit(
+            unit,
+            generatorData
+        );
+
+
+    if (
+        !releaseState.released
+    ) {
+
+        console.log(
+            "STAGE 7: Parallel unit could not be released."
+        );
+
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: []
+        };
+
+    }
+
+
+    try {
+
+        // ========================================================
+        // NOW SEARCH FOR A NEW COMMON LOCATION.
+        // ========================================================
+
+        const candidates =
+            getStage7ParallelUnitCandidates(
+                unit,
+                generatorData
+            );
+
+
+        console.log(
+            "STAGE 7: Parallel unit synchronized candidates:",
+            candidates.length
+        );
+
+
+        if (
+            candidates.length === 0
+        ) {
+
+            console.log(
+                "STAGE 7: No synchronized location found."
+            );
+
+
+            restoreStage7ParallelUnit(
+                releaseState,
+                generatorData
+            );
+
+
+            return {
+                repaired: false,
+                entries: [],
+                moved: []
+            };
+
+        }
+
+
+        // ========================================================
+        // TRY CANDIDATES IN SCORE ORDER.
+        // ========================================================
+
+        for (
+            const candidate of candidates
+        ) {
+
+            // ====================================================
+            // Every task in the unit is placed transactionally.
+            // ====================================================
+
+            const placement =
+                placeSelectedParallelUnit(
+                    unit,
+                    candidate,
+                    generatorData.indexes
+                );
+
+
+            if (
+                placement?.placed
+            ) {
+
+                // ================================================
+                // Update Stage 7 placed-task wrappers.
+                // ================================================
+
+                unit.tasks.forEach(
+                    unitTask => {
+
+                        const taskResult =
+                            placement.results?.find(
+                                item =>
+                                    item?.task ===
+                                    unitTask
+                            );
+
+
+                        generatorData.placedTasks.push({
+                            task:
+                                unitTask,
+                            entries:
+                                taskResult?.result?.entries ||
+                                [],
+                            candidate:
+                                taskResult?.candidate ||
+                                candidate
+                        });
+
+                    }
+                );
+
+
+                console.log(
+                    "STAGE 7: PARALLEL UNIT REPAIRED:",
+                    {
+                        parallelKey:
+                            unit.parallelKey,
+                        periodKey:
+                            placement.periodKey,
+                        taskIds:
+                            unit.tasks.map(
+                                item =>
+                                    item.taskId
+                            )
+                    }
+                );
+
+
+                return {
+                    repaired: true,
+                    entries:
+                        placement.entries || [],
+                    moved:
+                        unit.tasks.map(
+                            unitTask => ({
+                                task:
+                                    unitTask,
+                                parallelKey:
+                                    unit.parallelKey,
+                                periodKey:
+                                    placement.periodKey
+                            })
+                        )
+                };
+
+            }
+
+        }
+
+
+        // ========================================================
+        // No candidate worked.
+        // Restore the COMPLETE original unit.
+        // ========================================================
+
+        console.log(
+            "STAGE 7: All synchronized candidates failed. Restoring original unit."
+        );
+
+
+        restoreStage7ParallelUnit(
+            releaseState,
+            generatorData
+        );
+
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: []
+        };
+
+    } catch (error) {
+
+        console.error(
+            "STAGE 7: Parallel unit relocation failed:",
+            error
+        );
+
+
+        // ========================================================
+        // ALWAYS restore the original synchronized unit.
+        // ========================================================
+
+        restoreStage7ParallelUnit(
+            releaseState,
+            generatorData
+        );
+
+
+        return {
+            repaired: false,
+            entries: [],
+            moved: []
+        };
+
+    }
+
+}
 
 
 
@@ -27050,9 +28295,122 @@ function repairSingleFailedTask(
     // ========================================================
 
     const taskType =
-        task.taskType ||
-        task.type ||
-        null;
+        String(
+            task.taskType ||
+            task.type ||
+            ""
+        )
+            .trim()
+            .toLowerCase();
+
+
+    // ========================================================
+    // PARALLEL LESSONS
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Stage 6 places parallel lessons as synchronized
+    // Schedule Units.
+    //
+    // Stage 7 MUST therefore repair the COMPLETE parallel
+    // unit, never the individual task.
+    //
+    // Example:
+    //
+    //     RE/GE/BS::S1
+    //
+    //     10A → RE
+    //     10B → GE
+    //     10C → BS
+    //     10E → RE
+    //
+    // If the unit must move, ALL participating tasks move
+    // together to the same period.
+    //
+    // ========================================================
+
+    if (
+        isStage7ParallelTask(
+            task
+        )
+    ) {
+
+        console.log(
+            "STAGE 7: Redirecting parallel task to UNIT relocation:",
+            task?.taskId ||
+            task?.id
+        );
+
+
+        const parallelRepair =
+            attemptStage7ParallelUnitRelocation(
+                task,
+                generatorData
+            );
+
+
+        // ====================================================
+        // VERIFY THE PARALLEL REPAIR CONTRACT
+        // ====================================================
+
+        if (
+            parallelRepair &&
+            parallelRepair.repaired === true
+        ) {
+
+            return {
+
+                repaired:
+                    true,
+
+                entries:
+                    Array.isArray(
+                        parallelRepair.entries
+                    )
+                        ? parallelRepair.entries
+                        : [],
+
+                moved:
+                    Array.isArray(
+                        parallelRepair.moved
+                    )
+                        ? parallelRepair.moved
+                        : []
+
+            };
+
+        }
+
+
+        // ====================================================
+        // PARALLEL REPAIR FAILED
+        //
+        // Do NOT fall through to individual repair.
+        // That would destroy synchronization.
+        // ====================================================
+
+        console.log(
+            "STAGE 7: Parallel UNIT relocation failed — task remains unrepaired:",
+            task?.taskId ||
+            task?.id
+        );
+
+
+        return {
+
+            repaired:
+                false,
+
+            entries:
+                [],
+
+            moved:
+                []
+
+        };
+
+    }
 
 
     // ========================================================
@@ -27079,6 +28437,7 @@ function repairSingleFailedTask(
             task?.taskId ||
             task?.id
         );
+
 
         return {
 
@@ -27265,18 +28624,6 @@ function repairSingleFailedTask(
                         );
 
 
-                    // ==================================================
-                    // IMPORTANT CONTRACT CHECK
-                    //
-                    // placeStage7Task() returns:
-                    //
-                    // {
-                    //     placed,
-                    //     entries,
-                    //     reason
-                    // }
-                    // ==================================================
-
                     if (
                         !placement ||
                         placement.placed !== true
@@ -27312,11 +28659,6 @@ function repairSingleFailedTask(
 
                     // ==================================================
                     // SUCCESS
-                    //
-                    // DO NOT recreate the entry here.
-                    //
-                    // placeStage7Task() already returns the generated
-                    // entry created by placeSelectedSingleTask().
                     // ==================================================
 
                     return {
@@ -27420,16 +28762,14 @@ function repairSingleFailedTask(
 
 }
 
-
+            
 function buildStage7PeriodCandidates(
     task,
     periods
 ) {
 
     if (
-        !Array.isArray(
-            periods
-        )
+        !Array.isArray(periods)
     ) {
 
         return [];
@@ -27460,7 +28800,7 @@ function buildStage7PeriodCandidates(
                     // a teaching period as the main generator.
                     //
                     // Assembly, breaks, lunch and activities must never
-                    // be considered as lesson slots.
+                    // be considered lesson slots.
                     //
                     // ==================================================
 
@@ -27477,16 +28817,28 @@ function buildStage7PeriodCandidates(
                     b
                 ) => {
 
+                    // ==================================================
+                    // DAY NUMBER
+                    // ==================================================
+                    //
+                    // Support both:
+                    //   dayNumber
+                    //   day_number
+                    //
+                    // ==================================================
+
                     const dayA =
                         Number(
-                            a.day_number ||
+                            a.dayNumber ??
+                            a.day_number ??
                             0
                         );
 
 
                     const dayB =
                         Number(
-                            b.day_number ||
+                            b.dayNumber ??
+                            b.day_number ??
                             0
                         );
 
@@ -27504,9 +28856,25 @@ function buildStage7PeriodCandidates(
                     }
 
 
+                    // ==================================================
+                    // PERIOD ORDER
+                    // ==================================================
+                    //
+                    // Support both camelCase and snake_case fields.
+                    //
+                    // Preferred order:
+                    //   periodOrder
+                    //   period_order
+                    //   periodNumber
+                    //   period_number
+                    //
+                    // ==================================================
+
                     const orderA =
                         Number(
+                            a.periodOrder ??
                             a.period_order ??
+                            a.periodNumber ??
                             a.period_number ??
                             0
                         );
@@ -27514,7 +28882,9 @@ function buildStage7PeriodCandidates(
 
                     const orderB =
                         Number(
+                            b.periodOrder ??
                             b.period_order ??
+                            b.periodNumber ??
                             b.period_number ??
                             0
                         );
@@ -27985,18 +29355,29 @@ function attemptStage7Relocation(
             null;
 
 
-        // ====================================================
-        // NEVER MOVE DOUBLE LESSONS
-        // ====================================================
+       
+// ====================================================
+// NEVER MOVE DOUBLE OR PARALLEL LESSONS
+// ====================================================
+//
+// Double lessons require two consecutive periods.
+//
+// Parallel lessons are part of a synchronized
+// Schedule Unit.
+//
+// Stage 7 currently moves individual tasks only.
+//
+// Therefore neither type may be relocated independently.
+// ====================================================
 
-        if (
-            existingTaskType === "double" ||
-            existingTask.isDouble === true
-        ) {
+if (
+    existingTaskType === "double" ||
+    existingTask.isDouble === true ||
+    isStage7ParallelTask(existingTask)
+) {
+    continue;
+}
 
-            continue;
-
-        }
 
 
         // ====================================================
