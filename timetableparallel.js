@@ -1694,6 +1694,8 @@ function normalizeTimetableId(value) {
 
 
 // ============================================================
+// VALIDATE PARALLEL BLOCKS
+// ============================================================
 
 function validateParallelBlocks(data) {
 
@@ -1749,6 +1751,12 @@ function validateParallelBlocks(data) {
             block.groupId;
 
 
+        const normalizedGroup =
+            normalizeParallelGroup(
+                id
+            );
+
+
         const reqs =
             Array.isArray(block.requirements)
                 ? block.requirements
@@ -1768,6 +1776,26 @@ function validateParallelBlocks(data) {
 
                 message:
                     "A parallel block has no group ID."
+
+            });
+
+            return;
+
+        }
+
+
+        if (!normalizedGroup) {
+
+            errors.push({
+
+                type:
+                    "INVALID_PARALLEL_GROUP",
+
+                groupId:
+                    id,
+
+                message:
+                    "A parallel block has an empty group ID."
 
             });
 
@@ -1824,12 +1852,31 @@ function validateParallelBlocks(data) {
 
         // ====================================================
         // PARTICIPATING STREAMS
+        // ========================================================
         //
         // IMPORTANT:
         //
-        // The size of a parallel group is based on the number
-        // of UNIQUE STREAMS participating.
-        // ====================================================
+        // A stream MAY appear multiple times in the same
+        // parallel block.
+        //
+        // Example:
+        //
+        // RE/GE/BS
+        //
+        // 10L Geography
+        // 10L Business Studies
+        // 10L CRE
+        // 10L IRE
+        // 10L French
+        //
+        // These are different learner subject groups inside
+        // the same stream.
+        //
+        // Therefore:
+        //
+        //   DO NOT enforce unique streams.
+        //
+        // ========================================================
 
         const streamIds = [
             ...new Set(
@@ -1851,96 +1898,50 @@ function validateParallelBlocks(data) {
 
 
         // ====================================================
-        // DUPLICATE STREAM DETECTION
+        // LOG PARTICIPATING STREAMS
         // ====================================================
 
-        const streamRequirementCounts =
-            new Map();
+        console.log(
+            "Parallel block participation:",
+            {
+                groupId:
+                    normalizedGroup,
 
+                requirementCount:
+                    reqs.length,
 
-        reqs.forEach(requirement => {
+                uniqueStreamCount:
+                    streamIds.length,
 
-            if (
-                !requirement ||
-                !requirement.streamId
-            ) {
-
-                return;
-
-            }
-
-
-            const streamId =
-                normalizeTimetableId(
-                    requirement.streamId
-                );
-
-
-            streamRequirementCounts.set(
-
-                streamId,
-
-                (
-                    streamRequirementCounts.get(
-                        streamId
-                    ) || 0
-                ) + 1
-
-            );
-
-        });
-
-
-        streamRequirementCounts.forEach(
-            (count, streamId) => {
-
-                if (
-                    count <= 1
-                ) {
-
-                    return;
-
-                }
-
-
-                const stream =
-                    data.lookup?.streams?.get(
-                        streamId
-                    ) ||
-                    data.lookup?.streams?.get(
-                        String(streamId)
-                    ) ||
-                    null;
-
-
-                errors.push({
-
-                    type:
-                        "PARALLEL_DUPLICATE_STREAM",
-
-                    groupId:
-                        id,
-
-                    streamId,
-
-                    message:
-                        `Stream "${getTimetableStreamName(stream)}" appears ${count} times in parallel group "${id}". A stream should participate only once in the same parallel block.`
-
-                });
-
+                streamIds
             }
         );
 
 
         // ====================================================
         // DECLARED GROUP SIZE
+        // ========================================================
         //
-        // Compare against UNIQUE PARTICIPATING STREAMS.
-        // ====================================================
+        // IMPORTANT:
+        //
+        // declaredSize / parallel_group_size must NOT be
+        // interpreted as the number of unique streams.
+        //
+        // It represents the intended number of parallel
+        // options/branches.
+        //
+        // Since the current database values are NULL, do not
+        // reject a block because this value is missing.
+        //
+        // If a value is supplied, validate only that it is a
+        // positive integer.
+        //
+        // ========================================================
 
         if (
             block.declaredSize !== null &&
-            block.declaredSize !== undefined
+            block.declaredSize !== undefined &&
+            block.declaredSize !== ""
         ) {
 
             const declaredSize =
@@ -1950,7 +1951,7 @@ function validateParallelBlocks(data) {
 
 
             if (
-                !Number.isFinite(
+                !Number.isInteger(
                     declaredSize
                 ) ||
                 declaredSize < 1
@@ -1974,31 +1975,6 @@ function validateParallelBlocks(data) {
 
             }
 
-            else if (
-                declaredSize !==
-                streamIds.length
-            ) {
-
-                errors.push({
-
-                    type:
-                        "PARALLEL_GROUP_SIZE_MISMATCH",
-
-                    groupId:
-                        id,
-
-                    declaredSize,
-
-                    actualSize:
-                        streamIds.length,
-
-                    message:
-                        `Parallel group "${id}" declares ${declaredSize} participating streams, but ${streamIds.length} unique streams actually participate.`
-
-                });
-
-            }
-
         }
 
 
@@ -2006,8 +1982,16 @@ function validateParallelBlocks(data) {
         // REQUIREMENT VALIDATION
         // ====================================================
 
+        const requirementIds =
+            new Set();
+
+
         reqs.forEach(
             requirement => {
+
+                // ------------------------------------------------
+                // Requirement object
+                // ------------------------------------------------
 
                 if (
                     !requirement ||
@@ -2032,6 +2016,10 @@ function validateParallelBlocks(data) {
                 }
 
 
+                // ------------------------------------------------
+                // Requirement ID
+                // ------------------------------------------------
+
                 if (
                     !requirement.requirementId
                 ) {
@@ -2050,7 +2038,48 @@ function validateParallelBlocks(data) {
                     });
 
                 }
+                else {
 
+                    const requirementId =
+                        normalizeTimetableId(
+                            requirement.requirementId
+                        );
+
+
+                    if (
+                        requirementIds.has(
+                            requirementId
+                        )
+                    ) {
+
+                        errors.push({
+
+                            type:
+                                "DUPLICATE_PARALLEL_REQUIREMENT",
+
+                            groupId:
+                                id,
+
+                            requirementId,
+
+                            message:
+                                `Requirement "${requirementId}" appears more than once in parallel group "${id}".`
+
+                        });
+
+                    }
+
+
+                    requirementIds.add(
+                        requirementId
+                    );
+
+                }
+
+
+                // ------------------------------------------------
+                // Stream
+                // ------------------------------------------------
 
                 if (
                     !requirement.streamId
@@ -2065,7 +2094,8 @@ function validateParallelBlocks(data) {
                             id,
 
                         requirementId:
-                            requirement.requirementId || null,
+                            requirement.requirementId ||
+                            null,
 
                         message:
                             `A requirement in parallel group "${id}" has no stream assigned.`
@@ -2075,15 +2105,41 @@ function validateParallelBlocks(data) {
                 }
 
 
+                // ------------------------------------------------
+                // Subject
+                // ------------------------------------------------
+
+                if (
+                    !requirement.subjectId
+                ) {
+
+                    errors.push({
+
+                        type:
+                            "PARALLEL_REQUIREMENT_NO_SUBJECT",
+
+                        groupId:
+                            id,
+
+                        requirementId:
+                            requirement.requirementId ||
+                            null,
+
+                        message:
+                            `A requirement in parallel group "${id}" has no subject assigned.`
+
+                    });
+
+                }
+
+
+                // ------------------------------------------------
+                // Parallel group consistency
+                // ------------------------------------------------
+
                 const requirementGroup =
                     normalizeParallelGroup(
                         requirement.parallelGroup
-                    );
-
-
-                const normalizedGroup =
-                    normalizeParallelGroup(
-                        id
                     );
 
 
@@ -2114,12 +2170,72 @@ function validateParallelBlocks(data) {
 
                 }
 
+
+                // ------------------------------------------------
+                // Parallel key consistency
+                //
+                // If the requirement carries a parallelKey,
+                // make sure it begins with the correct group.
+                // ------------------------------------------------
+
+                if (
+                    requirement.parallelKey
+                ) {
+
+                    const key =
+                        String(
+                            requirement.parallelKey
+                        );
+
+
+                    const keyGroup =
+                        normalizeParallelGroup(
+                            key.split("::")[0]
+                        );
+
+
+                    if (
+                        keyGroup &&
+                        keyGroup !==
+                        normalizedGroup
+                    ) {
+
+                        errors.push({
+
+                            type:
+                                "PARALLEL_KEY_GROUP_MISMATCH",
+
+                            groupId:
+                                id,
+
+                            requirementId:
+                                requirement.requirementId,
+
+                            parallelKey:
+                                requirement.parallelKey,
+
+                            message:
+                                `Requirement "${requirement.requirementId}" has parallelKey "${requirement.parallelKey}" which belongs to "${keyGroup}", not "${normalizedGroup}".`
+
+                        });
+
+                    }
+
+                }
+
             }
         );
 
 
         // ====================================================
-        // SUBJECT / TEACHER CONSISTENCY
+        // SUBJECT INFORMATION
+        // ====================================================
+        //
+        // Multiple subjects are EXPECTED in a choice/parallel
+        // group.
+        //
+        // Therefore this is informational only.
+        //
         // ====================================================
 
         const subjectsInBlock = [
@@ -2157,7 +2273,7 @@ function validateParallelBlocks(data) {
                     subjectsInBlock,
 
                 message:
-                    `Parallel group "${id}" contains multiple subjects. This is allowed only when the requirements are intentionally synchronized.`
+                    `Parallel group "${id}" contains ${subjectsInBlock.length} different subjects. This is expected for a choice-based parallel group.`
 
             });
 
@@ -2165,28 +2281,53 @@ function validateParallelBlocks(data) {
 
 
         // ====================================================
-        // GROUP SIZE SAFETY
+        // PARTICIPATING STREAM SUMMARY
         // ====================================================
 
-        if (
-            streamIds.length < 2 &&
-            reqs.length >= 2
-        ) {
+        const streamNames =
+            streamIds.map(
+                streamId => {
 
-            errors.push({
+                    const stream =
+                        data.lookup?.streams?.get(
+                            streamId
+                        ) ||
+                        data.lookup?.streams?.get(
+                            String(streamId)
+                        ) ||
+                        null;
 
-                type:
-                    "PARALLEL_NO_MULTIPLE_STREAMS",
 
+                    return (
+                        getTimetableStreamName(
+                            stream
+                        ) ||
+                        streamId
+                    );
+
+                }
+            );
+
+
+        console.log(
+            "Validated parallel block:",
+            {
                 groupId:
-                    id,
+                    normalizedGroup,
 
-                message:
-                    `Parallel group "${id}" contains multiple requirements but they do not represent multiple unique streams.`
+                requirements:
+                    reqs.length,
 
-            });
+                uniqueStreams:
+                    streamIds.length,
 
-        }
+                streams:
+                    streamNames,
+
+                subjects:
+                    subjectsInBlock.length
+            }
+        );
 
     });
 
@@ -2195,7 +2336,7 @@ function validateParallelBlocks(data) {
     // RESULT
     // ========================================================
 
-    return {
+    const result = {
 
         valid:
             errors.length === 0,
@@ -2205,6 +2346,52 @@ function validateParallelBlocks(data) {
         warnings
 
     };
+
+
+    // ========================================================
+    // LOGGING
+    // ========================================================
+
+    console.log(
+        "Parallel block validation:",
+        {
+            valid:
+                result.valid,
+
+            errors:
+                errors.length,
+
+            warnings:
+                warnings.length
+        }
+    );
+
+
+    if (
+        errors.length > 0
+    ) {
+
+        console.error(
+            "Parallel block validation errors:",
+            errors
+        );
+
+    }
+
+
+    if (
+        warnings.length > 0
+    ) {
+
+        console.warn(
+            "Parallel block validation warnings:",
+            warnings
+        );
+
+    }
+
+
+    return result;
 
 }
 
@@ -5075,11 +5262,10 @@ function buildScheduleUnits(tasks) {
 
 
 
-            
+ 
 // ============================================================
 // VALIDATE SCHEDULE UNITS
 // ============================================================
-
 
 function validateScheduleUnits(data, units) {
 
@@ -5122,10 +5308,6 @@ function validateScheduleUnits(data, units) {
 
         // ========================================================
         // SOLO UNIT
-        // ========================================================
-        //
-        // Solo units do not need parallel validation.
-        //
         // ========================================================
 
         if (!unit.isParallel) {
@@ -5201,7 +5383,52 @@ function validateScheduleUnits(data, units) {
 
 
         // ========================================================
-        // TASK COUNT
+        // PARALLEL GROUP PARTICIPATION
+        // ========================================================
+        //
+        // IMPORTANT:
+        //
+        // A parallel group represents a shared choice period.
+        //
+        // Therefore the same stream MAY legitimately appear
+        // multiple times in the same parallel unit.
+        //
+        // Example:
+        //
+        // 10L Geography
+        // 10L Business Studies
+        // 10L CRE
+        // 10L IRE
+        // 10L French
+        //
+        // These are different learner groups inside 10L.
+        //
+        // We therefore DO NOT enforce unique streams here.
+        //
+        // The requirement itself must remain unique.
+        //
+        // ========================================================
+
+
+        // ========================================================
+        // VERIFY TASK COUNT
+        // ========================================================
+        //
+        // Do NOT require the unit to contain every requirement
+        // in the parallel block.
+        //
+        // A requirement may have fewer weekly lessons than another
+        // requirement.
+        //
+        // Example:
+        //
+        // 10L French = 5 lessons
+        // 10M French = 4 lessons
+        // 10T French = 5 lessons
+        //
+        // Therefore some parallel sessions may legitimately contain
+        // fewer participating tasks.
+        //
         // ========================================================
 
         if (block) {
@@ -5215,15 +5442,34 @@ function validateScheduleUnits(data, units) {
 
 
             if (
-                unit.tasks.length !==
-                expectedCount
+                unit.tasks.length === 0
             ) {
 
                 errors.push(
-                    `Parallel unit ${unit.unitId} has ` +
-                    `${unit.tasks.length} tasks, but parallel group ` +
-                    `"${normalizedGroup}" has ` +
-                    `${expectedCount} participating requirements.`
+                    `Parallel unit ${unit.unitId} for group ` +
+                    `"${normalizedGroup}" contains no tasks.`
+                );
+
+            }
+
+
+            // ----------------------------------------------------
+            // Informational warning only.
+            //
+            // Do NOT make task-count mismatch an error because
+            // requirements may have different weekly frequencies.
+            // ----------------------------------------------------
+
+            if (
+                expectedCount > 0 &&
+                unit.tasks.length !== expectedCount
+            ) {
+
+                warnings.push(
+                    `Parallel unit ${unit.unitId} for group ` +
+                    `"${normalizedGroup}" contains ` +
+                    `${unit.tasks.length} tasks while the group ` +
+                    `currently has ${expectedCount} requirements.`
                 );
 
             }
@@ -5280,45 +5526,15 @@ function validateScheduleUnits(data, units) {
 
 
         // ========================================================
-        // VERIFY UNIQUE STREAM PARTICIPATION
-        // ========================================================
-        //
-        // One stream must not appear twice in the same parallel
-        // unit.
-        //
-        // ========================================================
-
-        const streamIds = [
-            ...unit.tasks
-                .map(
-                    task =>
-                        normalizeTimetableId(
-                            task.streamId
-                        )
-                )
-                .filter(Boolean)
-        ];
-
-
-        const uniqueStreamIds =
-            new Set(streamIds);
-
-
-        if (
-            uniqueStreamIds.size !==
-            streamIds.length
-        ) {
-
-            errors.push(
-                `Parallel unit ${unit.unitId} contains the same ` +
-                `stream more than once.`
-            );
-
-        }
-
-
-        // ========================================================
         // VERIFY UNIQUE REQUIREMENTS
+        // ========================================================
+        //
+        // A stream can appear multiple times because the stream
+        // contains different learner option groups.
+        //
+        // But the SAME requirement must never appear twice in
+        // the same parallel unit.
+        //
         // ========================================================
 
         const requirementIds = [
@@ -5470,14 +5686,6 @@ function validateScheduleUnits(data, units) {
         // ========================================================
         // ROOM REQUIREMENTS
         // ========================================================
-        //
-        // This does NOT mean all tasks need the same room.
-        //
-        // It only records whether the unit contains multiple
-        // room-requiring tasks. The actual room allocation must
-        // happen later.
-        //
-        // ========================================================
 
         const roomTasks =
             unit.tasks.filter(
@@ -5525,22 +5733,6 @@ function validateScheduleUnits(data, units) {
     // ============================================================
     // CHECK THAT EVERY PARALLEL BLOCK HAS BEEN REPRESENTED
     // ============================================================
-    //
-    // This is particularly useful for detecting a missing task.
-    //
-    // Example:
-    //
-    // RE/GE/BS::D1 should contain:
-    //
-    //   10A RE
-    //   10B GE
-    //   10C BS
-    //   10E RE
-    //
-    // If one task was accidentally given a different key, this
-    // validation catches it.
-    //
-    // ============================================================
 
     const parallelUnitKeys =
         new Set(
@@ -5557,9 +5749,9 @@ function validateScheduleUnits(data, units) {
         );
 
 
-    // ------------------------------------------------------------
-    // Check tasks that have a parallelKey
-    // ------------------------------------------------------------
+    // ============================================================
+    // CHECK TASKS THAT HAVE A PARALLEL KEY
+    // ============================================================
 
     const parallelTasks =
         Array.isArray(
