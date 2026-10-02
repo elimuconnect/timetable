@@ -14563,17 +14563,6 @@ function calculateDoubleLessonCandidateScore(
 
 }
 
-
-// ============================================================
-// GET SCORED DOUBLE LESSON CANDIDATES
-// ============================================================
-//
-// Returns every VALID consecutive pair.
-//
-// Nothing is reserved here.
-//
-// ============================================================
-
 function getScoredDoubleLessonCandidates(
     task,
     data,
@@ -14592,13 +14581,60 @@ function getScoredDoubleLessonCandidates(
 
 
     // ========================================================
-    // GET CONSECUTIVE PERIOD PAIRS
+    // TEACHING PERIODS
+    // ========================================================
+
+    const teachingPeriods =
+        getTeachingPeriods(
+            Array.isArray(data.periods)
+                ? data.periods
+                : []
+        );
+
+
+    // ========================================================
+    // CONSECUTIVE PAIRS
     // ========================================================
 
     const pairs =
         getConsecutiveTeachingPeriodPairs(
-            data.periods
+            teachingPeriods
         );
+
+
+    console.log(
+        "STAGE 7 DEBUG: DOUBLE TASK CANDIDATE ANALYSIS:",
+        {
+            taskId:
+                task.taskId,
+
+            requirementId:
+                task.requirementId,
+
+            subject:
+                task.subjectName ||
+                task.subject_name ||
+                null,
+
+            streamId:
+                task.streamId,
+
+            teacherId:
+                task.teacherId,
+
+            parallelGroup:
+                task.parallelGroup,
+
+            parallelKey:
+                task.parallelKey,
+
+            taskType:
+                task.taskType,
+
+            pairCount:
+                pairs.length
+        }
+    );
 
 
     if (
@@ -14611,13 +14647,15 @@ function getScoredDoubleLessonCandidates(
 
 
     // ========================================================
-    // GET COMPATIBLE ROOMS
+    // COMPATIBLE ROOMS
     // ========================================================
 
     const compatibleRooms =
         getCompatibleRooms(
             task,
-            data.rooms
+            Array.isArray(data.rooms)
+                ? data.rooms
+                : []
         );
 
 
@@ -14626,33 +14664,116 @@ function getScoredDoubleLessonCandidates(
         compatibleRooms.length === 0
     ) {
 
+        console.error(
+            "STAGE 7 DEBUG: DOUBLE TASK HAS NO COMPATIBLE ROOMS:",
+            {
+                taskId:
+                    task.taskId,
+
+                requirementId:
+                    task.requirementId,
+
+                requiresRoom:
+                    task.requiresRoom,
+
+                roomType:
+                    task.roomType,
+
+                roomTypeId:
+                    task.roomTypeId
+            }
+        );
+
         return [];
 
     }
 
 
+    const candidateRooms =
+        task.requiresRoom
+            ? compatibleRooms
+            : [null];
+
+
+    // ========================================================
+    // TEST EACH PAIR
+    // ========================================================
+
     const candidates = [];
 
+    let pairRejected = 0;
 
-    // ========================================================
-    // TEST EVERY PERIOD PAIR
-    // ========================================================
+    const rejectionReasons =
+        new Map();
+
 
     pairs.forEach(
-        pair => {
+        (
+            pair,
+            pairIndex
+        ) => {
 
-            const candidateRooms =
-                task.requiresRoom
-                    ? compatibleRooms
-                    : [null];
+            if (
+                !pair ||
+                !pair.first ||
+                !pair.second
+            ) {
 
+                return;
+
+            }
+
+
+            let pairAccepted =
+                false;
+
+
+            let firstCheckReason =
+                null;
+
+
+            let finalCheckReasons =
+                [];
+
+
+            // =================================================
+            // TEST EACH ROOM
+            // =================================================
 
             candidateRooms.forEach(
                 room => {
 
-                    // ========================================
-                    // VALIDATE THE DOUBLE
-                    // ========================================
+                    // =========================================
+                    // CHECK FIRST PERIOD DIRECTLY
+                    // =========================================
+
+                    const firstCheck =
+                        checkSingleSlotConflict(
+                            task,
+                            pair.first,
+                            room,
+                            indexes
+                        );
+
+
+                    if (
+                        !firstCheck ||
+                        !firstCheck.valid
+                    ) {
+
+                        firstCheckReason =
+                            firstCheck?.reason ||
+                            "First period rejected by checkSingleSlotConflict().";
+
+
+                        return;
+
+                    }
+
+
+                    // =========================================
+                    // CHECK COMPLETE DOUBLE
+                    // =========================================
 
                     const conflict =
                         checkDoubleLessonConflict(
@@ -14669,14 +14790,20 @@ function getScoredDoubleLessonCandidates(
                         !conflict.valid
                     ) {
 
+                        finalCheckReasons.push(
+                            conflict?.reason ||
+                            "checkDoubleLessonConflict() rejected the pair."
+                        );
+
+
                         return;
 
                     }
 
 
-                    // ========================================
-                    // SCORE THE DOUBLE
-                    // ========================================
+                    // =========================================
+                    // SCORE
+                    // =========================================
 
                     const scoring =
                         calculateDoubleLessonCandidateScore(
@@ -14691,8 +14818,7 @@ function getScoredDoubleLessonCandidates(
 
                     candidates.push({
 
-                        taskId:
-                            task.taskId,
+                        task,
 
                         firstPeriod:
                             pair.first,
@@ -14700,25 +14826,156 @@ function getScoredDoubleLessonCandidates(
                         secondPeriod:
                             pair.second,
 
+                        periodIds:
+                            [
+                                pair.first.id,
+                                pair.second.id
+                            ],
+
+                        periodKey:
+                            `${pair.first.id}__${pair.second.id}`,
+
                         room,
 
+                        roomId:
+                            room?.id ||
+                            null,
+
                         score:
-                            scoring.score,
+                            Number(
+                                scoring?.score
+                            ) || 0,
 
                         reasons:
-                            scoring.reasons
+                            Array.isArray(
+                                scoring?.reasons
+                            )
+                                ? scoring.reasons
+                                : [],
+
+                        conflict:
+                            {
+                                valid:
+                                    true,
+
+                                reason:
+                                    ""
+                            }
 
                     });
 
+
+                    pairAccepted =
+                        true;
+
                 }
             );
+
+
+            // =================================================
+            // PAIR REJECTED
+            // =================================================
+
+            if (
+                !pairAccepted
+            ) {
+
+                pairRejected++;
+
+
+                let reason =
+                    finalCheckReasons.length > 0
+                        ? finalCheckReasons[0]
+                        : firstCheckReason ||
+                          "Unknown rejection reason.";
+
+
+                rejectionReasons.set(
+                    reason,
+                    (
+                        rejectionReasons.get(
+                            reason
+                        ) || 0
+                    ) + 1
+                );
+
+
+                console.warn(
+                    "STAGE 7 DEBUG: DOUBLE PAIR REJECTED:",
+                    {
+
+                        taskId:
+                            task.taskId,
+
+                        requirementId:
+                            task.requirementId,
+
+                        pairIndex,
+
+                        firstPeriod:
+                            {
+                                id:
+                                    pair.first.id,
+
+                                day:
+                                    pair.first.dayName ??
+                                    pair.first.day_name ??
+                                    pair.first.dayNumber ??
+                                    pair.first.day_number,
+
+                                period:
+                                    pair.first.periodNumber ??
+                                    pair.first.period_number ??
+                                    pair.first.periodOrder ??
+                                    pair.first.period_order,
+
+                                name:
+                                    pair.first.periodName ??
+                                    pair.first.period_name ??
+                                    null
+                            },
+
+                        secondPeriod:
+                            {
+                                id:
+                                    pair.second.id,
+
+                                day:
+                                    pair.second.dayName ??
+                                    pair.second.day_name ??
+                                    pair.second.dayNumber ??
+                                    pair.second.day_number,
+
+                                period:
+                                    pair.second.periodNumber ??
+                                    pair.second.period_number ??
+                                    pair.second.periodOrder ??
+                                    pair.second.period_order,
+
+                                name:
+                                    pair.second.periodName ??
+                                    pair.second.period_name ??
+                                    null
+                            },
+
+                        firstCheckReason,
+
+                        finalCheckReasons,
+
+                        selectedReason:
+                            reason
+
+                    }
+                );
+
+            }
 
         }
     );
 
 
     // ========================================================
-    // BEST PAIR FIRST
+    // SORT
     // ========================================================
 
     candidates.sort(
@@ -14727,32 +14984,101 @@ function getScoredDoubleLessonCandidates(
             b
         ) => {
 
-            if (
-                b.score !==
-                a.score
-            ) {
-
-                return (
-                    b.score -
-                    a.score
-                );
-
-            }
-
-
             return (
-                Math.random() -
-                0.5
+                (Number(b.score) || 0) -
+                (Number(a.score) || 0)
             );
 
         }
     );
 
 
+    // ========================================================
+    // DIAGNOSTIC SUMMARY
+    // ========================================================
+
+    console.log(
+        "STAGE 7 DEBUG: DOUBLE CANDIDATE SUMMARY:",
+        {
+
+            taskId:
+                task.taskId,
+
+            requirementId:
+                task.requirementId,
+
+            parallelGroup:
+                task.parallelGroup,
+
+            parallelKey:
+                task.parallelKey,
+
+            totalPairs:
+                pairs.length,
+
+            rejectedPairs:
+                pairRejected,
+
+            acceptedCandidates:
+                candidates.length,
+
+            rejectionReasons:
+                Array.from(
+                    rejectionReasons.entries()
+                ).map(
+                    (
+                        [
+                            reason,
+                            count
+                        ]
+                    ) => ({
+                        reason,
+                        count
+                    })
+                ),
+
+            candidatePeriods:
+                candidates
+                    .slice(
+                        0,
+                        30
+                    )
+                    .map(
+                        candidate => ({
+                            firstPeriod:
+                                candidate.firstPeriod?.id,
+
+                            secondPeriod:
+                                candidate.secondPeriod?.id,
+
+                            periodKey:
+                                candidate.periodKey,
+
+                            score:
+                                candidate.score,
+
+                            roomId:
+                                candidate.roomId
+                        })
+                    )
+
+        }
+    );
+
+
+    // ========================================================
+    // IMPORTANT
+    // ========================================================
+    //
+    // This diagnostic version does NOT weaken any constraint.
+    //
+    // It only tells us WHY each pair was rejected.
+    //
+    // ========================================================
+
     return candidates;
 
 }
-
 
 // ============================================================
 // GET BEST DOUBLE LESSON CANDIDATE
