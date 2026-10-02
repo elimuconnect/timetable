@@ -23268,14 +23268,40 @@ while (
         // or SAME consecutive period pair.
         //
         // ==================================================
+let parallelCandidates;
 
-        const parallelCandidates =
-            getScoredParallelUnitCandidates(
-                unit,
-                data,
-                indexes
-            );
+const isParallelDoubleUnit =
+    Array.isArray(unit.tasks) &&
+    unit.tasks.length > 0 &&
+    unit.tasks.every(
+        task =>
+            task?.taskType === "double"
+    );
 
+if (
+    isParallelDoubleUnit
+) {
+
+    const firstTask =
+        unit.tasks[0];
+
+    parallelCandidates =
+        getScoredParallelDoubleLessonCandidates(
+            firstTask,
+            data,
+            indexes
+        );
+
+} else {
+
+    parallelCandidates =
+        getScoredParallelUnitCandidates(
+            unit,
+            data,
+            indexes
+        );
+
+}
 
         // ==================================================
         // NO COMMON PERIOD
