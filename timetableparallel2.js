@@ -33216,14 +33216,35 @@ function getStage7ParallelUnitCandidates(
     }
 
 
-    // ============================================================
-    // Reuse the SAME synchronization engine used by the main
-    // generator.
-    // ============================================================
+   // ============================================================
+// PARALLEL DOUBLE ROUTING
+// ============================================================
+//
+// Parallel doubles must use the dedicated Parallel Double
+// engine because they require TWO consecutive periods.
+//
+// Parallel singles continue using the existing synchronization
+// engine unchanged.
+// ============================================================
+
+const allDouble =
+    unit.tasks.every(
+        task =>
+            task?.taskType === "double"
+    );
+
+
+if (
+    allDouble
+) {
+
+    const firstTask =
+        unit.tasks[0];
+
 
     const candidates =
-        getScoredParallelUnitCandidates(
-            unit,
+        getScoredParallelDoubleLessonCandidates(
+            firstTask,
             data,
             indexes
         );
@@ -33232,6 +33253,28 @@ function getStage7ParallelUnitCandidates(
     return Array.isArray(candidates)
         ? candidates
         : [];
+
+}
+
+
+// ============================================================
+// PARALLEL SINGLE
+// ============================================================
+//
+// Keep the existing engine completely unchanged.
+// ============================================================
+
+const candidates =
+    getScoredParallelUnitCandidates(
+        unit,
+        data,
+        indexes
+    );
+
+
+return Array.isArray(candidates)
+    ? candidates
+    : []; 
 
 }
 
