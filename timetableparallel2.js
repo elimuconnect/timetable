@@ -22474,13 +22474,9 @@ function checkParallelDoubleMemberSlotConflict(
     // ========================================================
     // PARALLEL DOUBLE STUDENT-GROUP EXCEPTION
     // ========================================================
+  return normalCheck;
 
-    return {
-        ...normalCheck,
-        valid: true,
-        reason: ""
-    };
-
+}
 }
 
 
