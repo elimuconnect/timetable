@@ -8419,7 +8419,6 @@ function areConcurrentTeacherLessonsAllowed(
 
 
 
-
 function checkSingleSlotConflict(
     task,
     period,
@@ -8509,7 +8508,7 @@ function checkSingleSlotConflict(
 
 
         // ====================================================
-        // CHECK WHETHER THIS IS VALID PARALLEL TEACHING
+        // GET ALL LESSONS ALREADY USING THIS STUDENT GROUP
         // ====================================================
 
         const existingLessons =
@@ -8522,6 +8521,10 @@ function checkSingleSlotConflict(
                 )
                 : [];
 
+
+        // ====================================================
+        // CURRENT TASK IDENTIFIERS
+        // ====================================================
 
         const taskSubjectId =
             normalizeTimetableId(
@@ -8544,30 +8547,183 @@ function checkSingleSlotConflict(
             );
 
 
+        // ====================================================
+        // DETERMINE WHETHER ALL EXISTING LESSONS ARE
+        // LEGITIMATE MEMBERS OF THE SAME PARALLEL SESSION
+        // ====================================================
+
         const parallelTeachingAllowed =
+            Boolean(
+                taskParallelGroup
+            ) &&
             existingLessons.length > 0 &&
             existingLessons.every(
                 existingLesson => {
 
+                    if (
+                        !existingLesson
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    // ----------------------------------------
+                    // EXISTING SUBJECT
+                    // ----------------------------------------
+
                     const existingSubjectId =
                         normalizeTimetableId(
-                            existingLesson.subjectId
+                            existingLesson.subjectId ??
+                            existingLesson.subject_id
                         );
 
+
+                    // ----------------------------------------
+                    // EXISTING TEACHER
+                    // ----------------------------------------
 
                     const existingTeacherId =
                         normalizeTimetableId(
-                            existingLesson.teacherId
+                            existingLesson.teacherId ??
+                            existingLesson.teacher_id
                         );
 
 
-                    const existingParallelGroup =
+                    // ----------------------------------------
+                    // EXISTING PARALLEL GROUP
+                    //
+                    // IMPORTANT:
+                    //
+                    // Some index records may not carry
+                    // parallelGroup directly.
+                    //
+                    // Therefore also try the requirement
+                    // information when available.
+                    // ----------------------------------------
+
+                    let existingParallelGroup =
                         normalizeTimetableId(
-                            existingLesson.parallelGroup
+                            existingLesson.parallelGroup ??
+                            existingLesson.parallel_group
                         );
 
 
-                    // Different subject required
+                    // ----------------------------------------
+                    // FALLBACK: REQUIREMENT DATA
+                    // ----------------------------------------
+
+                    if (
+                        !existingParallelGroup
+                    ) {
+
+                        const existingRequirementId =
+                            normalizeTimetableId(
+                                existingLesson.requirementId ??
+                                existingLesson.requirement_id
+                            );
+
+
+                        if (
+                            existingRequirementId &&
+                            Array.isArray(
+                                indexes.requirements
+                            )
+                        ) {
+
+                            const existingRequirement =
+                                indexes.requirements.find(
+                                    requirement =>
+                                        normalizeTimetableId(
+                                            requirement?.id
+                                        ) ===
+                                        existingRequirementId
+                                );
+
+
+                            if (
+                                existingRequirement
+                            ) {
+
+                                existingParallelGroup =
+                                    normalizeTimetableId(
+                                        existingRequirement.parallelGroup ??
+                                        existingRequirement.parallel_group
+                                    );
+
+                            }
+
+                        }
+
+
+                        // ------------------------------------
+                        // FALLBACK: REQUIREMENT MAP
+                        // ------------------------------------
+
+                        if (
+                            !existingParallelGroup &&
+                            existingRequirementId &&
+                            indexes.requirementsById instanceof Map
+                        ) {
+
+                            const existingRequirement =
+                                indexes.requirementsById.get(
+                                    existingRequirementId
+                                );
+
+
+                            if (
+                                existingRequirement
+                            ) {
+
+                                existingParallelGroup =
+                                    normalizeTimetableId(
+                                        existingRequirement.parallelGroup ??
+                                        existingRequirement.parallel_group
+                                    );
+
+                            }
+
+                        }
+
+                    }
+
+
+                    // ----------------------------------------
+                    // BOTH MUST HAVE A PARALLEL GROUP
+                    // ----------------------------------------
+
+                    if (
+                        !taskParallelGroup ||
+                        !existingParallelGroup
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    // ----------------------------------------
+                    // PARALLEL GROUP MUST MATCH
+                    // ----------------------------------------
+
+                    if (
+                        taskParallelGroup !==
+                        existingParallelGroup
+                    ) {
+
+                        return false;
+
+                    }
+
+
+                    // ----------------------------------------
+                    // MUST BE DIFFERENT SUBJECTS
+                    //
+                    // Same subject is not a choice-based
+                    // parallel lesson.
+                    // ----------------------------------------
 
                     if (
                         !taskSubjectId ||
@@ -8581,7 +8737,12 @@ function checkSingleSlotConflict(
                     }
 
 
-                    // Different teacher required
+                    // ----------------------------------------
+                    // MUST BE DIFFERENT TEACHERS
+                    //
+                    // One teacher cannot teach both parallel
+                    // lessons simultaneously.
+                    // ----------------------------------------
 
                     if (
                         !taskTeacherId ||
@@ -8595,28 +8756,22 @@ function checkSingleSlotConflict(
                     }
 
 
-                    // Explicit parallel group must match
-
-                    if (
-                        taskParallelGroup ||
-                        existingParallelGroup
-                    ) {
-
-                        return (
-                            taskParallelGroup &&
-                            existingParallelGroup &&
-                            taskParallelGroup ===
-                            existingParallelGroup
-                        );
-
-                    }
-
-
-                    return false;
+                    return true;
 
                 }
             );
 
+
+        // ====================================================
+        // IMPORTANT:
+        //
+        // Same student group + same parallel group =
+        // ALLOWED, provided the lessons have different
+        // subjects and different teachers.
+        //
+        // Same student group + different/no parallel group =
+        // CONFLICT.
+        // ====================================================
 
         if (
             !parallelTeachingAllowed
@@ -8672,15 +8827,6 @@ function checkSingleSlotConflict(
         // ====================================================
         // DETERMINE WHETHER THIS IS A SHARED TEACHER SESSION
         // ====================================================
-        //
-        // Same teacher + same subject + same period across
-        // streams is one teacher session, not two.
-        //
-        // If the existing lessons are all compatible
-        // concurrent lessons, the candidate does NOT add
-        // another teacher session.
-        //
-        // ====================================================
 
         const teacherConcurrentSession =
             existingTeacherLessons.length > 0 &&
@@ -8693,9 +8839,9 @@ function checkSingleSlotConflict(
             );
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // TEACHER PERIOD CONFLICT
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             existingTeacherLessons.length > 0 &&
@@ -8726,19 +8872,6 @@ function checkSingleSlotConflict(
                 )
                 : null;
 
-
-        // ----------------------------------------------------
-        // IMPORTANT:
-        //
-        // A shared/concurrent lesson does NOT create another
-        // teacher session.
-        //
-        // Therefore:
-        //
-        //     concurrent session -> increment = 0
-        //     new teacher session -> increment = 1
-        //
-        // ----------------------------------------------------
 
         const projectedTeacherSessionIncrement =
             teacherConcurrentSession
@@ -8851,12 +8984,6 @@ function checkSingleSlotConflict(
 
         // ====================================================
         // TEACHER CONSECUTIVE LIMIT
-        // ====================================================
-        //
-        // A shared concurrent lesson does not create another
-        // teacher session, so it cannot increase a consecutive
-        // session count.
-        //
         // ====================================================
 
         if (
