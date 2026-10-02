@@ -21837,50 +21837,106 @@ function getScoredParallelDoubleLessonCandidates(
                 }
 
 
-                // --------------------------------------------
-                // FIRST PERIOD
-                // --------------------------------------------
+// --------------------------------------------
+// FIRST PERIOD
+// --------------------------------------------
 
-                const firstCheck =
-                    checkSingleSlotConflict(
-                        memberTask,
-                        pair.first,
-                        room,
-                        indexes
-                    );
-
-
-                if (
-                    !firstCheck.valid
-                ) {
-
-                    continue;
-
-                }
+const firstCheck =
+    checkSingleSlotConflict(
+        memberTask,
+        pair.first,
+        room,
+        indexes
+    );
 
 
-                // --------------------------------------------
-                // SECOND PERIOD
-                // --------------------------------------------
+// --------------------------------------------
+// SECOND PERIOD
+// --------------------------------------------
 
-                const secondCheck =
-                    checkSingleSlotConflict(
-                        memberTask,
-                        pair.second,
-                        room,
-                        indexes
-                    );
-
-
-                if (
-                    !secondCheck.valid
-                ) {
-
-                    continue;
-
-                }
+const secondCheck =
+    checkSingleSlotConflict(
+        memberTask,
+        pair.second,
+        room,
+        indexes
+    );
 
 
+// ====================================================
+// PARALLEL DOUBLE DIAGNOSTIC
+// ====================================================
+
+if (
+    !firstCheck.valid ||
+    !secondCheck.valid
+) {
+
+    console.log(
+        "PARALLEL DOUBLE REJECTED:",
+        {
+
+            taskId:
+                memberTask.taskId,
+
+            subjectId:
+                memberTask.subjectId,
+
+            day:
+                pair.first.day_name ??
+                pair.first.dayName ??
+                pair.first.day ??
+                null,
+
+            firstPeriod:
+                pair.first.period_name ??
+                pair.first.periodName ??
+                pair.first.id,
+
+            secondPeriod:
+                pair.second.period_name ??
+                pair.second.periodName ??
+                pair.second.id,
+
+            roomId:
+                room?.id ??
+                null,
+
+            firstValid:
+                firstCheck.valid,
+
+            firstReason:
+                firstCheck.reason ??
+                null,
+
+            secondValid:
+                secondCheck.valid,
+
+            secondReason:
+                secondCheck.reason ??
+                null
+
+        }
+    );
+
+}
+
+
+// ====================================================
+// REJECT IF EITHER PERIOD IS INVALID
+// ====================================================
+
+if (
+    !firstCheck.valid ||
+    !secondCheck.valid
+) {
+
+    continue;
+
+}
+
+
+                
                 // --------------------------------------------
                 // SCORE BOTH PERIODS
                 // --------------------------------------------
