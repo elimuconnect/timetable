@@ -15118,6 +15118,61 @@ console.log(
             )
     }
 );
+
+    console.table(
+    Array.from(
+        rejectionReasons.entries()
+    ).map(
+        (
+            [
+                reason,
+                count
+            ]
+        ) => ({
+            reason,
+            count
+        })
+    )
+);
+
+console.log(
+    "STAGE 7 DEBUG: ALL DOUBLE REJECTION DETAILS:",
+    {
+        taskId:
+            task.taskId,
+
+        requirementId:
+            task.requirementId,
+
+        parallelGroup:
+            task.parallelGroup,
+
+        parallelKey:
+            task.parallelKey,
+
+        totalPairs:
+            pairs.length,
+
+        acceptedCandidates:
+            candidates.length,
+
+        rejectionReasons:
+            Array.from(
+                rejectionReasons.entries()
+            ).map(
+                (
+                    [
+                        reason,
+                        count
+                    ]
+                ) => ({
+                    reason,
+                    count
+                })
+            )
+    }
+);
+    
     // ========================================================
     // IMPORTANT
     // ========================================================
