@@ -23144,13 +23144,14 @@ function placeSelectedParallelDoubleUnit(
         // FIRST PERIOD
         // ----------------------------------------------------
 
-        const firstCheck =
-            checkSingleSlotConflict(
-                task,
-                firstPeriod,
-                room,
-                indexes
-            );
+      const firstCheck =
+    checkParallelDoubleMemberSlotConflict(
+        task,
+        firstPeriod,
+        room,
+        indexes,
+        unit.tasks
+    );
 
 
         if (
@@ -23176,14 +23177,14 @@ function placeSelectedParallelDoubleUnit(
         // SECOND PERIOD
         // ----------------------------------------------------
 
-        const secondCheck =
-            checkSingleSlotConflict(
-                task,
-                secondPeriod,
-                room,
-                indexes
-            );
-
+       const secondCheck =
+    checkParallelDoubleMemberSlotConflict(
+        task,
+        secondPeriod,
+        room,
+        indexes,
+        unit.tasks
+    );
 
         if (
             !secondCheck.valid
