@@ -22170,7 +22170,6 @@ if (
 
 
 
-
 // ============================================================
 // PARALLEL DOUBLE STUDENT-GROUP CONFLICT CHECK
 // ============================================================
@@ -22308,12 +22307,7 @@ function checkParallelDoubleMemberSlotConflict(
 
 
     // --------------------------------------------------------
-    // IMPORTANT:
-    // Do not blindly turn every student-group conflict into
-    // "valid".
-    //
-    // Check whether the conflicting occupancy is actually
-    // another member of this proposed parallel unit.
+    // Check the student groups involved in this task.
     // --------------------------------------------------------
 
     const studentGroupIds =
@@ -22362,6 +22356,10 @@ function checkParallelDoubleMemberSlotConflict(
     }
 
 
+    // ========================================================
+    // CHECK EXISTING STUDENT-GROUP OCCUPANCY
+    // ========================================================
+
     for (
         const studentGroupId of studentGroupIds
     ) {
@@ -22381,10 +22379,12 @@ function checkParallelDoubleMemberSlotConflict(
         }
 
 
+        // IMPORTANT:
+        // studentGroupPeriod is an object, NOT a Map.
         const occupied =
-            studentGroupPeriod.get(
+            studentGroupPeriod[
                 `${groupId}::${periodId}`
-            );
+            ];
 
 
         if (
@@ -22444,6 +22444,11 @@ function checkParallelDoubleMemberSlotConflict(
                 );
 
 
+            // ------------------------------------------------
+            // Another member of this SAME parallel unit is
+            // allowed to share the student group.
+            // ------------------------------------------------
+
             if (
                 belongsToThisUnit &&
                 existingParallelGroup ===
@@ -22455,7 +22460,10 @@ function checkParallelDoubleMemberSlotConflict(
             }
 
 
+            // ------------------------------------------------
             // This is a REAL conflict with another lesson.
+            // ------------------------------------------------
+
             return normalCheck;
 
         }
@@ -22463,9 +22471,10 @@ function checkParallelDoubleMemberSlotConflict(
     }
 
 
-    // No conflicting existing lesson was found.
-    // The generic checker rejected the slot, but the rejection
-    // was only due to the proposed parallel-unit relationship.
+    // ========================================================
+    // PARALLEL DOUBLE STUDENT-GROUP EXCEPTION
+    // ========================================================
+
     return {
         ...normalCheck,
         valid: true,
@@ -22473,7 +22482,6 @@ function checkParallelDoubleMemberSlotConflict(
     };
 
 }
-
 
 
 // ============================================================
