@@ -18090,11 +18090,12 @@ const existingParallelGroup =
 
 
 
+
 // ============================================================
 // GET PERIOD IDS FROM A SMART CANDIDATE
 // ============================================================
 //
-// Your single candidate structure is:
+// SINGLE:
 //
 // {
 //     taskId,
@@ -18104,10 +18105,17 @@ const existingParallelGroup =
 //     reasons
 // }
 //
-// Therefore the period comes from candidate.period.id.
+// DOUBLE:
 //
-// For future double-lesson candidates, this helper also supports
-// periodIds / startPeriodId / endPeriodId if those are present.
+// {
+//     taskId,
+//     firstPeriod,
+//     secondPeriod,
+//     room,
+//     score,
+//     reasons
+// }
+//
 // ============================================================
 
 function getSmartCandidatePeriodIds(candidate) {
@@ -18117,82 +18125,77 @@ function getSmartCandidatePeriodIds(candidate) {
     }
 
 
-    // --------------------------------------------
-    // Double candidate / multi-period candidate
-    // --------------------------------------------
+    // ========================================================
+    // DOUBLE LESSON
+    // ========================================================
 
     if (
-        Array.isArray(candidate.periodIds) &&
-        candidate.periodIds.length > 0
+        candidate.firstPeriod?.id &&
+        candidate.secondPeriod?.id
+    ) {
+
+        return [
+
+            normalizeTimetableId(
+                candidate.firstPeriod.id
+            ),
+
+            normalizeTimetableId(
+                candidate.secondPeriod.id
+            )
+
+        ].filter(Boolean);
+
+    }
+
+
+    // ========================================================
+    // SINGLE LESSON
+    // ========================================================
+
+    if (
+        candidate.period?.id
+    ) {
+
+        return [
+
+            normalizeTimetableId(
+                candidate.period.id
+            )
+
+        ].filter(Boolean);
+
+    }
+
+
+    // ========================================================
+    // GENERIC FALLBACKS
+    // ========================================================
+
+    if (
+        Array.isArray(candidate.periodIds)
     ) {
 
         return candidate.periodIds
-            .map(id =>
-                normalizeTimetableId(id)
+            .map(
+                normalizeTimetableId
             )
             .filter(Boolean);
 
     }
 
 
-    // --------------------------------------------
-    // Explicit start/end period IDs
-    // --------------------------------------------
-
-    if (candidate.startPeriodId) {
-
-        const ids = [
-            normalizeTimetableId(
-                candidate.startPeriodId
-            )
-        ];
-
-
-        if (candidate.endPeriodId) {
-
-            ids.push(
-                normalizeTimetableId(
-                    candidate.endPeriodId
-                )
-            );
-
-        }
-
-
-        return ids.filter(Boolean);
-
-    }
-
-
-    // --------------------------------------------
-    // Normal single lesson candidate
-    // --------------------------------------------
-
     if (
-        candidate.period &&
-        candidate.period.id
+        candidate.periodId
     ) {
 
         return [
-            normalizeTimetableId(
-                candidate.period.id
-            )
-        ];
 
-    }
-
-
-    // --------------------------------------------
-    // Fallback
-    // --------------------------------------------
-
-    if (candidate.periodId) {
-
-        return [
             normalizeTimetableId(
                 candidate.periodId
             )
-        ];
+
+        ].filter(Boolean);
 
     }
 
@@ -18204,14 +18207,30 @@ function getSmartCandidatePeriodIds(candidate) {
 
 
 // ============================================================
-// BUILD A UNIQUE PERIOD KEY FOR A CANDIDATE
+// GET UNIQUE PERIOD/PERIOD-PAIR KEY
+// ============================================================
+//
+// SINGLE:
+//
+//     P5
+//
+// DOUBLE:
+//
+//     P5|P6
+//
+// This key is what forces every task in a parallel unit to
+// use the exact same period or consecutive period pair.
 // ============================================================
 
 function getSmartCandidatePeriodKey(candidate) {
 
-    return getSmartCandidatePeriodIds(
-        candidate
-    ).join("|");
+    const periodIds =
+        getSmartCandidatePeriodIds(
+            candidate
+        );
+
+
+    return periodIds.join("|");
 
 }
 
@@ -18221,26 +18240,21 @@ function getSmartCandidatePeriodKey(candidate) {
 // GET SCORED PARALLEL UNIT CANDIDATES
 // ============================================================
 //
-// IMPORTANT:
-//
-// This function does NOT place anything.
-//
-// It finds periods that are simultaneously available to
-// EVERY task inside the parallel schedule unit.
+// A parallel unit contains ONLY tasks that share the same
+// parallelKey.
 //
 // Example:
 //
-// RE/GE/BS:
+// RE/GE/BS::S1
 //
-// 10A → RE
-// 10B → GE
-// 10C → BS
-// 10E → RE
+//     10A → RE
+//     10B → GE
+//     10C → BS
+//     10E → RE
 //
-// All four tasks must have a candidate for the SAME period.
+// 10D is NOT in this unit.
 //
-// 10D is not part of the unit and is therefore completely
-// independent.
+// Therefore 10D remains completely independent.
 //
 // ============================================================
 
@@ -18263,6 +18277,10 @@ function getScoredParallelUnitCandidates(
     }
 
 
+    // ========================================================
+    // ONLY UNPLACED TASKS
+    // ========================================================
+
     const tasks =
         unit.tasks.filter(
             task =>
@@ -18281,7 +18299,7 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // GET CANDIDATES FOR EVERY TASK
+    // GET SMART CANDIDATES FOR EVERY TASK
     // ========================================================
 
     const taskCandidateSets =
@@ -18322,28 +18340,19 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // BUILD COMMON PERIOD MAP
-    // ========================================================
+    // BUILD MAP:
     //
-    // Each task may have several candidate rooms for the
-    // same period.
-    //
-    // We group candidates by period key so that:
-    //
-    // Period P5:
-    //
-    // 10A → candidate
-    // 10B → candidate
-    // 10C → candidate
-    // 10E → candidate
-    //
-    // becomes one synchronized placement option.
+    // period key
+    //      ↓
+    // candidates for that task
     //
     // ========================================================
 
     const periodMaps =
         taskCandidateSets.map(
-            ({ candidates }) => {
+            ({
+                candidates
+            }) => {
 
                 const map =
                     new Map();
@@ -18407,10 +18416,10 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // FIND PERIODS COMMON TO ALL TASKS
+    // FIND PERIODS COMMON TO EVERY TASK
     // ========================================================
 
-    const firstPeriodMap =
+    const firstMap =
         periodMaps[0];
 
 
@@ -18420,10 +18429,10 @@ function getScoredParallelUnitCandidates(
 
     for (
         const periodKey of
-        firstPeriodMap.keys()
+        firstMap.keys()
     ) {
 
-        const availableForEveryTask =
+        const existsForEveryTask =
             periodMaps.every(
                 map =>
                     map.has(
@@ -18433,7 +18442,7 @@ function getScoredParallelUnitCandidates(
 
 
         if (
-            availableForEveryTask
+            existsForEveryTask
         ) {
 
             commonPeriodKeys.push(
@@ -18446,7 +18455,7 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // BUILD SYNCHRONIZED CANDIDATES
+    // BUILD FINAL SYNCHRONIZED CANDIDATES
     // ========================================================
 
     const synchronizedCandidates =
@@ -18456,7 +18465,7 @@ function getScoredParallelUnitCandidates(
     commonPeriodKeys.forEach(
         periodKey => {
 
-            const taskCandidates =
+            const selectedTasks =
                 [];
 
 
@@ -18496,10 +18505,10 @@ function getScoredParallelUnitCandidates(
                 }
 
 
-                // ------------------------------------------------
-                // Pick the best room/candidate for this task
-                // within the SAME synchronized period.
-                // ------------------------------------------------
+                // --------------------------------------------
+                // Best room/candidate for THIS task at the
+                // common synchronized period.
+                // --------------------------------------------
 
                 matchingCandidates.sort(
                     (
@@ -18520,7 +18529,7 @@ function getScoredParallelUnitCandidates(
                     matchingCandidates[0];
 
 
-                taskCandidates.push({
+                selectedTasks.push({
 
                     task,
 
@@ -18552,13 +18561,15 @@ function getScoredParallelUnitCandidates(
                 periodKey,
 
                 tasks:
-                    taskCandidates,
+                    selectedTasks,
 
                 score:
                     totalScore,
 
                 reasons: [
-                    `All ${taskCandidates.length} parallel tasks can be placed in ${periodKey}.`
+
+                    `All ${selectedTasks.length} parallel tasks can be placed in the same period pattern: ${periodKey}.`
+
                 ]
 
             });
@@ -18568,7 +18579,7 @@ function getScoredParallelUnitCandidates(
 
 
     // ========================================================
-    // BEST SYNCHRONIZED PERIOD FIRST
+    // BEST COMMON PERIOD FIRST
     // ========================================================
 
     synchronizedCandidates.sort(
@@ -18607,18 +18618,93 @@ function getScoredParallelUnitCandidates(
 
 
 // ============================================================
-// PLACE A COMPLETE PARALLEL UNIT
+// RESOLVE PERIOD OBJECT FROM INDEXES
+// ============================================================
+
+function getParallelUnitPeriod(
+    indexes,
+    periodId
+) {
+
+    if (
+        !indexes ||
+        !Array.isArray(indexes.periods) ||
+        !periodId
+    ) {
+
+        return null;
+
+    }
+
+
+    const normalizedPeriodId =
+        normalizeTimetableId(
+            periodId
+        );
+
+
+    return indexes.periods.find(
+        period =>
+            normalizeTimetableId(
+                period?.id
+            ) ===
+            normalizedPeriodId
+    ) || null;
+
+}
+
+
+
+// ============================================================
+// RESET TASK AFTER ROLLBACK
+// ============================================================
+
+function resetTaskAfterParallelRollback(
+    task
+) {
+
+    if (!task) {
+        return;
+    }
+
+
+    task.placed = false;
+
+    task.periodIds = [];
+
+    task.periodId = null;
+
+    task.roomId = null;
+
+    task.lessonId = null;
+
+}
+
+
+
+// ============================================================
+// PLACE COMPLETE PARALLEL UNIT
 // ============================================================
 //
-// This function places ALL tasks in the unit.
+// IMPORTANT:
 //
-// It is deliberately transactional:
+// This is TRANSACTIONAL.
 //
-// 1. Validate every task first.
-// 2. Place tasks one by one.
-// 3. If ANY task fails, roll back everything already placed.
-// 4. Only return success when the WHOLE parallel unit is placed.
+// Either:
 //
+//     ALL tasks are placed
+//
+// or:
+//
+//     ALL tasks are rolled back.
+//
+// This prevents a situation such as:
+//
+//     10A → P5
+//     10B → P5
+//     10C → failed
+//
+// from leaving 10A and 10B incorrectly placed.
 // ============================================================
 
 function placeSelectedParallelUnit(
@@ -18632,7 +18718,8 @@ function placeSelectedParallelUnit(
         !parallelCandidate ||
         !Array.isArray(
             parallelCandidate.tasks
-        )
+        ) ||
+        parallelCandidate.tasks.length === 0
     ) {
 
         return {
@@ -18642,7 +18729,7 @@ function placeSelectedParallelUnit(
             entries: [],
 
             reason:
-                "Invalid parallel unit or candidate."
+                "Invalid parallel unit or parallel candidate."
 
         };
 
@@ -18658,7 +18745,46 @@ function placeSelectedParallelUnit(
 
 
     // ========================================================
-    // FIRST PASS — PLACE EACH TASK
+    // SNAPSHOT TASK STATE
+    // ========================================================
+
+    const taskSnapshots =
+        parallelCandidate.tasks.map(
+            item => ({
+
+                task:
+                    item.task,
+
+                placed:
+                    item.task?.placed,
+
+                periodIds:
+                    Array.isArray(
+                        item.task?.periodIds
+                    )
+                        ? [
+                            ...item.task.periodIds
+                        ]
+                        : [],
+
+                periodId:
+                    item.task?.periodId ??
+                    null,
+
+                roomId:
+                    item.task?.roomId ??
+                    null,
+
+                lessonId:
+                    item.task?.lessonId ??
+                    null
+
+            })
+        );
+
+
+    // ========================================================
+    // PLACE EVERY TASK
     // ========================================================
 
     for (
@@ -18672,61 +18798,19 @@ function placeSelectedParallelUnit(
             !item.candidate
         ) {
 
-            // Roll back anything already placed.
+            // -----------------------------------------------
+            // INVALID ITEM → ROLLBACK
+            // -----------------------------------------------
 
-            for (
-                let i =
-                    placedResults.length - 1;
-                i >= 0;
-                i--
-            ) {
-
-                const rollback =
-                    placedResults[i];
+            rollbackParallelUnitPlacements(
+                placedResults,
+                indexes
+            );
 
 
-                if (
-                    rollback &&
-                    rollback.task &&
-                    rollback.candidate
-                ) {
-
-                    const periods =
-                        getSmartCandidatePeriodIds(
-                            rollback.candidate
-                        );
-
-
-                    periods.forEach(
-                        periodId => {
-
-                            const period =
-                                indexes.periods?.get(
-                                    normalizeTimetableId(
-                                        periodId
-                                    )
-                                );
-
-
-                            if (
-                                period
-                            ) {
-
-                                releaseReservedSlot(
-                                    rollback.task,
-                                    period,
-                                    rollback.candidate.room,
-                                    indexes
-                                );
-
-                            }
-
-                        }
-                    );
-
-                }
-
-            }
+            restoreParallelTaskSnapshots(
+                taskSnapshots
+            );
 
 
             return {
@@ -18746,6 +18830,7 @@ function placeSelectedParallelUnit(
         const result =
             placeSelectedSmartTask(
                 {
+
                     task:
                         item.task,
 
@@ -18753,7 +18838,9 @@ function placeSelectedParallelUnit(
                         item.candidate
 
                 },
+
                 indexes
+
             );
 
 
@@ -18762,63 +18849,21 @@ function placeSelectedParallelUnit(
             !result.placed
         ) {
 
-            // =================================================
-            // ROLLBACK EVERYTHING ALREADY PLACED
-            // =================================================
+            // -----------------------------------------------
+            // ONE TASK FAILED.
+            //
+            // ROLLBACK EVERYTHING ALREADY PLACED.
+            // -----------------------------------------------
 
-            for (
-                let i =
-                    placedResults.length - 1;
-                i >= 0;
-                i--
-            ) {
-
-                const rollback =
-                    placedResults[i];
+            rollbackParallelUnitPlacements(
+                placedResults,
+                indexes
+            );
 
 
-                if (
-                    rollback &&
-                    rollback.task &&
-                    rollback.candidate
-                ) {
-
-                    const periods =
-                        getSmartCandidatePeriodIds(
-                            rollback.candidate
-                        );
-
-
-                    periods.forEach(
-                        periodId => {
-
-                            const period =
-                                indexes.periods?.get(
-                                    normalizeTimetableId(
-                                        periodId
-                                    )
-                                );
-
-
-                            if (
-                                period
-                            ) {
-
-                                releaseReservedSlot(
-                                    rollback.task,
-                                    period,
-                                    rollback.candidate.room,
-                                    indexes
-                                );
-
-                            }
-
-                        }
-                    );
-
-                }
-
-            }
+            restoreParallelTaskSnapshots(
+                taskSnapshots
+            );
 
 
             return {
@@ -18829,9 +18874,7 @@ function placeSelectedParallelUnit(
 
                 reason:
                     result?.reason ||
-                    `Parallel placement failed for task ${
-                        item.task.taskId
-                    }.`
+                    `Parallel placement failed for task ${item.task.taskId}.`
 
             };
 
@@ -18867,13 +18910,24 @@ function placeSelectedParallelUnit(
 
 
     // ========================================================
-    // FINAL UNIT VALIDATION
+    // FINAL SAFETY CHECK
     // ========================================================
 
     if (
         placedResults.length !==
         parallelCandidate.tasks.length
     ) {
+
+        rollbackParallelUnitPlacements(
+            placedResults,
+            indexes
+        );
+
+
+        restoreParallelTaskSnapshots(
+            taskSnapshots
+        );
+
 
         return {
 
@@ -18882,12 +18936,16 @@ function placeSelectedParallelUnit(
             entries: [],
 
             reason:
-                "Not all tasks in the parallel unit were placed."
+                "Parallel unit was not completely placed."
 
         };
 
     }
 
+
+    // ========================================================
+    // SUCCESS
+    // ========================================================
 
     return {
 
@@ -18903,9 +18961,158 @@ function placeSelectedParallelUnit(
             ),
 
         results:
-            placedResults
+            placedResults,
+
+        periodKey:
+            parallelCandidate.periodKey
 
     };
+
+}
+
+
+
+// ============================================================
+// ROLLBACK PARALLEL UNIT
+// ============================================================
+
+function rollbackParallelUnitPlacements(
+    placedResults,
+    indexes
+) {
+
+    if (
+        !Array.isArray(placedResults)
+    ) {
+
+        return;
+
+    }
+
+
+    // Reverse order is safer because the last reservation
+    // is released first.
+
+    for (
+        let i =
+            placedResults.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const item =
+            placedResults[i];
+
+
+        if (
+            !item ||
+            !item.task ||
+            !item.candidate
+        ) {
+
+            continue;
+
+        }
+
+
+        const periodIds =
+            getSmartCandidatePeriodIds(
+                item.candidate
+            );
+
+
+        for (
+            const periodId of periodIds
+        ) {
+
+            const period =
+                getParallelUnitPeriod(
+                    indexes,
+                    periodId
+                );
+
+
+            if (
+                !period
+            ) {
+
+                continue;
+
+            }
+
+
+            releaseReservedSlot(
+                item.task,
+                period,
+                item.candidate.room,
+                indexes
+            );
+
+        }
+
+    }
+
+}
+
+
+
+// ============================================================
+// RESTORE TASK STATE AFTER ROLLBACK
+// ============================================================
+
+function restoreParallelTaskSnapshots(
+    snapshots
+) {
+
+    if (
+        !Array.isArray(snapshots)
+    ) {
+
+        return;
+
+    }
+
+
+    snapshots.forEach(
+        snapshot => {
+
+            if (
+                !snapshot ||
+                !snapshot.task
+            ) {
+
+                return;
+
+            }
+
+
+            snapshot.task.placed =
+                snapshot.placed;
+
+
+            snapshot.task.periodIds =
+                Array.isArray(
+                    snapshot.periodIds
+                )
+                    ? [
+                        ...snapshot.periodIds
+                    ]
+                    : [];
+
+
+            snapshot.task.periodId =
+                snapshot.periodId;
+
+
+            snapshot.task.roomId =
+                snapshot.roomId;
+
+
+            snapshot.task.lessonId =
+                snapshot.lessonId;
+
+        }
+    );
 
 }
 
@@ -19502,47 +19709,65 @@ while (
             }
 
 
-            // ------------------------------------------------
-            // TRACK EVERY TASK
-            // ------------------------------------------------
+          
+// ------------------------------------------------
+// TRACK EVERY TASK
+// ------------------------------------------------
+//
+// placeSelectedParallelUnit() returns:
+//
+//     results: [
+//         {
+//             task,
+//             candidate,
+//             result
+//         }
+//     ]
+//
+// NOT:
+//
+//     placements
+//
+// ------------------------------------------------
 
-            unit.tasks.forEach(
-                task => {
+unit.tasks.forEach(
+    task => {
 
-                    const placement =
-                        successfulUnit.placements?.find(
-                            item =>
-                                item?.task === task
-                        );
-
-
-                    result.placedTasks.push({
-
-                        task,
-
-                        entries:
-                            placement?.attempt?.entries ||
-                            [],
-
-                        candidate:
-                            placement?.candidate ||
-                            successfulCandidate
-
-                    });
-
-
-                    result.statistics.placedTasks++;
-
-
-                    result.statistics.totalPeriodsPlaced +=
-                        Number(
-                            task.duration
-                        ) || 0;
-
-                }
+        const placement =
+            successfulUnit.results?.find(
+                item =>
+                    item?.task === task
             );
 
 
+        result.placedTasks.push({
+
+            task,
+
+            entries:
+                placement?.result?.entries ||
+                [],
+
+            candidate:
+                placement?.candidate ||
+                successfulCandidate
+
+        });
+
+
+        result.statistics.placedTasks++;
+
+
+        result.statistics.totalPeriodsPlaced +=
+            Number(
+                task.duration
+            ) || 0;
+
+    }
+);
+
+
+            
             // ------------------------------------------------
             // MARK UNIT PLACED
             // ------------------------------------------------
@@ -19980,7 +20205,7 @@ while (
 
 
 
-```js
+
 // ========================================================
 // HANDLE SAFETY LIMIT
 // ========================================================
@@ -20048,7 +20273,7 @@ if (
         0;
 
 }
-```
+
 
 
     // ========================================================
