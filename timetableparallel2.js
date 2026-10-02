@@ -21842,11 +21842,12 @@ function getScoredParallelDoubleLessonCandidates(
 // --------------------------------------------
 
 const firstCheck =
-    checkSingleSlotConflict(
+    checkParallelDoubleMemberSlotConflict(
         memberTask,
         pair.first,
         room,
-        indexes
+        indexes,
+        uniqueTasks
     );
 
 
@@ -21855,11 +21856,12 @@ const firstCheck =
 // --------------------------------------------
 
 const secondCheck =
-    checkSingleSlotConflict(
+    checkParallelDoubleMemberSlotConflict(
         memberTask,
         pair.second,
         room,
-        indexes
+        indexes,
+        uniqueTasks
     );
 
 
@@ -22165,6 +22167,313 @@ if (
     return candidates;
 
 }
+
+
+
+
+// ============================================================
+// PARALLEL DOUBLE STUDENT-GROUP CONFLICT CHECK
+// ============================================================
+
+function checkParallelDoubleMemberSlotConflict(
+    memberTask,
+    period,
+    room,
+    indexes,
+    parallelUnitTasks
+) {
+
+    // First use the normal conflict checker.
+    const normalCheck =
+        checkSingleSlotConflict(
+            memberTask,
+            period,
+            room,
+            indexes
+        );
+
+
+    // If the normal checker says the slot is valid,
+    // keep the normal result.
+    if (
+        normalCheck.valid
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    // --------------------------------------------------------
+    // ONLY HANDLE STUDENT-GROUP CONFLICTS HERE
+    // --------------------------------------------------------
+    //
+    // We do NOT bypass teacher, room, daily-limit,
+    // weekly-limit, consecutive, or requirement checks.
+    //
+    // The only special case is when the conflict is caused
+    // by another member of THIS SAME parallel double unit.
+    // --------------------------------------------------------
+
+    if (
+        !Array.isArray(
+            parallelUnitTasks
+        ) ||
+        parallelUnitTasks.length < 2
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    const memberParallelGroup =
+        normalizeParallelGroup(
+            memberTask.parallelGroup ??
+            memberTask.parallel_group
+        );
+
+
+    if (
+        !memberParallelGroup
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    const memberTaskId =
+        normalizeTimetableId(
+            memberTask.taskId ??
+            memberTask.task_id ??
+            memberTask.id
+        );
+
+
+    const isSameParallelUnitMember =
+        parallelUnitTasks.some(
+            otherTask => {
+
+                if (
+                    !otherTask
+                ) {
+
+                    return false;
+
+                }
+
+
+                const otherTaskId =
+                    normalizeTimetableId(
+                        otherTask.taskId ??
+                        otherTask.task_id ??
+                        otherTask.id
+                    );
+
+
+                if (
+                    otherTaskId ===
+                    memberTaskId
+                ) {
+
+                    return false;
+
+                }
+
+
+                const otherGroup =
+                    normalizeParallelGroup(
+                        otherTask.parallelGroup ??
+                        otherTask.parallel_group
+                    );
+
+
+                return (
+                    otherGroup ===
+                    memberParallelGroup
+                );
+
+            }
+        );
+
+
+    if (
+        !isSameParallelUnitMember
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    // --------------------------------------------------------
+    // IMPORTANT:
+    // Do not blindly turn every student-group conflict into
+    // "valid".
+    //
+    // Check whether the conflicting occupancy is actually
+    // another member of this proposed parallel unit.
+    // --------------------------------------------------------
+
+    const studentGroupIds =
+        getTaskStudentGroups(
+            memberTask
+        );
+
+
+    if (
+        !Array.isArray(
+            studentGroupIds
+        ) ||
+        studentGroupIds.length === 0
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    const periodId =
+        normalizeTimetableId(
+            period?.id
+        );
+
+
+    if (
+        !periodId
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    const studentGroupPeriod =
+        indexes.studentGroupPeriod;
+
+
+    if (
+        !studentGroupPeriod
+    ) {
+
+        return normalCheck;
+
+    }
+
+
+    for (
+        const studentGroupId of studentGroupIds
+    ) {
+
+        const groupId =
+            normalizeTimetableId(
+                studentGroupId
+            );
+
+
+        if (
+            !groupId
+        ) {
+
+            continue;
+
+        }
+
+
+        const occupied =
+            studentGroupPeriod.get(
+                `${groupId}::${periodId}`
+            );
+
+
+        if (
+            !occupied
+        ) {
+
+            continue;
+
+        }
+
+
+        const occupiedLessons =
+            Array.isArray(
+                occupied
+            )
+                ? occupied
+                : [occupied];
+
+
+        for (
+            const existingLesson of occupiedLessons
+        ) {
+
+            const existingTaskId =
+                normalizeTimetableId(
+                    existingLesson?.taskId ??
+                    existingLesson?.task_id ??
+                    existingLesson?.id
+                );
+
+
+            const existingParallelGroup =
+                normalizeParallelGroup(
+                    existingLesson?.parallelGroup ??
+                    existingLesson?.parallel_group
+                );
+
+
+            const belongsToThisUnit =
+                parallelUnitTasks.some(
+                    otherTask => {
+
+                        const otherTaskId =
+                            normalizeTimetableId(
+                                otherTask?.taskId ??
+                                otherTask?.task_id ??
+                                otherTask?.id
+                            );
+
+
+                        return (
+                            otherTaskId ===
+                            existingTaskId
+                        );
+
+                    }
+                );
+
+
+            if (
+                belongsToThisUnit &&
+                existingParallelGroup ===
+                    memberParallelGroup
+            ) {
+
+                continue;
+
+            }
+
+
+            // This is a REAL conflict with another lesson.
+            return normalCheck;
+
+        }
+
+    }
+
+
+    // No conflicting existing lesson was found.
+    // The generic checker rejected the slot, but the rejection
+    // was only due to the proposed parallel-unit relationship.
+    return {
+        ...normalCheck,
+        valid: true,
+        reason: ""
+    };
+
+}
+
 
 
 // ============================================================
