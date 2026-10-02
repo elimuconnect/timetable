@@ -22477,7 +22477,7 @@ function checkParallelDoubleMemberSlotConflict(
   return normalCheck;
 
 }
-}
+
 
 
 // ============================================================
