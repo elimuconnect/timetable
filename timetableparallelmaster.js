@@ -36549,7 +36549,6 @@ timetableDisplayLookup = lookup;
 
 
 
-
 // ============================================================
 // RENDER GENERATED TIMETABLE
 // KENYAN SCHOOL TIMETABLE FORMAT
@@ -36610,6 +36609,66 @@ function renderGeneratedTimetable(entries, lookup) {
 
 
     // ========================================================
+    // 🔎 DEBUG 1 — CHECK 10A ICT BEFORE ENTRY MAP
+    // ========================================================
+
+    const DEBUG_10A_STREAM_ID =
+        "3bd95ada-fd48-4c47-9818-70348473f7ef";
+
+    const DEBUG_ICT_SUBJECT_ID =
+        "8721513c-9b77-41da-add0-23e3c93c9065";
+
+    const debug10AIctEntries =
+        entries.filter(entry =>
+            entry.stream_id === DEBUG_10A_STREAM_ID &&
+            entry.subject_id === DEBUG_ICT_SUBJECT_ID
+        );
+
+    console.log(
+        "===================================================="
+    );
+
+    console.log(
+        "🔎 DEBUG 1 — 10A ICT ENTRIES REACHING RENDERER"
+    );
+
+    console.log(
+        "10A ICT count:",
+        debug10AIctEntries.length
+    );
+
+    console.table(
+        debug10AIctEntries.map(entry => {
+
+            const period =
+                lookup.periods.get(
+                    entry.period_id
+                );
+
+            return {
+                entry_id: entry.id,
+                generation_id: entry.generation_id,
+                period_id: entry.period_id,
+                day: period?.day_name,
+                day_number: period?.day_number,
+                period_number: period?.period_number,
+                period_name: period?.period_name,
+                start_time: period?.start_time,
+                end_time: period?.end_time,
+                stream_id: entry.stream_id,
+                subject_id: entry.subject_id,
+                teacher_id: entry.teacher_id
+            };
+
+        })
+    );
+
+    console.log(
+        "===================================================="
+    );
+
+
+    // ========================================================
     // 1. GET ALL PERIODS
     // ========================================================
 
@@ -36632,24 +36691,6 @@ function renderGeneratedTimetable(entries, lookup) {
 
     // ========================================================
     // 2. SORT PERIODS
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // period_number = position within each day
-    //
-    // Example:
-    // Monday    Period 1 = period_number 2
-    // Tuesday   Period 1 = period_number 2
-    // Wednesday Period 1 = period_number 2
-    //
-    // period_order is different:
-    // Monday    = 2
-    // Tuesday   = 102
-    // Wednesday = 202
-    //
-    // Therefore period_number is used for the matrix columns.
-    //
     // ========================================================
 
     const sortedPeriods =
@@ -36675,15 +36716,6 @@ function renderGeneratedTimetable(entries, lookup) {
 
     // ========================================================
     // 3. BUILD DAILY PERIOD MAP
-    // ========================================================
-    //
-    // Key:
-    //
-    // day_number + period_number
-    //
-    // This guarantees Monday Period 1 is not confused with
-    // Tuesday Period 1.
-    //
     // ========================================================
 
     const dailyPeriodMap =
@@ -36714,12 +36746,6 @@ function renderGeneratedTimetable(entries, lookup) {
 
     // ========================================================
     // 4. BUILD COLUMN TEMPLATE
-    // ========================================================
-    //
-    // We use the first available day as the template.
-    //
-    // period_number is the column position.
-    //
     // ========================================================
 
     const availableDays =
@@ -36779,14 +36805,6 @@ function renderGeneratedTimetable(entries, lookup) {
     // ========================================================
     // 5. BUILD ENTRY LOOKUP
     // ========================================================
-    //
-    // KEY:
-    //
-    // stream_id + day_number + period_number
-    //
-    // This is the critical correction.
-    //
-    // ========================================================
 
     const entryMap =
         new Map();
@@ -36820,7 +36838,6 @@ function renderGeneratedTimetable(entries, lookup) {
 
 
         // Support multiple entries in the same slot
-        // instead of silently replacing one.
 
         if (!entryMap.has(key)) {
 
@@ -36836,6 +36853,83 @@ function renderGeneratedTimetable(entries, lookup) {
             .push(entry);
 
     });
+
+
+    // ========================================================
+    // 🔎 DEBUG 2 — CHECK 10A ICT INSIDE ENTRY MAP
+    // ========================================================
+
+    const debug10AIctEntryMap = [
+        ...entryMap.entries()
+    ]
+    .filter(([key, values]) => {
+
+        return (
+            key.startsWith(
+                `${DEBUG_10A_STREAM_ID}__`
+            ) &&
+            values.some(
+                entry =>
+                    entry.subject_id ===
+                    DEBUG_ICT_SUBJECT_ID
+            )
+        );
+
+    });
+
+    console.log(
+        "===================================================="
+    );
+
+    console.log(
+        "🔎 DEBUG 2 — 10A ICT INSIDE ENTRY MAP"
+    );
+
+    console.log(
+        "10A ICT entryMap matches:",
+        debug10AIctEntryMap.length
+    );
+
+    debug10AIctEntryMap.forEach(
+        ([key, values]) => {
+
+            console.log(
+                "ENTRY MAP KEY:",
+                key
+            );
+
+            console.table(
+                values.map(entry => {
+
+                    const period =
+                        lookup.periods.get(
+                            entry.period_id
+                        );
+
+                    return {
+                        entry_id: entry.id,
+                        subject_id: entry.subject_id,
+                        subject: lookup.subjects.get(
+                            entry.subject_id
+                        )?.subject_code,
+                        day: period?.day_name,
+                        day_number: period?.day_number,
+                        period_number: period?.period_number,
+                        period_name: period?.period_name,
+                        start_time: period?.start_time,
+                        end_time: period?.end_time,
+                        period_id: entry.period_id
+                    };
+
+                })
+            );
+
+        }
+    );
+
+    console.log(
+        "===================================================="
+    );
 
 
     // ========================================================
@@ -36925,7 +37019,7 @@ function renderGeneratedTimetable(entries, lookup) {
     // 8. BUILD MAIN HEADER
     // ========================================================
 
-  let html = `
+    let html = `
 
     <div class="generated-timetable">
 
@@ -36947,6 +37041,7 @@ function renderGeneratedTimetable(entries, lookup) {
         </div>
 
 `;
+
 
     // ========================================================
     // 9. RENDER EACH STREAM
@@ -36988,14 +37083,15 @@ function renderGeneratedTimetable(entries, lookup) {
 
                     <div class="print-timetable-meta">
    
-    <span class="printed-date">
-        • Printed: ${new Date().toLocaleDateString("en-KE", {
-            day: "2-digit",
-            month: "long",
-            year: "numeric"
-        })}
-    </span>
-</div>
+                        <span class="printed-date">
+                            • Printed: ${new Date().toLocaleDateString("en-KE", {
+                                day: "2-digit",
+                                month: "long",
+                                year: "numeric"
+                            })}
+                        </span>
+
+                    </div>
 
                 </div>
 
@@ -37157,16 +37253,6 @@ function renderGeneratedTimetable(entries, lookup) {
                         );
 
 
-                    // -----------------------------------------
-                    // Get the actual period for this day.
-                    //
-                    // Example:
-                    //
-                    // Monday + period_number 2
-                    // Tuesday + period_number 2
-                    //
-                    // -----------------------------------------
-
                     const dayKey =
                         `${day.number}__${periodNumber}`;
 
@@ -37202,6 +37288,41 @@ function renderGeneratedTimetable(entries, lookup) {
                         entryMap.get(
                             entryKey
                         ) || [];
+
+
+                    // =================================================
+                    // 🔎 DEBUG 3 — SPECIFICALLY CHECK 10A ICT CELLS
+                    // =================================================
+
+                    if (
+                        streamId === DEBUG_10A_STREAM_ID &&
+                        slotEntries.some(
+                            entry =>
+                                entry.subject_id ===
+                                DEBUG_ICT_SUBJECT_ID
+                        )
+                    ) {
+
+                        console.log(
+                            "🔎 DEBUG 3 — RENDERING 10A ICT CELL:",
+                            {
+                                day: day.name,
+                                day_number: day.number,
+                                period_number: periodNumber,
+                                day_period_id: dayPeriod?.id,
+                                day_period_name: dayPeriod?.period_name,
+                                day_start_time: dayPeriod?.start_time,
+                                day_end_time: dayPeriod?.end_time,
+                                entryKey: entryKey,
+                                ictEntries: slotEntries.filter(
+                                    entry =>
+                                        entry.subject_id ===
+                                        DEBUG_ICT_SUBJECT_ID
+                                )
+                            }
+                        );
+
+                    }
 
 
                     // =================================================
@@ -37326,13 +37447,13 @@ function renderGeneratedTimetable(entries, lookup) {
 
 
                             const subjectCode =
-    subject?.subject_code ||
-    "Unknown Subject";
+                                subject?.subject_code ||
+                                "Unknown Subject";
 
 
-const teacherCode =
-    teacher?.teacher_code ||
-    "Unknown Teacher";
+                            const teacherCode =
+                                teacher?.teacher_code ||
+                                "Unknown Teacher";
 
 
                             const roomName =
@@ -37365,17 +37486,17 @@ const teacherCode =
 
                                 <div class="timetable-entry">
 
-                                   <div class="lesson-subject">
-    ${escapeHtml(
-        subjectCode
-    )}
-</div>
+                                    <div class="lesson-subject">
+                                        ${escapeHtml(
+                                            subjectCode
+                                        )}
+                                    </div>
 
-<div class="lesson-teacher">
-    ${escapeHtml(
-        teacherCode
-    )}
-</div>
+                                    <div class="lesson-teacher">
+                                        ${escapeHtml(
+                                            teacherCode
+                                        )}
+                                    </div>
 
                                     ${
                                         roomName
@@ -37416,7 +37537,7 @@ const teacherCode =
         });
 
 
-                html += `
+        html += `
 
                         </tbody>
 
@@ -37485,7 +37606,6 @@ const teacherCode =
     );
 
 }
-
 
 
 
