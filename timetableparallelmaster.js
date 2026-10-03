@@ -36118,9 +36118,7 @@ function moveStage7Task(
 
 
 
-// ------------------------------------------------------------
-// LOAD GENERATED TIMETABLE
-// ------------------------------------------------------------
+
 
 async function loadGeneratedTimetable() {
 
@@ -36201,43 +36199,166 @@ async function loadGeneratedTimetable() {
     try {
 
         // ====================================================
-        // 1. LOAD TIMETABLE ENTRIES
+        // 1. LOAD ALL TIMETABLE ENTRIES
+        // ====================================================
+        //
+        // Supabase/PostgREST may return only a limited number
+        // of rows in a single request.
+        //
+        // This timetable contains 1,800+ entries, so load
+        // entries in pages of 1,000.
+        //
         // ====================================================
 
-        const entriesResult =
-            await supabaseClient
+        const PAGE_SIZE = 1000;
 
-                .from(
-                    "timetable_entries"
-                )
+        let allEntries = [];
 
-                .select("*")
+        let from = 0;
 
-                .eq(
-                    "school_id",
-                    timetableState.schoolId
+
+        while (true) {
+
+            const entriesResult =
+                await supabaseClient
+
+                    .from(
+                        "timetable_entries"
+                    )
+
+                    .select("*")
+
+                    .eq(
+                        "school_id",
+                        timetableState.schoolId
+                    )
+
+                    // Stable ordering makes pagination
+                    // deterministic.
+                    .order(
+                        "created_at",
+                        {
+                            ascending: true
+                        }
+                    )
+
+                    .order(
+                        "id",
+                        {
+                            ascending: true
+                        }
+                    )
+
+                    .range(
+                        from,
+                        from + PAGE_SIZE - 1
+                    );
+
+
+            if (
+                entriesResult.error
+            ) {
+
+                throw new Error(
+                    "Failed to load timetable entries: " +
+                    entriesResult.error.message
                 );
 
+            }
 
-        if (
-            entriesResult.error
-        ) {
 
-            throw new Error(
-                "Failed to load timetable entries: " +
-                entriesResult.error.message
+            const page =
+                entriesResult.data || [];
+
+
+            allEntries.push(
+                ...page
             );
+
+
+            console.log(
+                `Loaded timetable entries ${from + 1}-${from + page.length}:`,
+                page.length
+            );
+
+
+            // ------------------------------------------------
+            // LAST PAGE
+            // ------------------------------------------------
+
+            if (
+                page.length < PAGE_SIZE
+            ) {
+
+                break;
+
+            }
+
+
+            from += PAGE_SIZE;
 
         }
 
 
+        // ====================================================
+        // FINAL ENTRIES ARRAY
+        // ====================================================
+
         const entries =
-            entriesResult.data || [];
+            allEntries;
 
 
         console.log(
-            "Generated timetable entries:",
+            "======================================"
+        );
+
+        console.log(
+            "TOTAL TIMETABLE ENTRIES LOADED:",
             entries.length
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        // ----------------------------------------------------
+        // DEBUG 10A ICT
+        // ----------------------------------------------------
+
+        const DEBUG_10A_STREAM_ID =
+            "3bd95ada-fd48-4c47-9818-70348473f7ef";
+
+        const DEBUG_ICT_SUBJECT_ID =
+            "8721513c-9b77-41da-add0-23e3c93c9065";
+
+
+        const debug10AICT =
+            entries.filter(
+                entry =>
+                    entry.stream_id ===
+                        DEBUG_10A_STREAM_ID &&
+                    entry.subject_id ===
+                        DEBUG_ICT_SUBJECT_ID
+            );
+
+
+        console.log(
+            "🔎 10A ICT ENTRIES LOADED:",
+            debug10AICT.length
+        );
+
+        console.table(
+            debug10AICT.map(
+                entry => ({
+                    entry_id: entry.id,
+                    generation_id: entry.generation_id,
+                    period_id: entry.period_id,
+                    stream_id: entry.stream_id,
+                    subject_id: entry.subject_id,
+                    teacher_id: entry.teacher_id
+                })
+            )
         );
 
 
@@ -36418,15 +36539,16 @@ async function loadGeneratedTimetable() {
                     roomsResult.data || []
 
             });
-// ----------------------------------------------------
-// SAVE DISPLAY LOOKUP FOR GRADE / STREAM / TEACHER VIEW
-// ----------------------------------------------------
-
-timetableDisplayLookup = lookup;
 
 
+        // ----------------------------------------------------
+        // SAVE DISPLAY LOOKUP FOR GRADE / STREAM / TEACHER VIEW
+        // ----------------------------------------------------
 
-        
+        timetableDisplayLookup =
+            lookup;
+
+
         console.log(
             "Display periods:",
             periodsResult.data?.length || 0
@@ -36546,7 +36668,6 @@ timetableDisplayLookup = lookup;
     }
 
 }
-
 
 
 // ============================================================
