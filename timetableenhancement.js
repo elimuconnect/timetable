@@ -844,9 +844,10 @@
                 "Unknown Stream",
 
             teacherName:
-                teacher?.full_name ||
-                teacher?.name ||
-                "Unassigned",
+    teacher?.teacher_code ||
+    teacher?.full_name ||
+    teacher?.name ||
+    "Unknown Teacher",
 
             day:
                 period?.day_name ||
