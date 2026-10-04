@@ -2897,315 +2897,364 @@
 
 
 
-    /* ========================================================
-       ENHANCED TIMETABLE RENDERER
-       ======================================================== */
 
-    function renderEnhancedTimetable() {
 
-        const container =
-            document.getElementById(
-                "enhancedTimetableContent"
+/* ========================================================
+   ENHANCED TIMETABLE RENDERER
+   ======================================================== */
+
+function renderEnhancedTimetable() {
+
+    const container =
+        document.getElementById(
+            "enhancedTimetableContent"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    const entries =
+        enhancementState.enhancedEntries;
+
+    if (!entries.length) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+                No enhanced timetable entries.
+            </div>
+        `;
+
+        return;
+    }
+
+    /*
+     * Group entries by stream.
+     */
+
+    const byStream =
+        new Map();
+
+    for (const entry of entries) {
+
+        const key =
+            String(
+                entry.stream_id
             );
 
+        if (!byStream.has(key)) {
 
-        if (!container) {
-            return;
+            byStream.set(
+                key,
+                []
+            );
         }
 
+        byStream
+            .get(key)
+            .push(entry);
+    }
 
-        const entries =
-            enhancementState.enhancedEntries;
+    /*
+     * Sort streams by their stream name.
+     */
 
+    const streams =
+        Array.from(
+            byStream.keys()
+        ).sort(
+            (a, b) => {
 
-        if (!entries.length) {
+                const sa =
+                    getStream(a);
 
-            container.innerHTML = `
-                <div class="empty-state">
-                    No enhanced timetable entries.
-                </div>
-            `;
+                const sb =
+                    getStream(b);
 
-            return;
-        }
-
-
-        /*
-         * Group entries by stream.
-         */
-
-        const byStream =
-            new Map();
-
-
-        for (const entry of entries) {
-
-            const key =
-                String(
-                    entry.stream_id
-                );
-
-            if (!byStream.has(key)) {
-
-                byStream.set(
-                    key,
-                    []
+                return String(
+                    sa?.stream_name || a
+                ).localeCompare(
+                    String(
+                        sb?.stream_name || b
+                    ),
+                    undefined,
+                    {
+                        numeric: true
+                    }
                 );
             }
+        );
 
-            byStream
-                .get(key)
-                .push(entry);
-        }
+    let html = "";
 
+    /*
+     * Render each stream.
+     */
 
-        const streams =
-            Array.from(
-                byStream.keys()
-            ).sort(
-                (a, b) => {
+    for (
+        const streamId
+        of streams
+    ) {
 
-                    const sa =
-                        getStream(a);
+        const stream =
+            getStream(streamId);
 
-                    const sb =
-                        getStream(b);
-
-                    return String(
-                        sa?.stream_name || a
-                    ).localeCompare(
-                        String(
-                            sb?.stream_name || b
-                        ),
-                        undefined,
-                        {
-                            numeric: true
-                        }
-                    );
-                }
+        const streamEntries =
+            byStream.get(
+                streamId
             );
 
+        /*
+         * Get days represented in this stream.
+         */
 
-        let html = "";
-
-
-        for (
-            const streamId
-            of streams
-        ) {
-
-            const stream =
-                getStream(streamId);
-
-
-            const streamEntries =
-                byStream.get(
-                    streamId
-                );
-
-
-            const days =
-                Array.from(
-                    new Set(
-                        streamEntries
-                            .map(
-                                entry =>
-                                    dayNumber(
-                                        getPeriod(
-                                            entry.period_id
-                                        )
-                                    )
-                            )
-                            .filter(
-                                day =>
-                                    Number.isFinite(day)
-                            )
-                    )
-                ).sort(
-                    (a, b) => a - b
-                );
-
-
-            html += `
-
-                <div
-                    class="enhanced-stream-block"
-                    style="
-                        margin-bottom:30px;
-                    "
-                >
-
-                    <h4>
-                        📚 ${escapeHtml(
-                            stream?.stream_name ||
-                            "Stream"
-                        )}
-                    </h4>
-
-                    <div
-                        style="
-                            overflow-x:auto;
-                        "
-                    >
-
-                        <table
-                            class="data-table"
-                            style="
-                                width:100%;
-                                border-collapse:collapse;
-                            "
-                        >
-
-                            <thead>
-
-                                <tr>
-
-                                    <th>Day</th>
-                                    <th>Period</th>
-                                    <th>Time</th>
-                                    <th>Subject</th>
-                                    <th>Teacher</th>
-                                    <th>Room</th>
-
-                                </tr>
-
-                            </thead>
-
-                            <tbody>
-            `;
-
-
-            for (
-                const day
-                of days
-            ) {
-
-                const dayEntries =
+        const days =
+            Array.from(
+                new Set(
                     streamEntries
-                        .filter(
+                        .map(
                             entry =>
                                 dayNumber(
                                     getPeriod(
                                         entry.period_id
                                     )
-                                ) === day
-                        )
-                        .sort(
-                            (a, b) =>
-                                periodOrder(
-                                    getPeriod(
-                                        a.period_id
-                                    )
-                                ) -
-                                periodOrder(
-                                    getPeriod(
-                                        b.period_id
-                                    )
                                 )
-                        );
+                        )
+                        .filter(
+                            day =>
+                                Number.isFinite(day)
+                        )
+                )
+            ).sort(
+                (a, b) => a - b
+            );
 
+        html += `
 
-                for (
-                    const entry
-                    of dayEntries
-                ) {
+            <div
+                class="enhanced-stream-block"
+                style="
+                    margin-bottom:30px;
+                "
+            >
 
-                    const period =
-                        getPeriod(
-                            entry.period_id
-                        );
+                <h4>
+                    📚 ${escapeHtml(
+                        stream?.stream_name ||
+                        "Stream"
+                    )}
+                </h4>
 
-                    const subject =
-                        getSubject(
-                            entry.subject_id
-                        );
+                <div
+                    style="
+                        overflow-x:auto;
+                    "
+                >
 
-                    const teacher =
-                        getTeacher(
-                            entry.teacher_id
-                        );
+                    <table
+                        class="data-table"
+                        style="
+                            width:100%;
+                            border-collapse:collapse;
+                        "
+                    >
 
-                    const room =
-                        getRoom(
-                            entry.room_id
-                        );
+                        <thead>
 
+                            <tr>
 
-                    html += `
+                                <th>Day</th>
+                                <th>Period</th>
+                                <th>Time</th>
+                                <th>Subject</th>
+                                <th>Teacher</th>
+                                <th>Room</th>
 
-                        <tr>
+                            </tr>
 
-                            <td>
-                                ${escapeHtml(
-                                    period?.day_name ||
-                                    ""
-                                )}
-                            </td>
+                        </thead>
 
-                            <td>
-                                ${escapeHtml(
-                                    period?.period_name ||
-                                    ""
-                                )}
-                            </td>
+                        <tbody>
+        `;
 
-                            <td>
-                                ${escapeHtml(
-                                    period?.start_time ||
-                                    ""
-                                )}
-                                -
-                                ${escapeHtml(
-                                    period?.end_time ||
-                                    ""
-                                )}
-                            </td>
+        /*
+         * Render each day.
+         */
 
-                            <td>
-                                <strong>
-                                    ${escapeHtml(
-                                        subject?.subject_name ||
-                                        "Unknown"
-                                    )}
-                                </strong>
-                            </td>
+        for (
+            const day
+            of days
+        ) {
 
-                            <td>
-                                ${escapeHtml(
-                                    teacher?.full_name ||
-                                    "Unassigned"
-                                )}
-                            </td>
+            const dayEntries =
+                streamEntries
+                    .filter(
+                        entry =>
+                            dayNumber(
+                                getPeriod(
+                                    entry.period_id
+                                )
+                            ) === day
+                    )
+                    .sort(
+                        (a, b) =>
+                            periodOrder(
+                                getPeriod(
+                                    a.period_id
+                                )
+                            ) -
+                            periodOrder(
+                                getPeriod(
+                                    b.period_id
+                                )
+                            )
+                    );
 
-                            <td>
-                                ${escapeHtml(
+            /*
+             * Render each lesson.
+             */
+
+            for (
+                const entry
+                of dayEntries
+            ) {
+
+                const period =
+                    getPeriod(
+                        entry.period_id
+                    );
+
+                const subject =
+                    getSubject(
+                        entry.subject_id
+                    );
+
+                const teacher =
+                    getTeacher(
+                        entry.teacher_id
+                    );
+
+                const room =
+                    getRoom(
+                        entry.room_id
+                    );
+
+                /*
+                 * Use the same teacher display
+                 * convention as the master timetable.
+                 */
+
+                const teacherCode =
+                    teacher?.teacher_code ||
+                    teacher?.full_name ||
+                    teacher?.name ||
+                    "Unknown Teacher";
+
+                /*
+                 * Use the same room display
+                 * convention as the master timetable.
+                 */
+
+                const roomName =
+                    entry.room_id
+                        ? (
+                            typeof getTimetableRoomName === "function"
+                                ? (
+                                    getTimetableRoomName(room) ||
                                     room?.room_name ||
                                     room?.name ||
-                                    ""
+                                    "Unknown Room"
+                                )
+                                : (
+                                    room?.room_name ||
+                                    room?.name ||
+                                    "Unknown Room"
+                                )
+                          )
+                        : "";
+
+                /*
+                 * Render row.
+                 */
+
+                html += `
+
+                    <tr>
+
+                        <td>
+                            ${escapeHtml(
+                                period?.day_name ||
+                                ""
+                            )}
+                        </td>
+
+                        <td>
+                            ${escapeHtml(
+                                period?.period_name ||
+                                ""
+                            )}
+                        </td>
+
+                        <td>
+                            ${escapeHtml(
+                                period?.start_time ||
+                                ""
+                            )}
+                            -
+                            ${escapeHtml(
+                                period?.end_time ||
+                                ""
+                            )}
+                        </td>
+
+                        <td>
+                            <strong>
+                                ${escapeHtml(
+                                    subject?.subject_name ||
+                                    "Unknown"
                                 )}
-                            </td>
+                            </strong>
+                        </td>
 
-                        </tr>
-                    `;
-                }
+                        <td>
+                            ${escapeHtml(
+                                teacherCode
+                            )}
+                        </td>
+
+                        <td>
+                            ${escapeHtml(
+                                roomName
+                            )}
+                        </td>
+
+                    </tr>
+                `;
             }
-
-
-            html += `
-
-                            </tbody>
-
-                        </table>
-
-                    </div>
-
-                </div>
-            `;
         }
 
+        html += `
 
-        container.innerHTML = html;
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+        `;
     }
+
+    /*
+     * Put the complete enhanced timetable
+     * into the page.
+     */
+
+    container.innerHTML = html;
+}
+
+
+
 
 
 
