@@ -1898,18 +1898,8 @@ function escapeHTML(
 
 }
 
-
 /* ============================================================
-   VALIDATE OFFICIAL SMART ELIMU CONNECT FOOTER
-   ============================================================
-
-   The official timetable generator places:
-
-       Smart Elimu Connect
-
-   in the Word footer. A normal paragraph at the bottom of the
-   timetable is NOT enough. The text must exist in one of the
-   actual Word footer parts (word/footer*.xml).
+   VALIDATE OFFICIAL TIMETABLE
    ============================================================ */
 
 async function validateTimetableFooter(zip) {
@@ -1921,17 +1911,8 @@ async function validateTimetableFooter(zip) {
     new TextDecoder("utf-8");
 
   /* ==========================================================
-     METHOD 1 — REAL WORD FOOTER PART
-     ==========================================================
-
-     Standard Word footers are stored as:
-
-       word/footer1.xml
-       word/footer2.xml
-       ...
-
-     If the official branding is there, accept immediately.
-  */
+     METHOD 1 — WORD FOOTER PART
+     ========================================================== */
 
   const footerEntries =
     Array.from(zip.entries.keys())
@@ -1979,7 +1960,7 @@ async function validateTimetableFooter(zip) {
     } catch (error) {
 
       console.warn(
-        "Could not inspect DOCX Word footer:",
+        "Could not inspect DOCX footer:",
         filename,
         error
       );
@@ -1989,17 +1970,8 @@ async function validateTimetableFooter(zip) {
   }
 
   /* ==========================================================
-     METHOD 2 — OFFICIAL BRANDING AT THE BOTTOM OF document.xml
-     ==========================================================
-
-     Some DOCX generators create the visible footer as the final
-     paragraph/table in the document body rather than as a separate
-     word/footer*.xml part. It still appears visually as the footer
-     at the bottom of the generated timetable.
-
-     We therefore accept the branding ONLY when it is at the end
-     of the document, not merely somewhere in the document.
-  */
+     METHOD 2 — CONTENT AT THE BOTTOM OF document.xml
+     ========================================================== */
 
   try {
 
@@ -2028,10 +2000,10 @@ async function validateTimetableFooter(zip) {
 
       /*
          Only inspect the final 300 normalized characters.
-         This prevents a document from being accepted merely
-         because it contains "Smart Elimu Connect" somewhere
-         in its timetable content.
+         This prevents acceptance merely because the required
+         text appears somewhere in the timetable content.
       */
+
       const tailLength = 300;
 
       const documentTail =
@@ -2068,7 +2040,7 @@ async function validateTimetableFooter(zip) {
     return {
       valid: false,
       reason:
-        `The official "${REQUIRED_TIMETABLE_FOOTER}" branding was not found in the DOCX footer or at the bottom of the timetable.`
+        "This timetable could not be verified as an official timetable."
     };
 
   }
@@ -2076,12 +2048,10 @@ async function validateTimetableFooter(zip) {
   return {
     valid: false,
     reason:
-      `The required official footer "${REQUIRED_TIMETABLE_FOOTER}" was not found in the DOCX footer or at the bottom of the timetable.`
+      "This timetable could not be verified as an official timetable."
   };
 
 }
-
-
 /* ============================================================
    CLEAR CURRENT TIMETABLE AFTER VALIDATION FAILURE
    ============================================================ */
