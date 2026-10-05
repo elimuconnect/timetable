@@ -1,468 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
-  <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-
-  <title>Smart Timetable Voice Alert</title>
-
-
-  <style>
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #eef6ff;
-      color: #222;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: auto;
-    }
-
-    h2 {
-      text-align: center;
-      margin-bottom: 25px;
-    }
-
-    h3 {
-      margin-top: 28px;
-    }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      background: #ffffff;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
-
-    label {
-      display: block;
-      margin-bottom: 7px;
-    }
-
-    input[type="text"],
-    input[type="file"] {
-      width: 100%;
-      padding: 11px;
-      font-size: 15px;
-      border: 1px solid #bbb;
-      border-radius: 7px;
-      background: #fff;
-    }
-
-    .button-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 15px;
-    }
-
-    button {
-      border: none;
-      border-radius: 7px;
-      padding: 11px 16px;
-      font-size: 15px;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .primary {
-      background: #1976d2;
-      color: white;
-    }
-
-    .secondary {
-      background: #555;
-      color: white;
-    }
-
-    .success {
-      background: #198754;
-      color: white;
-    }
-
-    .danger {
-      background: #dc3545;
-      color: white;
-    }
-
-    #status {
-      margin-top: 15px;
-      padding: 12px;
-      background: #ffffff;
-      border-radius: 8px;
-      font-weight: bold;
-    }
-
-    .monitor-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-top: 20px;
-    }
-
-    .monitor-box {
-      background: #ffffff;
-      padding: 20px;
-      border-radius: 12px;
-      text-align: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
-
-    .monitor-title {
-      font-size: 14px;
-      font-weight: bold;
-      margin-bottom: 8px;
-      color: #666;
-    }
-
-    .monitor-value {
-      font-size: 30px;
-      font-weight: bold;
-    }
-
-    .active {
-      color: #198754;
-    }
-
-    .inactive {
-      color: #dc3545;
-    }
-
-    .small {
-      font-size: 13px;
-      color: #666;
-      margin-top: 5px;
-    }
-
-    .lesson-card {
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 18px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
-
-    .lesson-name {
-      font-size: 20px;
-      font-weight: bold;
-    }
-
-    .lesson-meta {
-      margin-top: 8px;
-      color: #666;
-    }
-
-    #scheduleContainer,
-    #editor,
-    #alertLog {
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 15px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      overflow-x: auto;
-    }
-
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      min-width: 700px;
-    }
-
-    th,
-    td {
-      border: 1px solid #bbb;
-      padding: 9px;
-      text-align: center;
-      vertical-align: middle;
-    }
-
-    th {
-      background: #e9f2ff;
-    }
-
-    .schedule-day {
-      font-weight: bold;
-      background: #f2f2f2;
-    }
-
-    .alert-item {
-      border-bottom: 1px solid #ddd;
-      padding: 10px 5px;
-    }
-
-    .alert-item:last-child {
-      border-bottom: none;
-    }
-
-    .alert-time {
-      font-weight: bold;
-    }
-
-    .next-countdown {
-      margin-top: 8px;
-      font-weight: bold;
-    }
-
-    .timing-source {
-      margin-top: 10px;
-      padding: 10px;
-      background: #f4f8fc;
-      border-radius: 7px;
-      font-size: 13px;
-      color: #555;
-    }
-
-    @media (max-width: 700px) {
-
-      body {
-        padding: 10px;
-      }
-
-      .form-grid,
-      .monitor-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .button-row {
-        flex-direction: column;
-      }
-
-      button {
-        width: 100%;
-      }
-
-    }
-
-  </style>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Timetable Voice Alert</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#eef6ff;color:#222}
+.container{max-width:1200px;margin:auto}
+h2{text-align:center;margin-bottom:25px}
+h3{margin-top:28px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;background:#fff;padding:20px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+label{display:block;margin-bottom:7px}
+input[type="text"]{width:100%;padding:11px;font-size:15px;border:1px solid #bbb;border-radius:7px;background:#fff}
+.button-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}
+button{border:none;border-radius:7px;padding:11px 16px;font-size:15px;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+.primary{background:#1976d2;color:#fff}
+.secondary{background:#555;color:#fff}
+.success{background:#198754;color:#fff}
+.danger{background:#dc3545;color:#fff}
+#pickBtn{width:100%}
+#fileName{margin-top:8px;font-size:13px;color:#666;word-break:break-all}
+#lessonFile{display:none}
+#status{margin-top:15px;padding:12px;background:#fff;border-radius:8px;font-weight:bold}
+.monitor-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px}
+.monitor-box{background:#fff;padding:20px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.monitor-title{font-size:14px;font-weight:bold;margin-bottom:8px;color:#666}
+.monitor-value{font-size:30px;font-weight:bold}
+.active{color:#198754}
+.inactive{color:#dc3545}
+.small{font-size:13px;color:#666;margin-top:5px}
+.lesson-card{background:#fff;border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.lesson-name{font-size:20px;font-weight:bold}
+.lesson-meta{margin-top:8px;color:#666}
+#scheduleContainer,#editor,#alertLog{background:#fff;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:700px}
+th,td{border:1px solid #bbb;padding:9px;text-align:center;vertical-align:middle}
+th{background:#e9f2ff}
+.schedule-day{font-weight:bold;background:#f2f2f2}
+.alert-item{border-bottom:1px solid #ddd;padding:10px 5px}
+.alert-item:last-child{border-bottom:none}
+.alert-time{font-weight:bold}
+.next-countdown{margin-top:8px;font-weight:bold}
+.timing-source{margin-top:10px;padding:10px;background:#f4f8fc;border-radius:7px;font-size:13px;color:#555}
+@media(max-width:700px){
+body{padding:10px}
+.form-grid,.monitor-grid{grid-template-columns:1fr}
+.button-row{flex-direction:column}
+button{width:100%}
+}
+</style>
 </head>
-
-
 <body>
-
 <div class="container">
+<h2>📘 Smart Timetable Voice Alert</h2>
 
-  <h2>📘 Smart Timetable Voice Alert</h2>
-
-
-  <!-- ======================================================
-       TEACHER + FILE
-       ====================================================== -->
-
-  <div class="form-grid">
-
-    <div>
-
-      <label>
-        <strong>Teacher Name</strong>
-      </label>
-
-      <input
-        type="text"
-        id="teacherName"
-        placeholder="e.g. Solomon Ndegwa"
-      >
-
-    </div>
-
-
-    <div>
-
-      <label>
-        <strong>Timetable (.docx)</strong>
-      </label>
-
-      <input
-        type="file"
-        id="lessonFile"
-        accept=".docx"
-      >
-
-    </div>
-
+<div class="form-grid">
+  <div>
+    <label><strong>Teacher Name</strong></label>
+    <input type="text" id="teacherName" placeholder="e.g. Solomon Ndegwa">
   </div>
-
-
-  <!-- ======================================================
-       BUTTONS
-       ====================================================== -->
-
-  <div class="button-row">
-
-    <button
-      class="primary"
-      id="loadBtn"
-      onclick="loadTimetable()"
-    >
-      📥 Load Timetable
-    </button>
-
-
-    <button
-      class="success"
-      id="startBtn"
-      onclick="startMonitoring()"
-      disabled
-    >
-      ▶ Start Monitoring
-    </button>
-
-
-    <button
-      class="danger"
-      id="stopBtn"
-      onclick="stopMonitoring()"
-      disabled
-    >
-      ⏹ Stop Monitoring
-    </button>
-
+  <div>
+    <label><strong>Timetable (.docx)</strong></label>
+    <button type="button" class="secondary" id="pickBtn" onclick="pickDocxViaPython()">📂 Choose Timetable (.docx)</button>
+    <input type="file" id="lessonFile" accept=".docx">
+    <div id="fileName">No file selected</div>
   </div>
-
-
-  <div id="status">
-    Ready. Enter teacher name and load a timetable.
-  </div>
-
-
-  <!-- ======================================================
-       MONITOR
-       ====================================================== -->
-
-  <div class="monitor-grid">
-
-    <div class="monitor-box">
-
-      <div class="monitor-title">
-        Current Time
-      </div>
-
-      <div
-        id="currentTime"
-        class="monitor-value"
-      >
-        --:--
-      </div>
-
-      <div
-        id="currentDate"
-        class="small"
-      >
-        ---
-      </div>
-
-    </div>
-
-
-    <div class="monitor-box">
-
-      <div class="monitor-title">
-        Monitoring
-      </div>
-
-      <div
-        id="monitorState"
-        class="monitor-value inactive"
-      >
-        OFF
-      </div>
-
-      <div
-        id="lastCheck"
-        class="small"
-      >
-        Not running
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <!-- ======================================================
-       NEXT LESSON
-       ====================================================== -->
-
-  <h3>📚 Next Lesson</h3>
-
-  <div
-    id="nextLesson"
-    class="lesson-card"
-  >
-
-    <div class="lesson-name">
-      No timetable loaded
-    </div>
-
-    <div class="lesson-meta">
-      Load a timetable to see your next lesson.
-    </div>
-
-  </div>
-
-
-  <!-- ======================================================
-       TEACHER SCHEDULE
-       ====================================================== -->
-
-  <h3>📅 Teacher Schedule</h3>
-
-  <div id="scheduleContainer">
-    No timetable loaded.
-  </div>
-
-
-  <!-- ======================================================
-       ALERT HISTORY
-       ====================================================== -->
-
-  <h3>🔔 Alert History</h3>
-
-  <div
-    id="alertLog"
-    class="alert-log"
-  >
-
-    <div class="small">
-      No alerts yet.
-    </div>
-
-  </div>
-
-
-  <!-- ======================================================
-       PREVIEW
-       ====================================================== -->
-
-  <h3>📄 Timetable Preview</h3>
-
-  <div id="editor">
-    No timetable loaded.
-  </div>
-
 </div>
 
+<div class="button-row">
+  <button class="primary" id="loadBtn" onclick="loadTimetable()">📥 Load Timetable</button>
+  <button class="success" id="startBtn" onclick="startMonitoring()" disabled>▶ Start Monitoring</button>
+  <button class="danger" id="stopBtn" onclick="stopMonitoring()" disabled>⏹ Stop Monitoring</button>
+</div>
 
+<div id="status">Ready. Enter teacher name, choose a timetable and load it.</div>
+<div id="schoolStatus" class="timing-source" style="margin-top:10px;">🏫 School authorization: Not checked</div>
+
+<div class="monitor-grid">
+  <div class="monitor-box">
+    <div class="monitor-title">Current Time</div>
+    <div id="currentTime" class="monitor-value">--:--</div>
+    <div id="currentDate" class="small">---</div>
+  </div>
+  <div class="monitor-box">
+    <div class="monitor-title">Monitoring</div>
+    <div id="monitorState" class="monitor-value inactive">OFF</div>
+    <div id="lastCheck" class="small">Not running</div>
+  </div>
+</div>
+
+<h3>📚 Next Lesson</h3>
+<div id="nextLesson" class="lesson-card">
+  <div class="lesson-name">No timetable loaded</div>
+  <div class="lesson-meta">Load a timetable to see your next lesson.</div>
+</div>
+
+<h3>📅 Teacher Schedule</h3>
+<div id="scheduleContainer">No timetable loaded.</div>
+
+<h3>🔔 Alert History</h3>
+<div id="alertLog" class="alert-log"><div class="small">No alerts yet.</div></div>
+
+<h3>📄 Timetable Preview</h3>
+<div id="editor">No timetable loaded.</div>
+</div>
 <script>
 
 /* ============================================================
@@ -470,18 +113,13 @@
    ============================================================ */
 
 let extractedRows = [];
-
 let teacherFullName = "";
-
 let teacherSchedule = [];
-
 let monitoringInterval = null;
-
 let clockInterval = null;
-
 let announcedAlerts = new Set();
-
 let alertHistory = [];
+let pickedFile = null;
 
 /* ============================================================
    OFFICIAL TIMETABLE RESTRICTION
@@ -500,11 +138,59 @@ let alertHistory = [];
 
 const REQUIRED_TIMETABLE_FOOTER = "Smart Elimu Connect";
 
-window.FletBridge = window.FletBridge || {
-  postMessage: function(message) {
-    console.log("📤 FletBridge message:", message);
+
+
+/* ===================== FLET BRIDGE + UPLOAD ===================== */
+if (!window.FletBridge) {
+  window.FletBridge = {
+    _stub: true,
+    postMessage: function (m) { console.log("📤 FletBridge message:", m); }
+  };
+}
+
+/* Upload button: ask Python (main.py) to open the system file picker.
+   Python replies by calling receiveDocx(name, base64).
+   In a normal browser (no Flet), fall back to the native file input. */
+function pickDocxViaPython() {
+  if (window.FletBridge && !window.FletBridge._stub) {
+    document.getElementById("status").textContent = "📂 Opening file picker...";
+    FletBridge.postMessage(JSON.stringify({ action: "pick_docx" }));
+  } else {
+    document.getElementById("lessonFile").click();
+  }
+}
+
+/* Called by main.py after the user picks a file */
+window.receiveDocx = function (name, b64) {
+  try {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const file = new File([bytes], name, {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    });
+    pickedFile = file;
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.getElementById("lessonFile").files = dt.files;
+    } catch (e) {
+      console.warn("DataTransfer not available, using pickedFile only.", e);
+    }
+    document.getElementById("fileName").textContent = "📄 " + name;
+    document.getElementById("status").textContent = "Selected: " + name + " — now tap Load Timetable.";
+  } catch (error) {
+    console.error("receiveDocx error:", error);
+    document.getElementById("status").textContent = "❌ Could not read the selected file.";
   }
 };
+
+document.getElementById("lessonFile").addEventListener("change", function () {
+  const f = this.files[0];
+  pickedFile = f || null;
+  document.getElementById("fileName").textContent = f ? "📄 " + f.name : "No file selected";
+});
+
+
+  
 /* ============================================================
    TIMETABLE HEADER INFORMATION
    ============================================================
