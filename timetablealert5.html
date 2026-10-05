@@ -3050,6 +3050,8 @@ function buildTeacherSchedule() {
 
 
 
+
+
 function cleanLessonText(text) {
 
   if (!text) {
@@ -3240,7 +3242,7 @@ function cleanLessonText(text) {
 
   return original;
 }
-  
+    
 
 
   
@@ -3888,6 +3890,10 @@ function checkTimetable() {
 }
   
 
+
+
+
+
 function announceLesson(lesson) {
 
   /*
@@ -3910,10 +3916,146 @@ function announceLesson(lesson) {
   );
 
 
-  speakText(
-    message
-  );
+  /* ============================================================
+     AUTOMATIC SPEECH
+     ============================================================ */
 
+  if (
+    "speechSynthesis" in window &&
+    typeof SpeechSynthesisUtterance !==
+      "undefined"
+  ) {
+
+    const speakNow =
+      function() {
+
+        try {
+
+          window.speechSynthesis.cancel();
+
+          window.speechSynthesis.resume();
+
+
+          const voiceMessage =
+            new SpeechSynthesisUtterance(
+              message
+            );
+
+
+          voiceMessage.lang =
+            "en-US";
+
+          voiceMessage.rate =
+            0.95;
+
+          voiceMessage.pitch =
+            1;
+
+          voiceMessage.volume =
+            1;
+
+
+          voiceMessage.onstart =
+            function() {
+
+              console.log(
+                "🔊 AUTOMATIC VOICE STARTED:",
+                message
+              );
+
+            };
+
+
+          voiceMessage.onend =
+            function() {
+
+              console.log(
+                "🔊 AUTOMATIC VOICE FINISHED"
+              );
+
+            };
+
+
+          voiceMessage.onerror =
+            function(event) {
+
+              console.error(
+                "🔊 AUTOMATIC VOICE ERROR:",
+                event.error
+              );
+
+            };
+
+
+          window.speechSynthesis.speak(
+            voiceMessage
+          );
+
+
+          console.log(
+            "🔊 SPEECH REQUEST SENT"
+          );
+
+        } catch (error) {
+
+          console.error(
+            "🔊 SPEECH EXCEPTION:",
+            error
+          );
+
+        }
+
+      };
+
+
+    /* First attempt */
+    speakNow();
+
+
+    /*
+       Second attempt after a short delay.
+       Some Android WebViews need the speech
+       engine to be resumed after the first call.
+    */
+
+    setTimeout(
+      function() {
+
+        if (
+          window.speechSynthesis.speaking
+        ) {
+
+          console.log(
+            "🔊 Speech is already running."
+          );
+
+          return;
+
+        }
+
+        console.log(
+          "🔊 RETRYING AUTOMATIC SPEECH..."
+        );
+
+        speakNow();
+
+      },
+      500
+    );
+
+
+  } else {
+
+    console.error(
+      "🔊 Speech synthesis is not available."
+    );
+
+  }
+
+
+  /* ============================================================
+     BROWSER NOTIFICATION
+     ============================================================ */
 
   showBrowserNotification(
     "Upcoming Lesson",
@@ -3921,10 +4063,18 @@ function announceLesson(lesson) {
   );
 
 
+  /* ============================================================
+     ALERT HISTORY
+     ============================================================ */
+
   addAlertHistory(
     lesson
   );
 
+
+  /* ============================================================
+     STATUS
+     ============================================================ */
 
   document.getElementById(
     "status"
@@ -3934,6 +4084,7 @@ function announceLesson(lesson) {
 
 }
 
+  
   
 /* ============================================================
    SPEAK
