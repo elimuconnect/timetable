@@ -76,7 +76,7 @@ button{width:100%}
 </div>
 
 <div id="status">Ready. Enter teacher name, choose a timetable and load it.</div>
-<div id="schoolStatus" class="timing-source" style="margin-top:10px;">🏫 School authorization: Not checked</div>
+
 
 <div class="monitor-grid">
   <div class="monitor-box">
@@ -1766,7 +1766,7 @@ function rejectTimetable(reason) {
 
   if (editor) {
     editor.innerHTML =
-      `<p><strong>❌ Timetable rejected.</strong></p><p>${escapeHTML(reason)}</p><p>Only official Smart Elimu Connect timetables can be loaded.</p>`;
+      `<p><strong>❌ Timetable rejected.</strong></p><p>${escapeHTML(reason)}</p><p>Only official timetables can be loaded.</p>`;
   }
 
   const scheduleContainer =
